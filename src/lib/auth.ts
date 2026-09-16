@@ -178,6 +178,18 @@ export async function getSessionUserFromRequest(request: Request): Promise<Sessi
   return getUserByToken(getRequestToken(request));
 }
 
+/** Proxy arkasında tarayıcının gördüğü kök adres (mutlak yönlendirmeler için).
+ *  request.url iç adresi (0.0.0.0) verir; Host başlığı genel adresi korur.
+ *  Localhost dışı host'larda protokol her zaman https kabul edilir (çerez
+ *  kuralıyla tutarlı: bu ortamlarda TLS sonlandırma vardır). */
+export function publicBaseUrl(request: Request): string {
+  const host = request.headers.get("host")?.trim() || "localhost:3000";
+  const fwd = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  const local = isLocalHostname(host);
+  const proto = fwd === "https" ? "https" : fwd === "http" && local ? "http" : local ? "http" : "https";
+  return `${proto}://${host}`;
+}
+
 /**
  * Güvenli geçiş (handoff) jetonları: kısa ömürlü (120 sn), sınırlı kullanımlı
  * (en fazla 5), bellekte saklanır. Jetonun kendisi oturum token'ı DEĞİLDİR;
