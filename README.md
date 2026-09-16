@@ -78,6 +78,26 @@ Durdurmak: `docker compose down` (veriler `mysql-data` volume'ünde saklanır).
 
 Ayrıca `GET /api/health` ilk çağrıda eksikse seed'i otomatik tamamlar.
 
+## Önizleme Veritabanı (MySQL Köprüsü)
+
+Gerçek MySQL olmayan ortamlarda uygulama, MySQL protokolü konuşan bir
+SQLite köprüsüyle çalışır (`scripts/mysql-bridge.py`, mysql-mimic + sqlglot):
+
+```bash
+pip install mysql-mimic
+python3 scripts/mysql-bridge.py &   # 0.0.0.0:3306 (şifre: tuhafiye)
+cp .env.example .env 2>/dev/null; echo 'DATABASE_URL="mysql://tuhafiye:tuhafiye@127.0.0.1:3306/tuhafiye"' > .env
+npm run db:apply   # drizzle/*.sql dosyalarını sırayla uygular
+npm run db:seed    # örnek veriler (idempotent)
+npm run build && npm start
+```
+
+Veriler `.bridge-data/tuhafiye.db` dosyasındadır (commitlenmez). Temiz
+başlangıç için köprüyü durdurup bu dosyayı silin, sonra yukarıdaki sırayı
+tekrarlayın. Kısıtlar: çok-ifadeli işlem atomikliği yoktur, `ON DUPLICATE KEY
+UPDATE` desteklenmez — yalnızca geliştirme/önizleme içindir, üretimde gerçek
+MySQL kullanın.
+
 ## Proje Yapısı
 
 - `src/app/` — Sayfalar (vitrin, sepet, ödeme, POS, B2B, admin, blog) ve `/api/*` uçları

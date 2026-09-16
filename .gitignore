@@ -27,6 +27,12 @@ Thumbs.db
 # Drizzle (snapshot hariç her şey commitlenir; studio geçicileri hariç)
 drizzle/meta/_journal.json.bak
 
+# MySQL köprüsü veritabanı dosyaları (yerel önizleme, commitlenmez)
+.bridge-data/
+*.db
+*.db-wal
+*.db-shm
+
 # Test çıktıları
 coverage/
 
