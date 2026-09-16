@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+*.zip
+.env
+.env*.local
+npm-debug.log*
+coverage
