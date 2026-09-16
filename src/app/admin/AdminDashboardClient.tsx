@@ -587,78 +587,6 @@ export function AdminDashboardClient({
     }
   };
 
-  /* --- Satır içi "manuel ekleme" durumu (Marka / Giriş Deposu) --- */
-  const [newBrandName, setNewBrandName] = useState("");
-  const [addingBrand, setAddingBrand] = useState(false);
-  const [brandFeedback, setBrandFeedback] = useState<{ text: string; isError: boolean } | null>(null);
-
-  const [newWarehouseName, setNewWarehouseName] = useState("");
-  const [newWarehouseType, setNewWarehouseType] = useState("CENTRAL");
-  const [addingWarehouse, setAddingWarehouse] = useState(false);
-  const [warehouseFeedback, setWarehouseFeedback] = useState<{ text: string; isError: boolean } | null>(null);
-
-  const handleAddBrand = async () => {
-    const name = newBrandName.trim();
-    if (!name || addingBrand) return;
-    setAddingBrand(true);
-    setBrandFeedback(null);
-    try {
-      const res = await fetch("/api/brands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setBrandFeedback({ text: data?.error?.message || "Marka eklenemedi.", isError: true });
-        return;
-      }
-      const created = data.data;
-      if (!data.existed) setBrandsList((prev) => [...prev, created]);
-      setNewProd((prev) => ({ ...prev, brandId: String(created.id) }));
-      setBrandFeedback({
-        text: data.existed ? `"${created.name}" zaten kayıtlı — seçildi.` : `"${created.name}" marka listesine eklendi ve seçildi.`,
-        isError: false,
-      });
-      setNewBrandName("");
-    } catch {
-      setBrandFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
-    } finally {
-      setAddingBrand(false);
-    }
-  };
-
-  const handleAddWarehouse = async () => {
-    const name = newWarehouseName.trim();
-    if (!name || addingWarehouse) return;
-    setAddingWarehouse(true);
-    setWarehouseFeedback(null);
-    try {
-      const res = await fetch("/api/warehouses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, type: newWarehouseType }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setWarehouseFeedback({ text: data?.error?.message || "Depo eklenemedi.", isError: true });
-        return;
-      }
-      const created = data.data;
-      if (!data.existed) setWarehousesList((prev) => [...prev, created]);
-      setNewProd((prev) => ({ ...prev, warehouseId: String(created.id) }));
-      setWarehouseFeedback({
-        text: data.existed ? `"${created.name}" zaten kayıtlı — seçildi.` : `"${created.name}" (${created.code}) depo oluşturuldu ve seçildi.`,
-        isError: false,
-      });
-      setNewWarehouseName("");
-    } catch {
-      setWarehouseFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
-    } finally {
-      setAddingWarehouse(false);
-    }
-  };
-
   const refreshProducts = async () => {
     const pRes = await fetch("/api/products");
     const pData = await pRes.json();
@@ -1089,12 +1017,8 @@ export function AdminDashboardClient({
   };
 
   // Handlers
-  /** Ürün ekleme modalını taze durumya aç (önceki inline ekleme formunu temizler). */
+  /** Ürün ekleme modalını aç. */
   const openAddProductModal = () => {
-    setNewBrandName("");
-    setBrandFeedback(null);
-    setNewWarehouseName("");
-    setWarehouseFeedback(null);
     setIsAddProductOpen(true);
   };
 
@@ -4118,60 +4042,16 @@ export function AdminDashboardClient({
                   </select>
                 </div>
                 <div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="font-bold text-stone-700">Marka:</label>
-                      {brandFeedback && !brandFeedback.isError && (
-                        <span className="text-[10px] font-bold text-emerald-700">✓ {brandFeedback.text}</span>
-                      )}
-                    </div>
-                    <select
-                      value={newProd.brandId}
-                      onChange={(e) => setNewProd({ ...newProd, brandId: e.target.value })}
-                      className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                    >
-                      {brandsList.map((b) => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-
-                    {/* MANUEL MARKA EKLEME — her zaman görünür */}
-                    <div className="p-2 rounded-xl bg-amber-50/70 border border-amber-200 space-y-1">
-                      <p className="text-[10px] font-bold text-amber-900 uppercase tracking-wide">
-                        + Yeni Marka Ekle
-                      </p>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          value={newBrandName}
-                          onChange={(e) => setNewBrandName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void handleAddBrand();
-                            }
-                          }}
-                          placeholder="Marka adı yazın… (örn. Kartopu)"
-                          className="flex-1 min-w-0 px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-700/50"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void handleAddBrand()}
-                          disabled={addingBrand || !newBrandName.trim()}
-                          className="px-3 py-2 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition whitespace-nowrap flex items-center gap-1"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{addingBrand ? "Ekleniyor…" : "Ekle & Seç"}</span>
-                        </button>
-                      </div>
-                      {brandFeedback?.isError && (
-                        <p className="text-[10px] font-bold text-rose-700">{brandFeedback.text}</p>
-                      )}
-                      <p className="text-[9px] text-stone-500">
-                        Eklediğiniz marka listeye işlenir ve bu ürün için otomatik seçilir. Aynı isim varsa yenisi açılmaz.
-                      </p>
-                    </div>
-                  </div>
+                  <label className="block font-bold text-stone-700 mb-1">Marka:</label>
+                  <select
+                    value={newProd.brandId}
+                    onChange={(e) => setNewProd({ ...newProd, brandId: e.target.value })}
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                  >
+                    {brandsList.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Birim:</label>
@@ -4233,14 +4113,7 @@ export function AdminDashboardClient({
                   />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center justify-between">
-                      <label className="font-bold text-stone-700">Giriş Deposu:</label>
-                      {warehouseFeedback && !warehouseFeedback.isError && (
-                        <span className="text-[10px] font-bold text-emerald-700">✓ {warehouseFeedback.text}</span>
-                      )}
-                    </div>
-                  </div>
+                  <label className="block font-bold text-stone-700 mb-1">Giriş Deposu:</label>
                   <select
                     value={newProd.warehouseId}
                     onChange={(e) => setNewProd({ ...newProd, warehouseId: e.target.value })}
@@ -4250,55 +4123,6 @@ export function AdminDashboardClient({
                       <option key={w.id} value={w.id}>{w.name} ({w.code})</option>
                     ))}
                   </select>
-
-                  {/* MANUEL DEPO EKLEME — her zaman görünür */}
-                  <div className="mt-1.5 p-2 rounded-xl bg-amber-50/70 border border-amber-200 space-y-1">
-                    <p className="text-[10px] font-bold text-amber-900 uppercase tracking-wide">
-                      + Yeni Depo Ekle
-                    </p>
-                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
-                      <input
-                        type="text"
-                        value={newWarehouseName}
-                        onChange={(e) => setNewWarehouseName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void handleAddWarehouse();
-                          }
-                        }}
-                        placeholder="Depo adı yazın… (örn. Bursa Bölge)"
-                        className="px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-700/50"
-                      />
-                      <select
-                        value={newWarehouseType}
-                        onChange={(e) => setNewWarehouseType(e.target.value)}
-                        className="px-2 py-2 bg-white border border-amber-300 rounded-xl text-xs"
-                      >
-                        <option value="CENTRAL">Merkez</option>
-                        <option value="STORE">Mağaza</option>
-                        <option value="ONLINE">Online</option>
-                        <option value="WHOLESALE">Toptan</option>
-                      </select>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => void handleAddWarehouse()}
-                        disabled={addingWarehouse || !newWarehouseName.trim()}
-                        className="flex-1 py-2 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{addingWarehouse ? "Ekleniyor…" : "Depoyu Ekle & Seç"}</span>
-                      </button>
-                    </div>
-                    {warehouseFeedback?.isError && (
-                      <p className="text-[10px] font-bold text-rose-700">{warehouseFeedback.text}</p>
-                    )}
-                    <p className="text-[9px] text-stone-500">
-                      Depo kodu otomatik üretilir (örn. Bursa Bölge → BBD). Çakışırsa -2, -3 eklenir.
-                    </p>
-                  </div>
                 </div>
               </div>
 
