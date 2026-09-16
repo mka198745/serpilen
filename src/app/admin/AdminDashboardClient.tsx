@@ -164,7 +164,7 @@ export function AdminDashboardClient({
   const [selectedWhFilter, setSelectedWhFilter] = useState<string>("ALL");
 
   /* --- FAZ 3: Envanter (WMS alt sekmeleri) --- */
-  const [wmsSubTab, setWmsSubTab] = useState<"balances" | "transfers" | "counts" | "locations" | "reservations">("balances");
+  const [wmsSubTab, setWmsSubTab] = useState<"balances" | "warehouses" | "transfers" | "counts" | "locations" | "reservations">("balances");
   const [transfers, setTransfers] = useState<any[]>([]);
   const [countSessions, setCountSessions] = useState<any[]>([]);
   const [locationsList, setLocationsList] = useState<any[]>([]);
@@ -177,6 +177,8 @@ export function AdminDashboardClient({
   const [countedItems, setCountedItems] = useState<any[]>([]);
   const [newTransfer, setNewTransfer] = useState({ fromWarehouseId: "1", toWarehouseId: "2", productId: "", qty: "10", note: "" });
   const [newLocation, setNewLocation] = useState({ warehouseId: "1", zone: "A", aisle: "01", rack: "01", shelf: "01" });
+  const [newWarehouseForm, setNewWarehouseForm] = useState({ name: "", type: "CENTRAL", address: "" });
+  const [addingWarehouseForm, setAddingWarehouseForm] = useState(false);
 
   /* --- FAZ 4: Sipariş yaşam döngüsü + İade --- */
   const [ordersSubTab, setOrdersSubTab] = useState<"orders" | "returns">("orders");
@@ -976,6 +978,43 @@ export function AdminDashboardClient({
       void loadWmsSection();
     } else {
       setWmsFeedback({ text: data.error?.message || "Lokasyon eklenemedi.", isError: true });
+    }
+  };
+
+  const handleAddWarehouseForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newWarehouseForm.name.trim();
+    if (!name || addingWarehouseForm) return;
+    setAddingWarehouseForm(true);
+    setWmsFeedback(null);
+    try {
+      const res = await fetch("/api/warehouses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          type: newWarehouseForm.type,
+          address: newWarehouseForm.address.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setWmsFeedback({ text: data?.error?.message || "Depo eklenemedi.", isError: true });
+        return;
+      }
+      const created = data.data;
+      if (!data.existed) setWarehousesList((prev) => [...prev, created]);
+      setWmsFeedback({
+        text: data.existed
+          ? `"${created.name}" zaten kayıtlı (${created.code}).`
+          : `Depo oluşturuldu: ${created.name} (${created.code}).`,
+        isError: false,
+      });
+      setNewWarehouseForm({ name: "", type: "CENTRAL", address: "" });
+    } catch {
+      setWmsFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
+    } finally {
+      setAddingWarehouseForm(false);
     }
   };
 
@@ -2013,6 +2052,7 @@ export function AdminDashboardClient({
             {/* FAZ 3 — WMS alt sekmeleri */}
             <div className="flex flex-wrap gap-1.5">
               {[
+                { id: "warehouses" as const, label: `Depolar (${warehousesList.length})` },
                 { id: "balances" as const, label: "Stok Bakiyeleri" },
                 { id: "transfers" as const, label: `Transferler (${transfers.filter((t) => t.status !== "RECEIVED" && t.status !== "CANCELLED").length})` },
                 { id: "counts" as const, label: "Sayım Oturumları" },
@@ -2192,6 +2232,92 @@ export function AdminDashboardClient({
                 </table>
               </div>
             </div>
+            )}
+
+            {/* ---- FAZ 3 / WMS ALT-SEKME: DEPOLAR (Depo Ekleme) ---- */}
+            {wmsSubTab === "warehouses" && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <form onSubmit={handleAddWarehouseForm} className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3 h-max">
+                  <div>
+                    <h3 className="font-bold text-sm text-stone-900">Yeni Depo Ekle</h3>
+                    <p className="text-[11px] text-stone-400">Depo kodu addan otomatik üretilir (örn. Bursa Depo → BRD).</p>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Depo Adı *</label>
+                    <input
+                      value={newWarehouseForm.name}
+                      onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, name: e.target.value })}
+                      placeholder="örn. Bursa Bölge Deposu"
+                      className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Depo Tipi</label>
+                    <select
+                      value={newWarehouseForm.type}
+                      onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, type: e.target.value })}
+                      className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
+                    >
+                      <option value="CENTRAL">Merkez Depo (CENTRAL)</option>
+                      <option value="STORE">Mağaza Deposu (STORE)</option>
+                      <option value="ONLINE">E-Ticaret Deposu (ONLINE)</option>
+                      <option value="WHOLESALE">Toptan / B2B Deposu (WHOLESALE)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Adres (opsiyonel)</label>
+                    <textarea
+                      value={newWarehouseForm.address}
+                      onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, address: e.target.value })}
+                      placeholder="Mahalle, cadde, şehir…"
+                      rows={2}
+                      className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={addingWarehouseForm}
+                    className="w-full py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition"
+                  >
+                    {addingWarehouseForm ? "Ekleniyor…" : "Depo Oluştur"}
+                  </button>
+                </form>
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-stone-200 overflow-hidden h-max">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Kod</th>
+                        <th className="py-2.5 px-3">Depo Adı</th>
+                        <th className="py-2.5 px-3">Tip</th>
+                        <th className="py-2.5 px-3">Adres</th>
+                        <th className="py-2.5 px-3">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {warehousesList.map((w) => (
+                        <tr key={w.id} className="hover:bg-stone-50/50">
+                          <td className="py-2.5 px-3 font-mono font-bold">{w.code}</td>
+                          <td className="py-2.5 px-3 font-semibold text-stone-800">{w.name}</td>
+                          <td className="py-2.5 px-3">
+                            <span className="bg-stone-100 text-stone-800 px-2 py-0.5 rounded font-bold text-[10px]">{w.type}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-stone-500 truncate max-w-[220px]">{w.address || "-"}</td>
+                          <td className="py-2.5 px-3">
+                            {w.isActive === false ? (
+                              <span className="bg-stone-200 text-stone-600 px-2 py-0.5 rounded-full font-bold text-[10px]">Pasif</span>
+                            ) : (
+                              <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px]">Aktif</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {warehousesList.length === 0 && (
+                        <tr><td colSpan={5} className="py-8 text-center text-stone-400">Depo yok.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
 
             {/* ---- FAZ 3 / WMS ALT-SEKME: TRANSFERLER ---- */}
