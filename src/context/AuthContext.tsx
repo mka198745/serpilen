@@ -89,8 +89,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json().catch(() => ({}));
     if (data?.success) {
-      setUser(data.data.user);
-      return { success: true };
+      // Oturum çerezinin gerçekten kaydedildiğini doğrula (çerez engellenirse sessiz kalma).
+      try {
+        const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+        const meData = await meRes.json().catch(() => ({}));
+        if (meRes.ok && meData?.success && meData.data.user) {
+          setUser(meData.data.user);
+          return { success: true };
+        }
+      } catch {
+        /* aşağıda açıklayıcı hata */
+      }
+      return {
+        success: false,
+        message: "Giriş doğrulandı ancak oturum çerezi kaydedilemedi. Tarayıcınız çerezleri engelliyor olabilir — çerezlere izin verip tekrar deneyin veya önizlemeyi yeni sekmede açın.",
+      };
     }
     return { success: false, message: data?.error?.message || "Giriş yapılamadı." };
   }, []);
@@ -103,8 +116,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json().catch(() => ({}));
     if (data?.success) {
-      setUser(data.data.user);
-      return { success: true };
+      try {
+        const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+        const meData = await meRes.json().catch(() => ({}));
+        if (meRes.ok && meData?.success && meData.data.user) {
+          setUser(meData.data.user);
+          return { success: true };
+        }
+      } catch {
+        /* aşağıda açıklayıcı hata */
+      }
+      return {
+        success: false,
+        message: "Kaydınız oluştu ancak oturum çerezi kaydedilemedi. Tarayıcınız çerezleri engelliyor olabilir — çerezlere izin verip giriş yapmayı deneyin.",
+      };
     }
     return { success: false, message: data?.error?.message || "Kayıt oluşturulamadı." };
   }, []);

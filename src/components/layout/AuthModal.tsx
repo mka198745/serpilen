@@ -128,6 +128,26 @@ export function AuthModal() {
             >
               {busy ? "Giriş yapılıyor…" : "Giriş Yap"}
             </button>
+            <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-3">
+              <p className="text-[11px] font-bold text-stone-500 mb-2">Test hesapları (tıklayınca doldurur):</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: "Süper Admin", email: "admin@ipektuhafiye.com", password: "Admin123!" },
+                  { label: "Kasiyer", email: "kasiyer@ipektuhafiye.com", password: "Kasiyer123!" },
+                  { label: "Depo", email: "depo@ipektuhafiye.com", password: "Depo123!" },
+                ].map((a) => (
+                  <button
+                    key={a.email}
+                    type="button"
+                    onClick={() => { setLoginForm({ email: a.email, password: a.password }); setError(null); }}
+                    className="px-2.5 py-1.5 rounded-lg bg-white border border-stone-200 hover:border-amber-500 text-[11px] font-semibold text-stone-700 transition text-left"
+                  >
+                    {a.label}
+                    <span className="block font-mono text-[10px] text-stone-400">{a.email}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <p className="text-center text-[11px] text-stone-500">
               Hesabınız yok mu?{" "}
               <button type="button" onClick={() => { setModalTab("register"); setError(null); }} className="text-amber-800 font-bold hover:underline">

@@ -94,12 +94,16 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 }
 
 export function sessionCookieOptions() {
+  // HTTPS üretimde COOKIE_SECURE=1 açılır: Secure + Partitioned (CHIPS) sayesinde
+  // uygulama başka site içine gömülü (iframe) çalışsa bile çerez korunur.
+  // Yerel HTTP testinde kapalı bırakın, yoksa tarayıcı çerezi reddeder.
+  const secure = process.env.COOKIE_SECURE === "1";
   return {
     httpOnly: true as const,
     sameSite: "lax" as const,
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
-    // HTTPS üretimde COOKIE_SECURE=1 ile açılmalı; yerel HTTP testinde kapalı kalır.
-    secure: process.env.COOKIE_SECURE === "1",
+    secure,
+    ...(secure ? { partitioned: true as const } : {}),
   };
 }
