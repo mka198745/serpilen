@@ -93,6 +93,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return getUserByToken(store.get(SESSION_COOKIE)?.value);
 }
 
+/** Kısa sunucu günlüğü: giriş sorunlarını teşhis için (şifre/token değeri yazılmaz). */
+export function authLog(...args: unknown[]) {
+  console.log("[auth]", new Date().toISOString(), ...args);
+}
+
 /** İstek gerçekten HTTPS üzerinden mi geldi? (proxy arkasında x-forwarded-proto'ya bakılır) */
 export function isHttpsRequest(request?: Request): boolean {
   if (!request) return false;

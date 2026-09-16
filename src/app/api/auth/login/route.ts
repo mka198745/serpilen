@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
+  authLog,
   createSession,
   getUserByToken,
   sessionCookieOptions,
@@ -21,7 +22,14 @@ export async function POST(request: Request) {
   const email = String(body?.email || "").trim().toLowerCase();
   const password = String(body?.password || "");
 
+  const reqMeta = {
+    proto: request.headers.get("x-forwarded-proto"),
+    host: request.headers.get("host"),
+    ua: request.headers.get("user-agent")?.slice(0, 100),
+  };
+
   if (!email || !email.includes("@") || !password) {
+    authLog("login", "VALIDATION_ERROR", email || "(boş)", reqMeta);
     return NextResponse.json(
       { success: false, error: { code: "VALIDATION_ERROR", message: "E-posta ve şifre zorunludur." } },
       { status: 422 }
@@ -32,12 +40,14 @@ export async function POST(request: Request) {
   // Zamanlama bilgisizliği için kullanıcı yoksa da sahte doğrulama yap.
   const ok = user ? verifyPassword(password, user.passwordHash) : verifyPassword(password, hashPassword("dummy"));
   if (!user || !ok) {
+    authLog("login", "INVALID_CREDENTIALS", email, reqMeta);
     return NextResponse.json(
       { success: false, error: { code: "INVALID_CREDENTIALS", message: "E-posta veya şifre hatalı." } },
       { status: 401 }
     );
   }
   if (user.isActive === false) {
+    authLog("login", "ACCOUNT_DISABLED", email, reqMeta);
     return NextResponse.json(
       { success: false, error: { code: "ACCOUNT_DISABLED", message: "Bu hesap pasife alınmış. Lütfen yöneticiyle iletişime geçin." } },
       { status: 403 }
@@ -45,6 +55,7 @@ export async function POST(request: Request) {
   }
   // Eski/sahte özet formatı gerçek girişe kapatıldı (güvenlik).
   if (!looksLikeScryptHash(user.passwordHash)) {
+    authLog("login", "PASSWORD_RESET_REQUIRED", email, reqMeta);
     return NextResponse.json(
       { success: false, error: { code: "PASSWORD_RESET_REQUIRED", message: "Bu hesap için yeni şifre tanımlanması gerekiyor." } },
       { status: 403 }
@@ -62,6 +73,7 @@ export async function POST(request: Request) {
   await db.update(users).set({ lastLoginAt: new Date(), failedLoginCount: 0 }).where(eq(users.id, user.id));
 
   const sessionUser = await getUserByToken(token);
+  authLog("login", "OK", email, { ...reqMeta, role: sessionUser?.role, cookieSecure: !!sessionCookieOptions(request).secure });
   const res = NextResponse.json({
     success: true,
     data: { user: sessionUser, token, expiresAt: expiresAt.toISOString() },
