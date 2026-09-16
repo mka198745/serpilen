@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
+import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 
 interface AdminDashboardClientProps {
   products: any[];
@@ -4062,7 +4063,14 @@ export function AdminDashboardClient({
                 {newProd.videoUrl.trim() !== "" && newProdVideo.kind !== "unknown" && (
                   <div className="space-y-1">
                     <div className="aspect-video rounded-lg overflow-hidden border border-violet-200 bg-black">
-                      {newProdVideo.kind === "file" ? (
+                      {newProdVideo.kind === "youtube" && newProdVideo.mediaId ? (
+                        <YouTubePlayer
+                          videoId={newProdVideo.mediaId}
+                          embedUrl={newProdVideo.embedUrl}
+                          title="Video önizleme"
+                          watchUrl={newProdVideo.watchUrl}
+                        />
+                      ) : newProdVideo.kind === "file" ? (
                         <video src={newProd.videoUrl} controls className="w-full h-full" />
                       ) : (
                         <iframe
@@ -4071,6 +4079,7 @@ export function AdminDashboardClient({
                           title="Video önizleme"
                           className="w-full h-full"
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
                           allowFullScreen
                         />
                       )}

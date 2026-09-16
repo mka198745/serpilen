@@ -20,10 +20,12 @@ export interface ParsedVideo {
   embedUrl: string;
   /** Orijinal bağlantı (yedek "orijinalini aç" bağlantısı için) */
   watchUrl: string;
+  /** Platformun video kimliği (YouTube küçük resmi için) */
+  mediaId?: string;
 }
 
-function parsed(kind: VideoKind, embedUrl: string, watchUrl: string): ParsedVideo {
-  return { kind, embedUrl, watchUrl };
+function parsed(kind: VideoKind, embedUrl: string, watchUrl: string, mediaId?: string): ParsedVideo {
+  return { kind, embedUrl, watchUrl, mediaId };
 }
 
 const EMPTY: ParsedVideo = { kind: "unknown", embedUrl: "", watchUrl: "" };
@@ -50,6 +52,51 @@ const FB_VIDEO = /facebook\.com\/.+\/videos\/(\d+)/i;
 
 const FILE_EXT = /\.(mp4|webm|ogg|mov)(\?.*)?$/i;
 
+/** YouTube ?t=1m30s / ?t=90 / ?start=90 biçimlerini saniyeye çevirir. */
+function parseStartSeconds(url: string): number | null {
+  let start: number | null = null;
+  try {
+    const query = url.split("?")[1]?.split("#")[0] || "";
+    const params = new URLSearchParams(query);
+    const direct = params.get("start");
+    if (direct && /^\d+$/.test(direct)) return parseInt(direct, 10);
+    const t = params.get("t");
+    if (!t) return null;
+    if (/^\d+$/.test(t)) return parseInt(t, 10);
+    const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i);
+    if (!m || (!m[1] && !m[2] && !m[3])) return null;
+    start = (Number(m[1] || 0) * 3600) + (Number(m[2] || 0) * 60) + Number(m[3] || 0);
+  } catch {
+    return null;
+  }
+  return start;
+}
+
+/** Paylaş bağlantısındaki izleme/bölüm parametrelerini gömmeye taşır. */
+function youTubeEmbedQuery(url: string): string {
+  const out: string[] = [];
+  try {
+    const query = url.split("?")[1]?.split("#")[0] || "";
+    const params = new URLSearchParams(query);
+    const si = params.get("si");
+    if (si) out.push(`si=${encodeURIComponent(si)}`);
+    const start = parseStartSeconds(url);
+    if (start !== null && start > 0) out.push(`start=${start}`);
+    const end = params.get("end");
+    if (end && /^\d+$/.test(end)) out.push(`end=${end}`);
+  } catch {
+    /* yoksay */
+  }
+  return out.join("&");
+}
+
+/** Gömme adresine origin parametresi ekler (YouTube oynatıcı doğrulaması için). */
+export function withOrigin(embedUrl: string, origin: string): string {
+  if (!embedUrl || !origin) return embedUrl;
+  const sep = embedUrl.includes("?") ? "&" : "?";
+  return `${embedUrl}${sep}origin=${encodeURIComponent(origin)}`;
+}
+
 export function parseVideoUrl(raw: string | null | undefined): ParsedVideo {
   const url = (raw || "").trim();
   if (!url) return EMPTY;
@@ -62,7 +109,13 @@ export function parseVideoUrl(raw: string | null | undefined): ParsedVideo {
   if (ytId) {
     // Standart gömme adresi iframe ile çekilir. (youtube-nocookie varyantı
     // bazı tarayıcılarda "yapılandırma hatası (153)" veriyor.)
-    return parsed("youtube", `https://www.youtube.com/embed/${ytId}`, url);
+    const q = youTubeEmbedQuery(url);
+    return parsed(
+      "youtube",
+      `https://www.youtube.com/embed/${ytId}${q ? `?${q}` : ""}`,
+      url,
+      ytId
+    );
   }
 
   for (const re of DM_PATTERNS) {

@@ -6,6 +6,7 @@ import { Product, ProductVariant, Category, Brand } from "@/lib/types";
 import { useCart } from "@/context/CartContext";
 import { ReviewsQA } from "@/components/storefront/ReviewsQA";
 import { parseVideoUrl } from "@/lib/video";
+import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import {
   ShoppingBag,
   Heart,
@@ -406,7 +407,14 @@ export function ProductDetailClient({
               </h4>
               {isPlayableVideo ? (
                 <div className="aspect-video rounded-xl overflow-hidden bg-black max-w-3xl">
-                  {video.kind === "file" ? (
+                  {video.kind === "youtube" && video.mediaId ? (
+                    <YouTubePlayer
+                      videoId={video.mediaId}
+                      embedUrl={video.embedUrl}
+                      title={`${product.name} videosu`}
+                      watchUrl={video.watchUrl}
+                    />
+                  ) : video.kind === "file" ? (
                     <video src={product.videoUrl || ""} controls className="w-full h-full" />
                   ) : (
                     <iframe
@@ -415,6 +423,7 @@ export function ProductDetailClient({
                       title={`${product.name} videosu`}
                       className="w-full h-full"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
                       allowFullScreen
                     />
                   )}
