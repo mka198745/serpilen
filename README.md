@@ -89,6 +89,10 @@ Ayrıca `GET /api/health` ilk çağrıda eksikse seed'i otomatik tamamlar.
 
 ## Kullanıcı Girişi & Yetkiler
 
+> **Şu an GEÇİCİ KAPALI:** `src/lib/auth-flag.ts` içinde `AUTH_ENABLED = false`.
+> Giriş butonu gizli, `/admin` `/pos` `/toptan-b2b` herkese açık. Yeniden açmak
+> için `true` yapıp derleyin. Tüm giriş/oturum kodu korunmaktadır.
+
 - Üst barda **"Kullanıcı Girişi / Üye Ol"** butonu vardır. Ziyaretçiler üye olup
   giriş yapabilir (B2C cari kartı otomatik oluşur).
 - **Web POS Terminali**, **B2B Toptan Portalı** ve **Yönetim Paneli & WMS**

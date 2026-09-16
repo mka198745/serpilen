@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { AUTH_ENABLED } from "@/lib/auth-flag";
 
 export interface AuthUser {
   id: number;
@@ -225,6 +226,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!AUTH_ENABLED) {
+      setLoading(false);
+      return; // giriş sistemi geçici kapalı: oturum yok, pencere açılmasın
+    }
     (async () => {
       setLoading(true);
       await refresh();

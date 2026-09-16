@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import { AUTH_ENABLED } from "@/lib/auth-flag";
 
 import {
   ShoppingBag,
@@ -80,8 +81,8 @@ export function Header() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 text-[11px]">
-            {/* Yetkili (admin/personel) girişi varsa iç sistem kısayolları */}
-            {user?.isStaff && (
+            {/* Yetkili girişi varsa (veya giriş sistemi kapalıysa herkese) iç sistem kısayolları */}
+            {(!AUTH_ENABLED || user?.isStaff) && (
               <>
                 <Link
                   href="/pos"
@@ -117,8 +118,8 @@ export function Header() {
               <span>Mimari (FAZ 0)</span>
             </Link>
 
-            {/* Üye girişi / hesap alanı */}
-            {authLoading ? (
+            {/* Üye girişi / hesap alanı (sistem kapalıysa gizli) */}
+            {!AUTH_ENABLED ? null : authLoading ? (
               <span className="w-28 h-5 rounded bg-white/10 animate-pulse" />
             ) : user ? (
               <span className="flex items-center gap-2">

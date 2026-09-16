@@ -20,13 +20,16 @@ import {
 import { desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { AUTH_ENABLED } from "@/lib/auth-flag";
 import { AdminDashboardClient } from "./AdminDashboardClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const sessionUser = await getSessionUser();
-  if (!sessionUser?.isStaff) redirect("/?giris=1&next=/admin");
+  if (AUTH_ENABLED) {
+    const sessionUser = await getSessionUser();
+    if (!sessionUser?.isStaff) redirect("/?giris=1&next=/admin");
+  }
   const allProds = await db.select().from(products).orderBy(desc(products.id));
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
