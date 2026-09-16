@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { brands } from "@/db/schema";
+import { brands, products } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { ensureUniqueSlug, slugifyTr } from "@/lib/slug";
 
@@ -71,4 +71,34 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Marka bulunamadı." } }, { status: 404 });
   }
   return NextResponse.json({ success: true, data: updated });
+}
+
+/** DELETE /api/brands — Marka silme. Ürünü olan marka silinemez (önce ürünleri taşıyın/pasife alın). */
+export async function DELETE(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as { id?: number };
+  const id = Number(body?.id);
+  if (!id) {
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Marka ID zorunludur." } }, { status: 422 });
+  }
+
+  try {
+    const [target] = await db.select().from(brands).where(eq(brands.id, id)).limit(1);
+    if (!target) {
+      return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Marka bulunamadı." } }, { status: 404 });
+    }
+
+    const linked = await db.select({ id: products.id }).from(products).where(eq(products.brandId, id)).limit(1);
+    if (linked.length > 0) {
+      return NextResponse.json(
+        { success: false, error: { code: "BRAND_IN_USE", message: `Bu markaya bağlı ürünler var; önce ürünleri başka markaya taşıyın veya markayı pasife alın.` } },
+        { status: 409 }
+      );
+    }
+
+    await db.delete(brands).where(eq(brands.id, id));
+    return NextResponse.json({ success: true, data: { id, name: target.name } });
+  } catch (err: any) {
+    console.error("Brand delete error:", err);
+    return NextResponse.json({ success: false, error: { code: "INTERNAL_ERROR", message: err?.message || "Marka silinemedi." } }, { status: 500 });
+  }
 }

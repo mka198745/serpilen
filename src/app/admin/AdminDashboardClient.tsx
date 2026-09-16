@@ -37,6 +37,7 @@ import {
   UserPlus,
   Power,
   Pencil,
+  Trash2,
   FolderTree,
   Layers,
   Palette,
@@ -146,6 +147,8 @@ export function AdminDashboardClient({
   });
   const [newCategory, setNewCategory] = useState({ name: "", parentId: "", description: "" });
   const [newBrandAdmin, setNewBrandAdmin] = useState("");
+  const [editingBrandId, setEditingBrandId] = useState<number | null>(null);
+  const [editingBrandName, setEditingBrandName] = useState("");
   const [catalogFeedback, setCatalogFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [inventoryList, setInventoryList] = useState(initialInventory);
   const [ledger, setLedger] = useState(initialLedger);
@@ -742,6 +745,61 @@ export function AdminDashboardClient({
       setCatalogFeedback({ text: `"${data.data.name}" markası kaydedildi.`, isError: false });
     } else {
       setCatalogFeedback({ text: data.error?.message || "Marka eklenemedi.", isError: true });
+    }
+  };
+
+  const handleToggleBrand = async (b: any) => {
+    const res = await fetch("/api/brands", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: b.id, isActive: !(b.isActive !== false) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data?.success) {
+      setBrandsList((prev) => prev.map((x) => (x.id === b.id ? { ...x, isActive: data.data.isActive } : x)));
+      setCatalogFeedback({ text: `"${b.name}" markası ${data.data.isActive ? "aktife alındı." : "pasife alındı."}`, isError: false });
+    } else {
+      setCatalogFeedback({ text: data?.error?.message || "Durum güncellenemedi.", isError: true });
+    }
+  };
+
+  const handleSaveBrand = async () => {
+    if (editingBrandId == null || !editingBrandName.trim()) return;
+    const res = await fetch("/api/brands", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingBrandId, name: editingBrandName.trim() }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data?.success) {
+      setBrandsList((prev) => prev.map((x) => (x.id === editingBrandId ? { ...x, name: data.data.name, slug: data.data.slug } : x)));
+      setCatalogFeedback({ text: `Marka güncellendi: "${data.data.name}".`, isError: false });
+      setEditingBrandId(null);
+      setEditingBrandName("");
+    } else {
+      setCatalogFeedback({ text: data?.error?.message || "Marka güncellenemedi.", isError: true });
+    }
+  };
+
+  const handleDeleteBrand = async (b: any) => {
+    const linkedCount = products.filter((p) => p.brandId === b.id).length;
+    if (linkedCount > 0) {
+      setCatalogFeedback({ text: `"${b.name}" markasına bağlı ${linkedCount} ürün var; silmek için önce ürünleri başka markaya taşıyın veya markayı pasife alın.`, isError: true });
+      return;
+    }
+    if (!window.confirm(`"${b.name}" markası silinsin mi? Bu işlem geri alınamaz.`)) return;
+    const res = await fetch("/api/brands", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: b.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data?.success) {
+      setBrandsList((prev) => prev.filter((x) => x.id !== b.id));
+      if (editingBrandId === b.id) { setEditingBrandId(null); setEditingBrandName(""); }
+      setCatalogFeedback({ text: `"${b.name}" markası silindi.`, isError: false });
+    } else {
+      setCatalogFeedback({ text: data?.error?.message || "Marka silinemedi.", isError: true });
     }
   };
 
@@ -1794,27 +1852,77 @@ export function AdminDashboardClient({
                         <th className="py-3 px-3">Slug</th>
                         <th className="py-3 px-3">Ürün</th>
                         <th className="py-3 px-3">Durum</th>
+                        <th className="py-3 px-3">İşlem</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
-                      {brandsList.map((b) => (
-                        <tr key={b.id}>
-                          <td className="py-3 px-3 font-bold">{b.name}</td>
+                      {brandsList.map((b) => {
+                        const isEditing = editingBrandId === b.id;
+                        return (
+                        <tr key={b.id} className={isEditing ? "bg-amber-50/60" : undefined}>
+                          <td className="py-3 px-3 font-bold">
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                value={editingBrandName}
+                                onChange={(e) => setEditingBrandName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") void handleSaveBrand();
+                                  if (e.key === "Escape") { setEditingBrandId(null); setEditingBrandName(""); }
+                                }}
+                                className="w-full min-w-[140px] px-2 py-1.5 border border-amber-400 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-amber-600"
+                              />
+                            ) : (
+                              b.name
+                            )}
+                          </td>
                           <td className="py-3 px-3 font-mono text-[10px]">{b.slug}</td>
                           <td className="py-3 px-3">{products.filter((p) => p.brandId === b.id).length}</td>
                           <td className="py-3 px-3">
                             <button
-                              onClick={async () => {
-                                await fetch("/api/brands", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.id, isActive: !b.isActive }) });
-                                setBrandsList((prev) => prev.map((x) => x.id === b.id ? { ...x, isActive: !x.isActive } : x));
-                              }}
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${b.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-500"}`}
+                              onClick={() => void handleToggleBrand(b)}
+                              title={b.isActive !== false ? "Pasife almak için tıklayın" : "Aktife almak için tıklayın"}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition ${b.isActive !== false ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200" : "bg-stone-200 text-stone-500 hover:bg-stone-300"}`}
                             >
                               {b.isActive !== false ? "Aktif" : "Pasif"}
                             </button>
                           </td>
+                          <td className="py-3 px-3">
+                            {isEditing ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => void handleSaveBrand()}
+                                  className="flex items-center gap-1 px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold transition"
+                                >
+                                  <Check className="w-3 h-3" /> Kaydet
+                                </button>
+                                <button
+                                  onClick={() => { setEditingBrandId(null); setEditingBrandName(""); }}
+                                  className="flex items-center gap-1 px-2 py-1 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-[11px] font-bold transition"
+                                >
+                                  <X className="w-3 h-3" /> Vazgeç
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => { setEditingBrandId(b.id); setEditingBrandName(b.name); setCatalogFeedback(null); }}
+                                  className="flex items-center gap-1 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] font-bold transition"
+                                >
+                                  <Pencil className="w-3 h-3" /> Düzenle
+                                </button>
+                                <button
+                                  onClick={() => void handleDeleteBrand(b)}
+                                  className="flex items-center gap-1 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-[11px] font-bold transition"
+                                >
+                                  <Trash2 className="w-3 h-3" /> Sil
+                                </button>
+                              </div>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
