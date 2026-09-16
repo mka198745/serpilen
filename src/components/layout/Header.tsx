@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 
 import {
   ShoppingBag,
@@ -23,12 +24,26 @@ import {
   CircleDot,
   Ribbon,
   Package,
+  UserCircle2,
+  LogOut,
 } from "lucide-react";
 
 export function Header() {
   const { cartCount, setIsCartOpen, wishlist } = useCart();
+  const { user, loading: authLoading, openAuth, logout } = useAuth();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+      window.location.href = "/";
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   const categories = [
     { name: "Dikiş & Nakış", slug: "dikis-nakis", icon: Scissors },
@@ -64,28 +79,33 @@ export function Header() {
             </span>
           </div>
 
-          <div className="flex items-center gap-4 text-[11px]">
-            <Link
-              href="/pos"
-              className="bg-amber-800 hover:bg-amber-700 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
-            >
-              <MonitorCheck className="w-3 h-3" />
-              <span>Web POS Terminali</span>
-            </Link>
-            <Link
-              href="/toptan-b2b"
-              className="bg-sky-900 hover:bg-sky-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
-            >
-              <Building2 className="w-3 h-3" />
-              <span>B2B Toptan Portalı</span>
-            </Link>
-            <Link
-              href="/admin"
-              className="bg-emerald-900 hover:bg-emerald-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
-            >
-              <SlidersHorizontal className="w-3 h-3" />
-              <span>Yönetim Paneli & WMS</span>
-            </Link>
+          <div className="flex items-center gap-2 sm:gap-4 text-[11px]">
+            {/* Yetkili (admin/personel) girişi varsa iç sistem kısayolları */}
+            {user?.isStaff && (
+              <>
+                <Link
+                  href="/pos"
+                  className="bg-amber-800 hover:bg-amber-700 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
+                >
+                  <MonitorCheck className="w-3 h-3" />
+                  <span>Web POS Terminali</span>
+                </Link>
+                <Link
+                  href="/toptan-b2b"
+                  className="bg-sky-900 hover:bg-sky-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
+                >
+                  <Building2 className="w-3 h-3" />
+                  <span>B2B Toptan Portalı</span>
+                </Link>
+                <Link
+                  href="/admin"
+                  className="bg-emerald-900 hover:bg-emerald-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
+                >
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span>Yönetim Paneli & WMS</span>
+                </Link>
+              </>
+            )}
             <Link
               href="/mimari"
               className="hidden lg:flex text-amber-200 hover:text-white items-center gap-1 transition"
@@ -93,6 +113,37 @@ export function Header() {
               <BookOpen className="w-3 h-3" />
               <span>Mimari (FAZ 0)</span>
             </Link>
+
+            {/* Üye girişi / hesap alanı */}
+            {authLoading ? (
+              <span className="w-28 h-5 rounded bg-white/10 animate-pulse" />
+            ) : user ? (
+              <span className="flex items-center gap-2">
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-amber-100 font-semibold max-w-[220px]">
+                  <UserCircle2 className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span className="truncate">{user.name}</span>
+                  <span className="shrink-0 px-1.5 py-px rounded bg-white/15 text-amber-200 text-[10px] font-bold">
+                    {user.roleLabel}
+                  </span>
+                </span>
+                <button
+                  onClick={() => void handleLogout()}
+                  disabled={loggingOut}
+                  className="flex items-center gap-1 px-2.5 py-0.5 rounded font-semibold text-amber-200 hover:text-white hover:bg-white/10 border border-white/20 transition disabled:opacity-60"
+                >
+                  <LogOut className="w-3 h-3" />
+                  <span>{loggingOut ? "Çıkılıyor…" : "Çıkış Yap"}</span>
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => openAuth("login")}
+                className="bg-white hover:bg-amber-100 text-amber-950 font-bold px-3 py-0.5 rounded flex items-center gap-1.5 transition shadow-xs"
+              >
+                <UserCircle2 className="w-3.5 h-3.5" />
+                <span>Kullanıcı Girişi / Üye Ol</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

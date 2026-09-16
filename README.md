@@ -87,6 +87,27 @@ Ayrıca `GET /api/health` ilk çağrıda eksikse seed'i otomatik tamamlar.
 - `drizzle/` — Üretilmiş SQL migration'ları
 - `docker-compose.yml` + `Dockerfile` — Tek komutla kurulum
 
+## Kullanıcı Girişi & Yetkiler
+
+- Üst barda **"Kullanıcı Girişi / Üye Ol"** butonu vardır. Ziyaretçiler üye olup
+  giriş yapabilir (B2C cari kartı otomatik oluşur).
+- **Web POS Terminali**, **B2B Toptan Portalı** ve **Yönetim Paneli & WMS**
+  bağlantıları yalnızca yetkili personel girişi yapmışsa görünür
+  (`SUPER_ADMIN`, `STORE_MANAGER`, `WAREHOUSE_KEEPER`, `CASHIER`, `B2B_MANAGER`).
+  Bu sayfalar sunucu tarafında da korunur (yetkisiz erişim giriş ekranına yönlenir).
+- Oturumlar httpOnly çerez + DB'deki `admin_sessions` tablosuyla yönetilir (7 gün).
+  HTTPS üretimde `.env` içine `COOKIE_SECURE=1` ekleyin.
+- Seed personelin başlangıç şifresi yoktur; tanımlamak için:
+
+  ```bash
+  npm run db:set-password -- admin@ipektuhafiye.com YeniSifre123
+  ```
+
+  Test ortamındaki hazır hesaplar:
+  `admin@ipektuhafiye.com` / `Admin123!`,
+  `kasiyer@ipektuhafiye.com` / `Kasiyer123!`,
+  `depo@ipektuhafiye.com` / `Depo123!`
+
 ## Notlar
 
 - Tüm para alanları `DECIMAL`, tarihler UTC'dir; Türkçe karakterler için

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { CartProvider } from "@/context/CartContext";
+import { AuthProvider } from "@/context/AuthContext";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/layout/CartDrawer";
+import { AuthModal } from "@/components/layout/AuthModal";
 
 export const metadata: Metadata = {
   title: "İpek Tuhafiye | Dikiş, Nakış, Fermuar, Düğme & Örgü Malzemeleri",
@@ -67,10 +69,13 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-stone-50 text-stone-900 flex flex-col antialiased selection:bg-amber-800 selection:text-white">
         <CartProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <CartDrawer />
-          <Footer />
+          <AuthProvider>
+            <Header />
+            <main className="flex-1">{children}</main>
+            <CartDrawer />
+            <AuthModal />
+            <Footer />
+          </AuthProvider>
         </CartProvider>
       </body>
     </html>

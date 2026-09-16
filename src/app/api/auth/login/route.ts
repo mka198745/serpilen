@@ -1,0 +1,68 @@
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  createSession,
+  getUserByToken,
+  sessionCookieOptions,
+} from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+
+const looksLikeScryptHash = (v: string | null | undefined) => !!v && v.startsWith("scrypt$") && v.split("$").length === 3;
+
+/** POST /api/auth/login — E-posta + şifre ile giriş, httpOnly çerez yazar. */
+export async function POST(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as { email?: string; password?: string };
+  const email = String(body?.email || "").trim().toLowerCase();
+  const password = String(body?.password || "");
+
+  if (!email || !email.includes("@") || !password) {
+    return NextResponse.json(
+      { success: false, error: { code: "VALIDATION_ERROR", message: "E-posta ve şifre zorunludur." } },
+      { status: 422 }
+    );
+  }
+
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  // Zamanlama bilgisizliği için kullanıcı yoksa da sahte doğrulama yap.
+  const ok = user ? verifyPassword(password, user.passwordHash) : verifyPassword(password, hashPassword("dummy"));
+  if (!user || !ok) {
+    return NextResponse.json(
+      { success: false, error: { code: "INVALID_CREDENTIALS", message: "E-posta veya şifre hatalı." } },
+      { status: 401 }
+    );
+  }
+  if (user.isActive === false) {
+    return NextResponse.json(
+      { success: false, error: { code: "ACCOUNT_DISABLED", message: "Bu hesap pasife alınmış. Lütfen yöneticiyle iletişime geçin." } },
+      { status: 403 }
+    );
+  }
+  // Eski/sahte özet formatı gerçek girişe kapatıldı (güvenlik).
+  if (!looksLikeScryptHash(user.passwordHash)) {
+    return NextResponse.json(
+      { success: false, error: { code: "PASSWORD_RESET_REQUIRED", message: "Bu hesap için yeni şifre tanımlanması gerekiyor." } },
+      { status: 403 }
+    );
+  }
+
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    (request as unknown as { ip?: string }).ip ||
+    null;
+  const { token, expiresAt } = await createSession(user.id, {
+    ip,
+    userAgent: request.headers.get("user-agent"),
+  });
+  await db.update(users).set({ lastLoginAt: new Date(), failedLoginCount: 0 }).where(eq(users.id, user.id));
+
+  const sessionUser = await getUserByToken(token);
+  const res = NextResponse.json({ success: true, data: { user: sessionUser, expiresAt: expiresAt.toISOString() } });
+  res.cookies.set(SESSION_COOKIE, token, { ...sessionCookieOptions(), maxAge: SESSION_TTL_SECONDS });
+  return res;
+}

@@ -2,11 +2,15 @@ import React from "react";
 import { db } from "@/db";
 import { products, productVariants, categories, posShifts, customers } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
 import { PosTerminalClient } from "./PosTerminalClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function PosPage() {
+  const sessionUser = await getSessionUser();
+  if (!sessionUser?.isStaff) redirect("/?giris=1&next=/pos");
   const allProds = await db.select().from(products);
   const allVariants = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
