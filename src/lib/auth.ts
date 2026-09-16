@@ -93,11 +93,26 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return getUserByToken(store.get(SESSION_COOKIE)?.value);
 }
 
-export function sessionCookieOptions() {
-  // HTTPS üretimde COOKIE_SECURE=1 açılır: Secure + Partitioned (CHIPS) sayesinde
-  // uygulama başka site içine gömülü (iframe) çalışsa bile çerez korunur.
-  // Yerel HTTP testinde kapalı bırakın, yoksa tarayıcı çerezi reddeder.
-  const secure = process.env.COOKIE_SECURE === "1";
+/** İstek gerçekten HTTPS üzerinden mi geldi? (proxy arkasında x-forwarded-proto'ya bakılır) */
+export function isHttpsRequest(request?: Request): boolean {
+  if (!request) return false;
+  const fwd = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+  if (fwd === "https") return true;
+  if (fwd === "http") return false;
+  try {
+    return new URL(request.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function sessionCookieOptions(request?: Request) {
+  // Uyarlanabilir strateji:
+  // - HTTPS isteği → Secure + Partitioned (CHIPS): gömülü (iframe) önizlemede bile çalışır.
+  // - HTTP isteği → sade Lax çerez: Secure bayrağı HTTP'de reddedileceği için kapalı tutulur.
+  // COOKIE_SECURE=1 zorla açar, =0 zorla kapatır (varsayılan: isteğe göre uyarlanabilir).
+  const override = process.env.COOKIE_SECURE;
+  const secure = override === "1" ? true : override === "0" ? false : isHttpsRequest(request);
   return {
     httpOnly: true as const,
     sameSite: "lax" as const,
@@ -106,4 +121,18 @@ export function sessionCookieOptions() {
     secure,
     ...(secure ? { partitioned: true as const } : {}),
   };
+}
+
+/** Authorization: Bearer <token> başlığından token okur (çerezsiz istemciler için yedek yol). */
+export function getRequestToken(request: Request): string | null {
+  const h = request.headers.get("authorization");
+  if (h && h.toLowerCase().startsWith("bearer ")) return h.slice(7).trim() || null;
+  return null;
+}
+
+/** Route Handler içinden: önce çerez, yoksa Bearer başlığı ile kullanıcı. */
+export async function getSessionUserFromRequest(request: Request): Promise<SessionUser | null> {
+  const byCookie = await getSessionUser();
+  if (byCookie) return byCookie;
+  return getUserByToken(getRequestToken(request));
 }

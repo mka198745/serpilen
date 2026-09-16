@@ -87,8 +87,8 @@ export async function POST(request: Request) {
 
   const res = NextResponse.json({
     success: true,
-    data: { user: sessionUser, customerId, expiresAt: expiresAt.toISOString() },
+    data: { user: sessionUser, customerId, token, expiresAt: expiresAt.toISOString() },
   });
-  res.cookies.set(SESSION_COOKIE, token, { ...sessionCookieOptions(), maxAge: SESSION_TTL_SECONDS });
+  res.cookies.set(SESSION_COOKIE, token, { ...sessionCookieOptions(request), maxAge: SESSION_TTL_SECONDS });
   return res;
 }

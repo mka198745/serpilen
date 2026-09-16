@@ -62,7 +62,10 @@ export async function POST(request: Request) {
   await db.update(users).set({ lastLoginAt: new Date(), failedLoginCount: 0 }).where(eq(users.id, user.id));
 
   const sessionUser = await getUserByToken(token);
-  const res = NextResponse.json({ success: true, data: { user: sessionUser, expiresAt: expiresAt.toISOString() } });
-  res.cookies.set(SESSION_COOKIE, token, { ...sessionCookieOptions(), maxAge: SESSION_TTL_SECONDS });
+  const res = NextResponse.json({
+    success: true,
+    data: { user: sessionUser, token, expiresAt: expiresAt.toISOString() },
+  });
+  res.cookies.set(SESSION_COOKIE, token, { ...sessionCookieOptions(request), maxAge: SESSION_TTL_SECONDS });
   return res;
 }

@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { X, LogIn, UserPlus, Mail, Lock, User, Phone, MapPin } from "lucide-react";
 
 export function AuthModal() {
-  const { modalOpen, modalTab, setModalTab, closeAuth, login, register, postLoginNext } = useAuth();
+  const { user, cookieless, modalOpen, modalTab, setModalTab, closeAuth, login, register, postLoginNext } = useAuth();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [regForm, setRegForm] = useState({ name: "", email: "", phone: "", city: "", password: "", password2: "" });
   const [busy, setBusy] = useState(false);
@@ -100,7 +100,30 @@ export function AuthModal() {
           </div>
         )}
 
-        {modalTab === "login" ? (
+        {user && postLoginNext && cookieless ? (
+          <div className="p-5 space-y-3">
+            <div className="p-4 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed">
+              <p className="font-bold mb-1">Giriş yaptınız: {user.name} ({user.roleLabel})</p>
+              <p>
+                Ancak tarayıcınız çerezleri engellediği için <strong>Yönetim Paneli / POS / B2B</strong> gibi
+                korumalı sayfalar bu pencerede açılamıyor. Devam etmek için sayfayı yeni sekmede açın —
+                orada girişiniz geçerli olacak.
+              </p>
+            </div>
+            <button
+              onClick={() => { window.open(postLoginNext, "_blank", "noopener"); closeAuth(); }}
+              className="w-full py-2.5 bg-amber-800 hover:bg-amber-900 text-white text-sm font-bold rounded-xl transition"
+            >
+              Yeni Sekmede Aç →
+            </button>
+            <button
+              onClick={closeAuth}
+              className="w-full py-2 text-xs font-semibold text-stone-500 hover:text-stone-800 transition"
+            >
+              Vazgeç
+            </button>
+          </div>
+        ) : modalTab === "login" ? (
           <form onSubmit={handleLogin} className="p-5 space-y-3">
             <div className="relative">
               <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
