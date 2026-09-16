@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Product, ProductVariant, Category, Brand } from "@/lib/types";
 import { useCart } from "@/context/CartContext";
 import { ReviewsQA } from "@/components/storefront/ReviewsQA";
+import { parseVideoUrl } from "@/lib/video";
 import {
   ShoppingBag,
   Heart,
@@ -18,6 +19,7 @@ import {
   Layers,
   ChevronRight,
   Sparkles,
+  Play,
 } from "lucide-react";
 
 interface WarehouseStockInfo {
@@ -51,8 +53,26 @@ export function ProductDetailClient({
     variants.length > 0 ? variants[0] : null
   );
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState<"desc" | "specs" | "stocks">("desc");
+  const [activeTab, setActiveTab] = useState<"desc" | "specs" | "stocks" | "video">("desc");
   const [isAdded, setIsAdded] = useState(false);
+
+  const FALLBACK_IMG = "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800";
+
+  // Galeri: ana görsel + varyant görselleri (tekil liste)
+  const galleryImages = [
+    product.imageUrl,
+    ...variants.map((v) => v.imageUrl),
+  ].filter((u): u is string => !!u);
+  const uniqueGallery = galleryImages.length > 0 ? [...new Set(galleryImages)] : [FALLBACK_IMG];
+  const [activeImage, setActiveImage] = useState<string>(uniqueGallery[0]);
+
+  const video = parseVideoUrl(product.videoUrl);
+  const hasVideo = video.kind !== "unknown";
+
+  const handleSelectVariant = (v: ProductVariant) => {
+    setSelectedVariant(v);
+    if (v.imageUrl) setActiveImage(v.imageUrl);
+  };
 
   const currentPrice = selectedVariant ? Number(selectedVariant.retailPrice) : Number(product.retailPrice);
   const currentSku = selectedVariant ? selectedVariant.sku : product.sku;
@@ -99,11 +119,7 @@ export function ProductDetailClient({
           <div className="aspect-square bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-xs relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={
-                selectedVariant?.imageUrl ||
-                product.imageUrl ||
-                "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800"
-              }
+              src={activeImage}
               alt={product.name}
               className="w-full h-full object-cover object-center"
             />
@@ -116,15 +132,32 @@ export function ProductDetailClient({
             </button>
           </div>
 
-          <div className="flex gap-3">
-            <div className="w-20 h-20 rounded-xl border-2 border-amber-800 overflow-hidden bg-gray-50">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={product.imageUrl || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=200"}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            </div>
+          <div className="flex gap-3 flex-wrap">
+            {uniqueGallery.map((url) => {
+              const isActive = url === activeImage;
+              return (
+                <button
+                  key={url}
+                  onClick={() => setActiveImage(url)}
+                  className={`w-20 h-20 rounded-xl border-2 overflow-hidden bg-gray-50 transition ${
+                    isActive ? "border-amber-800 ring-2 ring-amber-800/30" : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              );
+            })}
+            {hasVideo && (
+              <button
+                onClick={() => setActiveTab("video")}
+                className="w-20 h-20 rounded-xl border-2 border-violet-300 bg-violet-950 flex flex-col items-center justify-center gap-1 text-white hover:bg-violet-900 transition"
+                title="Ürün videosunu izle"
+              >
+                <Play className="w-6 h-6 fill-white" />
+                <span className="text-[9px] font-bold">Video</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -191,7 +224,7 @@ export function ProductDetailClient({
                   return (
                     <button
                       key={v.id}
-                      onClick={() => setSelectedVariant(v)}
+                      onClick={() => handleSelectVariant(v)}
                       className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition ${
                         isSelected
                           ? "border-amber-800 bg-amber-50 text-amber-950 ring-2 ring-amber-800/30"
@@ -337,12 +370,49 @@ export function ProductDetailClient({
           >
             Çoklu Depo Stokları ({warehouseStocks.length})
           </button>
+          {hasVideo && (
+            <button
+              onClick={() => setActiveTab("video")}
+              className={`pb-3 border-b-2 transition flex items-center gap-1.5 ${
+                activeTab === "video"
+                  ? "border-amber-800 text-amber-900"
+                  : "border-transparent text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              <Play className="w-3.5 h-3.5" />
+              Ürün Videosu
+            </button>
+          )}
         </div>
 
         <div className="py-6">
           {activeTab === "desc" && (
             <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed bg-white p-6 rounded-2xl border border-gray-100">
-              <p>{product.description || product.shortDescription || "Detaylı açıklama bulunmamaktadır."}</p>
+              <p className="whitespace-pre-line">
+                {product.description || product.shortDescription || "Detaylı açıklama bulunmamaktadır."}
+              </p>
+            </div>
+          )}
+
+          {activeTab === "video" && hasVideo && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 space-y-3">
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Play className="w-4 h-4 text-amber-800" />
+                {product.name} — Tanıtım Videosu
+              </h4>
+              <div className="aspect-video rounded-xl overflow-hidden bg-black max-w-3xl">
+                {video.kind === "file" ? (
+                  <video src={product.videoUrl || ""} controls className="w-full h-full" />
+                ) : (
+                  <iframe
+                    src={video.embedUrl}
+                    title={`${product.name} videosu`}
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                )}
+              </div>
             </div>
           )}
 

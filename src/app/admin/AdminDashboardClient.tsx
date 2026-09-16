@@ -51,7 +51,12 @@ import {
   Receipt,
   Coins,
   Banknote,
+  ImagePlus,
+  Link2,
+  Upload,
+  Video,
 } from "lucide-react";
+import { parseVideoUrl, VIDEO_HINT } from "@/lib/video";
 
 interface AdminDashboardClientProps {
   products: any[];
@@ -470,6 +475,9 @@ export function AdminDashboardClient({
     initialStock: "50",
     warehouseId: "1",
     shortDescription: "",
+    description: "",
+    imageUrl: "",
+    videoUrl: "",
   });
 
   const [transferData, setTransferData] = useState({
@@ -1021,6 +1029,34 @@ export function AdminDashboardClient({
   const openAddProductModal = () => {
     setIsAddProductOpen(true);
   };
+
+  /* --- Ürün fotoğrafı (link / site deposuna yükleme) ve videosu --- */
+  const [photoMode, setPhotoMode] = useState<"link" | "upload">("link");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoFeedback, setPhotoFeedback] = useState<string | null>(null);
+
+  const handlePhotoUpload = async (file: File | undefined) => {
+    if (!file || uploadingPhoto) return;
+    setUploadingPhoto(true);
+    setPhotoFeedback(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/uploads", { method: "POST", body: form });
+      const data = await res.json();
+      if (!data.success) {
+        setPhotoFeedback(data?.error || "Yükleme başarısız.");
+        return;
+      }
+      setNewProd((prev) => ({ ...prev, imageUrl: data.data.url }));
+    } catch {
+      setPhotoFeedback("Sunucuya ulaşılamadı.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const newProdVideo = parseVideoUrl(newProd.videoUrl);
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3970,7 +4006,9 @@ export function AdminDashboardClient({
                 </select>
               </div>
               <input placeholder="Görsel URL" value={editingProduct.imageUrl || ""} onChange={(e) => setEditingProduct({ ...editingProduct, imageUrl: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
+              <input placeholder="Video URL (YouTube / Dailymotion / Vimeo)" value={editingProduct.videoUrl || ""} onChange={(e) => setEditingProduct({ ...editingProduct, videoUrl: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
               <textarea placeholder="Kısa açıklama" value={editingProduct.shortDescription || ""} onChange={(e) => setEditingProduct({ ...editingProduct, shortDescription: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" rows={2} />
+              <textarea placeholder="Detaylı açıklama (ürün sayfasında görünür)" value={editingProduct.description || ""} onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" rows={3} />
               <label className="flex items-center gap-2 font-bold">
                 <input type="checkbox" checked={!!editingProduct.isFeatured} onChange={(e) => setEditingProduct({ ...editingProduct, isFeatured: e.target.checked })} />
                 Öne çıkan ürün
@@ -4002,6 +4040,139 @@ export function AdminDashboardClient({
                   onChange={(e) => setNewProd({ ...newProd, name: e.target.value })}
                   className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                 />
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">Ürün Açıklaması:</label>
+                <textarea
+                  placeholder="Ürünün detaylı açıklaması… (ürün sayfasında görünür)"
+                  value={newProd.description}
+                  onChange={(e) => setNewProd({ ...newProd, description: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                />
+              </div>
+
+              {/* ÜRÜN FOTOĞRAFI — link veya site deposuna yükleme */}
+              <div className="p-2.5 rounded-xl bg-sky-50/70 border border-sky-200 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-bold text-sky-900 flex items-center gap-1">
+                    <ImagePlus className="w-3.5 h-3.5" />
+                    Ürün Fotoğrafı Ekle
+                  </p>
+                  <div className="flex gap-1 bg-white rounded-lg border border-sky-200 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setPhotoMode("link")}
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition ${
+                        photoMode === "link"
+                          ? "bg-sky-800 text-white"
+                          : "text-sky-900 hover:bg-sky-100"
+                      }`}
+                    >
+                      <Link2 className="w-3 h-3" />
+                      Link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPhotoMode("upload")}
+                      className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition ${
+                        photoMode === "upload"
+                          ? "bg-sky-800 text-white"
+                          : "text-sky-900 hover:bg-sky-100"
+                      }`}
+                    >
+                      <Upload className="w-3 h-3" />
+                      Siteden Yükle
+                    </button>
+                  </div>
+                </div>
+
+                {photoMode === "link" ? (
+                  <input
+                    type="url"
+                    value={newProd.imageUrl}
+                    onChange={(e) => setNewProd({ ...newProd, imageUrl: e.target.value })}
+                    placeholder="https://… (görsel bağlantısı yapıştırın)"
+                    className="w-full px-3 py-2 bg-white border border-sky-300 rounded-xl"
+                  />
+                ) : (
+                  <div className="space-y-1">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={(e) => void handlePhotoUpload(e.target.files?.[0])}
+                      disabled={uploadingPhoto}
+                      className="w-full px-2 py-1.5 bg-white border border-sky-300 rounded-xl text-[11px] file:mr-2 file:px-2 file:py-1 file:rounded-lg file:border-0 file:bg-sky-800 file:text-white file:text-[10px] file:font-bold file:cursor-pointer disabled:opacity-60"
+                    />
+                    <p className="text-[9px] text-stone-500">
+                      JPG, PNG, WEBP veya GIF — en fazla 5 MB. Dosya site deposuna yüklenir.
+                    </p>
+                    {uploadingPhoto && (
+                      <p className="text-[10px] font-bold text-sky-800">Yükleniyor…</p>
+                    )}
+                    {photoFeedback && (
+                      <p className="text-[10px] font-bold text-rose-700">{photoFeedback}</p>
+                    )}
+                  </div>
+                )}
+
+                {newProd.imageUrl.trim() !== "" && (
+                  <div className="flex items-center gap-2 bg-white p-1.5 rounded-lg border border-sky-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={newProd.imageUrl}
+                      alt="Fotoğraf önizleme"
+                      className="w-14 h-14 rounded-lg object-cover border border-stone-200"
+                    />
+                    <p className="flex-1 min-w-0 text-[9px] text-stone-500 truncate">
+                      {newProd.imageUrl}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setNewProd({ ...newProd, imageUrl: "" })}
+                      className="px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-50 rounded-lg"
+                    >
+                      Kaldır
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ÜRÜN VİDEOSU — YouTube / Dailymotion / Vimeo bağlantısı */}
+              <div className="p-2.5 rounded-xl bg-violet-50/70 border border-violet-200 space-y-2">
+                <p className="text-[11px] font-bold text-violet-900 flex items-center gap-1">
+                  <Video className="w-3.5 h-3.5" />
+                  Ürün Videosu Ekle
+                </p>
+                <input
+                  type="url"
+                  value={newProd.videoUrl}
+                  onChange={(e) => setNewProd({ ...newProd, videoUrl: e.target.value })}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  className="w-full px-3 py-2 bg-white border border-violet-300 rounded-xl"
+                />
+                <p className="text-[9px] text-stone-500">{VIDEO_HINT}</p>
+                {newProd.videoUrl.trim() !== "" && newProdVideo.kind !== "unknown" && (
+                  <div className="aspect-video rounded-lg overflow-hidden border border-violet-200 bg-black">
+                    {newProdVideo.kind === "file" ? (
+                      <video src={newProd.videoUrl} controls className="w-full h-full" />
+                    ) : (
+                      <iframe
+                        src={newProdVideo.embedUrl}
+                        title="Video önizleme"
+                        className="w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    )}
+                  </div>
+                )}
+                {newProd.videoUrl.trim() !== "" && newProdVideo.kind === "unknown" && (
+                  <p className="text-[10px] font-bold text-rose-700">
+                    Bu bağlantı tanınmadı — YouTube, Dailymotion veya Vimeo bağlantısı kullanın.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">

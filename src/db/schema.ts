@@ -123,6 +123,7 @@ export const products = mysqlTable("products", {
   vatRate: int("vat_rate").default(20).notNull(), // KDV %10 veya %20
   hasVariants: boolean("has_variants").default(false).notNull(),
   imageUrl: varchar("image_url", { length: 500 }),
+  videoUrl: varchar("video_url", { length: 500 }),
   campaignPrice: decimal("campaign_price", { precision: 10, scale: 2 }),
   tags: text("tags"), // virgülle ayrılmış etiketler: "fermuar,siyah,mont"
   collection: varchar("collection", { length: 255 }),

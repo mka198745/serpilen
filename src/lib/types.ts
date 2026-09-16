@@ -53,6 +53,7 @@ export interface Product {
   vatRate: number;
   hasVariants: boolean;
   imageUrl: string | null;
+  videoUrl: string | null;
   isFeatured: boolean | null;
   isActive: boolean;
   campaignPrice?: string | null;

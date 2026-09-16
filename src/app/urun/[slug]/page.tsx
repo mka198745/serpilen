@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { products, productVariants, categories, brands, inventory, warehouses } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { ProductDetailClient } from "./ProductDetailClient";
+import { parseVideoUrl } from "@/lib/video";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,14 @@ interface ProductPageProps {
   }>;
 }
 
-async function loadProduct(slug: string) {
+async function loadProduct(rawSlug: string) {
+  // Sayfa bağlamında slug bazen URL-kodlu gelir (örn. %C3%BC); normalize et.
+  let slug = rawSlug;
+  try {
+    slug = decodeURIComponent(rawSlug);
+  } catch {
+    slug = rawSlug;
+  }
   const [product] = await db.select().from(products).where(eq(products.slug, slug)).limit(1);
   if (!product) return null;
 
@@ -89,6 +97,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
   const totalAvailable = warehouseStocks.reduce((s, w) => s + w.availableQty, 0);
 
   // JSON-LD: Product + Offer + AggregateRating + BreadcrumbList
+  const productVideo = parseVideoUrl((product as { videoUrl?: string | null }).videoUrl);
   const jsonLd = [
     {
       "@context": "https://schema.org",
@@ -99,6 +108,17 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
       gtin13: product.barcode || undefined,
       description: product.description || product.shortDescription || undefined,
       image: product.imageUrl ? [product.imageUrl] : undefined,
+      video:
+        productVideo.kind === "unknown"
+          ? undefined
+          : {
+              "@type": "VideoObject",
+              name: `${product.name} — Tanıtım Videosu`,
+              description: product.shortDescription || product.name,
+              thumbnailUrl: product.imageUrl || undefined,
+              contentUrl: productVideo.kind === "file" ? product.videoUrl : undefined,
+              embedUrl: productVideo.kind === "file" ? undefined : productVideo.embedUrl,
+            },
       brand: brand ? { "@type": "Brand", name: brand.name } : undefined,
       offers: {
         "@type": "Offer",

@@ -90,6 +90,7 @@ export async function GET(request: Request) {
         vatRate: products.vatRate,
         hasVariants: products.hasVariants,
         imageUrl: products.imageUrl,
+        videoUrl: products.videoUrl,
         campaignPrice: products.campaignPrice,
         tags: products.tags,
         collection: products.collection,
@@ -192,6 +193,7 @@ export async function POST(request: Request) {
       shortDescription,
       description,
       imageUrl,
+      videoUrl,
       initialStock = 50,
       warehouseId = 1,
     } = body;
@@ -210,6 +212,7 @@ export async function POST(request: Request) {
         shortDescription,
         description,
         imageUrl: imageUrl || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
+        videoUrl: videoUrl || null,
       }).$returningId();
     const [newProd] = await db.select().from(products).where(eq(products.id, __newProd_id));
 
@@ -252,6 +255,7 @@ export async function PATCH(request: Request) {
     if (body.shortDescription !== undefined) updates.shortDescription = body.shortDescription;
     if (body.description !== undefined) updates.description = body.description;
     if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl;
+    if (body.videoUrl !== undefined) updates.videoUrl = body.videoUrl || null;
     if (body.tags !== undefined) updates.tags = body.tags;
     if (body.collection !== undefined) updates.collection = body.collection;
     if (body.seoTitle !== undefined) updates.seoTitle = body.seoTitle;
