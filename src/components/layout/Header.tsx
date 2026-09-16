@@ -73,11 +73,6 @@ export function Header() {
               <Truck className="w-3.5 h-3.5 text-amber-400" />
               1.000 TL ve Üzeri Ücretsiz Kargo | Aynı Gün Hızlı Gönderim
             </span>
-            <span className="hidden md:inline-block text-amber-500">|</span>
-            <span className="hidden md:inline-flex items-center gap-1 text-amber-300">
-              <Sparkles className="w-3 h-3" />
-              Tüm ürünlerde e-Fatura & Perakende Fiş entegrasyonu
-            </span>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 text-[11px]">
