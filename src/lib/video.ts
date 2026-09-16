@@ -60,8 +60,9 @@ export function parseVideoUrl(raw: string | null | undefined): ParsedVideo {
     url.match(YT_BE)?.[1] ||
     url.match(YT_NOCOOKIE)?.[1];
   if (ytId) {
-    // nocookie gömme: çerez engelli ortamlarda daha dayanıklı oynatma.
-    return parsed("youtube", `https://www.youtube-nocookie.com/embed/${ytId}`, url);
+    // Standart gömme adresi iframe ile çekilir. (youtube-nocookie varyantı
+    // bazı tarayıcılarda "yapılandırma hatası (153)" veriyor.)
+    return parsed("youtube", `https://www.youtube.com/embed/${ytId}`, url);
   }
 
   for (const re of DM_PATTERNS) {
