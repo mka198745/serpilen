@@ -111,13 +111,31 @@ export function isHttpsRequest(request?: Request): boolean {
   }
 }
 
+/** Yerel (TLS'siz) erişim mi? Boş/host yok, localhost, IP veya .local → evet. */
+function isLocalHostname(host: string | null): boolean {
+  const h = (host || "").split(":")[0].trim().toLowerCase();
+  return (
+    h === "" ||
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "[::1]" ||
+    h === "::1" ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(h) ||
+    h.endsWith(".local")
+  );
+}
+
 export function sessionCookieOptions(request?: Request) {
   // Uyarlanabilir strateji:
-  // - HTTPS isteği → Secure + Partitioned (CHIPS): gömülü (iframe) önizlemede bile çalışır.
-  // - HTTP isteği → sade Lax çerez: Secure bayrağı HTTP'de reddedileceği için kapalı tutulur.
-  // COOKIE_SECURE=1 zorla açar, =0 zorla kapatır (varsayılan: isteğe göre uyarlanabilir).
+  // - TLS-sonlandırmalı proxy'ler proto'yu yanlış bildirebilir; bu yüzden localhost
+  //   DIŞI her host'ta (ör. *.e2b.app, gerçek alan adları) tarayıcı HTTPS kabul
+  //   edilip Secure + Partitioned (CHIPS) yazılır → iframe'de bile çalışır.
+  // - Localhost/IP erişiminde proto'ya bakılır (HTTP → sade Lax çerez).
+  // COOKIE_SECURE=1 zorla açar, =0 zorla kapatır.
   const override = process.env.COOKIE_SECURE;
-  const secure = override === "1" ? true : override === "0" ? false : isHttpsRequest(request);
+  const host = request?.headers.get("host") || null;
+  const secure =
+    override === "1" ? true : override === "0" ? false : isHttpsRequest(request) || !isLocalHostname(host);
   return {
     httpOnly: true as const,
     sameSite: "lax" as const,
@@ -128,10 +146,24 @@ export function sessionCookieOptions(request?: Request) {
   };
 }
 
-/** Authorization: Bearer <token> başlığından token okur (çerezsiz istemciler için yedek yol). */
+/**
+ * Başlıktan token okur: önce Authorization: Bearer, sonra X-Auth-Token.
+ * (Bazı proxy'ler Authorization başlığını düşürür; X-Auth-Token yedek taşıyıcıdır.)
+ */
 export function getRequestToken(request: Request): string | null {
   const h = request.headers.get("authorization");
-  if (h && h.toLowerCase().startsWith("bearer ")) return h.slice(7).trim() || null;
+  if (h && h.toLowerCase().startsWith("bearer ")) {
+    const t = h.slice(7).trim();
+    if (t) return t;
+  }
+  return request.headers.get("x-auth-token")?.trim() || null;
+}
+
+/** Token hangi başlıkla geldi? (tanı günlükleri için) */
+export function getRequestTokenSource(request: Request): "auth" | "xtoken" | null {
+  const h = request.headers.get("authorization");
+  if (h && h.toLowerCase().startsWith("bearer ") && h.slice(7).trim()) return "auth";
+  if (request.headers.get("x-auth-token")?.trim()) return "xtoken";
   return null;
 }
 

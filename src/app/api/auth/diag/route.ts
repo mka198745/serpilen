@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     success: true,
     data: {
-      build: "diag-v1",
+      build: "diag-v3",
       proto: h.get("x-forwarded-proto"),
       host: h.get("host"),
       urlProtocol: (() => {

@@ -1,8 +1,33 @@
 "use client";
 
-import React, { useState } from "react";
-import { useAuth } from "@/context/AuthContext";
+import React, { useEffect, useState } from "react";
+import { useAuth, type LoginStage } from "@/context/AuthContext";
 import { X, LogIn, UserPlus, Mail, Lock, User, Phone, MapPin } from "lucide-react";
+
+/** İstemci sürüm etiketi — önbellekte eski sürüm kalıp kalmadığını gösterir. */
+const CLIENT_BUILD = "ui-4";
+
+const STAGE_LABELS: Record<LoginStage["id"], string> = {
+  storage: "Depolama",
+  api: "Sunucu",
+  cookie: "Çerez oturumu",
+  token: "Token oturumu",
+};
+
+function testCookieWrite(): boolean {
+  try {
+    document.cookie = "ipek_t=1; path=/; max-age=60";
+    return document.cookie.includes("ipek_t=1");
+  } catch {
+    return false;
+  }
+}
+
+interface DiagInfo {
+  serverBuild: string;
+  hasSessionCookie: boolean;
+  proto: string | null;
+}
 
 export function AuthModal() {
   const { user, cookieless, modalOpen, modalTab, setModalTab, closeAuth, login, register, postLoginNext } = useAuth();
@@ -10,6 +35,27 @@ export function AuthModal() {
   const [regForm, setRegForm] = useState({ name: "", email: "", phone: "", city: "", password: "", password2: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stages, setStages] = useState<LoginStage[]>([]);
+  const [diag, setDiag] = useState<DiagInfo | "loading" | "error">("loading");
+  const [cookieWritable, setCookieWritable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    setStages([]);
+    setError(null);
+    setCookieWritable(testCookieWrite());
+    setDiag("loading");
+    fetch("/api/auth/diag", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) =>
+        setDiag({
+          serverBuild: String(d?.data?.build || "?"),
+          hasSessionCookie: !!d?.data?.hasSessionCookie,
+          proto: d?.data?.proto ?? null,
+        })
+      )
+      .catch(() => setDiag("error"));
+  }, [modalOpen]);
 
   if (!modalOpen) return null;
 
@@ -18,12 +64,19 @@ export function AuthModal() {
     window.location.href = next; // tam yükleme: sunucu oturumu görsün
   };
 
+  const pushStage = (s: LoginStage) =>
+    setStages((prev) => {
+      const rest = prev.filter((p) => p.id !== s.id);
+      return [...rest, s];
+    });
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setStages([]);
     setBusy(true);
     try {
-      const r = await login(loginForm.email.trim(), loginForm.password);
+      const r = await login(loginForm.email.trim(), loginForm.password, pushStage);
       if (r.success) {
         closeAuth();
         goAfterAuth();
@@ -42,6 +95,7 @@ export function AuthModal() {
       setError("Şifreler eşleşmiyor.");
       return;
     }
+    setStages([]);
     setBusy(true);
     try {
       const r = await register({
@@ -50,7 +104,7 @@ export function AuthModal() {
         phone: regForm.phone.trim(),
         city: regForm.city.trim() || undefined,
         password: regForm.password,
-      });
+      }, pushStage);
       if (r.success) {
         closeAuth();
         goAfterAuth();
@@ -68,7 +122,7 @@ export function AuthModal() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={closeAuth} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] overflow-y-auto">
         <div className="bg-amber-950 px-5 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-white font-black text-lg leading-tight">İpek Tuhafiye</h2>
@@ -99,6 +153,26 @@ export function AuthModal() {
             {error}
           </div>
         )}
+
+        {/* Tanı kutusu: sürümler + giriş adımları */}
+        <div className="mx-5 mt-3 p-3 rounded-xl bg-stone-50 border border-stone-200 font-mono text-[11px] leading-relaxed text-stone-600">
+          <p className="font-bold text-stone-500 mb-1">TANI</p>
+          <p>
+            İstemci: {CLIENT_BUILD} · Sunucu:{" "}
+            {diag === "loading" ? "…" : diag === "error" ? "ulaşılamadı" : `${diag.serverBuild} (proto:${diag.proto || "?"})`}
+          </p>
+          <p>
+            Çerez yazma: {cookieWritable === null ? "…" : cookieWritable ? "açık ✓" : "engelli ✗"}
+            {diag !== "loading" && diag !== "error" && (
+              <> · Sunucu çerez görüyor: {diag.hasSessionCookie ? "evet ✓" : "hayır ✗"}</>
+            )}
+          </p>
+          {stages.map((s) => (
+            <p key={s.id}>
+              {STAGE_LABELS[s.id]}: {s.ok ? "✓" : "✗"} {s.detail}
+            </p>
+          ))}
+        </div>
 
         {user && postLoginNext && cookieless ? (
           <div className="p-5 space-y-3">

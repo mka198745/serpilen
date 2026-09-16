@@ -11,12 +11,21 @@ export interface AuthUser {
   isStaff: boolean;
 }
 
+/** Giriş adımlarının pencerede gösterilebilen sonucu */
+export interface LoginStage {
+  id: "storage" | "api" | "cookie" | "token";
+  ok: boolean;
+  detail: string;
+}
+
+export type StageCallback = (s: LoginStage) => void;
+
 type AuthTab = "login" | "register";
 
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
-  /** true ise çerez çalışmıyor, oturum yalnızca Bearer token ile sürüyor */
+  /** true ise çerez çalışmıyor, oturum yalnızca token ile sürüyor */
   cookieless: boolean;
   modalOpen: boolean;
   modalTab: AuthTab;
@@ -25,16 +34,24 @@ interface AuthContextType {
   closeAuth: () => void;
   setModalTab: (tab: AuthTab) => void;
   refresh: () => Promise<void>;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
-  register: (input: { name: string; email: string; phone: string; password: string; city?: string }) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string, onStage?: StageCallback) => Promise<{ success: boolean; message?: string }>;
+  register: (
+    input: { name: string; email: string; phone: string; password: string; city?: string },
+    onStage?: StageCallback
+  ) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
-  /** Token başlıklı istekler için yardımcı (çerez engelliyse Authorization kullanır) */
+  /** Token başlıklı istekler için yardımcı (çerez engelliyse token kullanır) */
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const TOKEN_KEY = "ipek_auth_token";
+
+/** Token iki başlıkla birden gönderilir (proxy Authorization'ı düşürürse X-Auth-Token kalır). */
+function tokenHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, "X-Auth-Token": token };
+}
 
 function readStoredToken(): string | null {
   try {
@@ -53,17 +70,54 @@ function writeStoredToken(token: string | null) {
   }
 }
 
-async function fetchMe(token?: string | null): Promise<AuthUser | null> {
+function testStorage(): boolean {
+  try {
+    window.localStorage.setItem("ipek_t", "1");
+    const ok = window.localStorage.getItem("ipek_t") === "1";
+    window.localStorage.removeItem("ipek_t");
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+interface MeResult {
+  user: AuthUser | null;
+  status: number;
+  /** token hangi yolla kabul edildi (tanı için) */
+  via: "header" | "body" | null;
+}
+
+async function fetchMeVerbose(token?: string | null): Promise<MeResult> {
   try {
     const res = await fetch("/api/auth/me", {
       cache: "no-store",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      headers: token ? tokenHeaders(token) : undefined,
     });
     const data = await res.json().catch(() => ({}));
-    return res.ok && data?.success ? (data.data.user as AuthUser) : null;
+    const user: AuthUser | null = res.ok && data?.success ? data.data.user : null;
+    if (user || !token || res.status !== 401) return { user, status: res.status, via: "header" };
+    // Sunucuya ulaşıldı ama başlıklar düşmüş olabilir → token'ı gövdede gönder.
+    try {
+      const res2 = await fetch("/api/auth/me", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data2 = await res2.json().catch(() => ({}));
+      const user2: AuthUser | null = res2.ok && data2?.success ? data2.data.user : null;
+      return { user: user2, status: res2.status, via: "body" };
+    } catch {
+      return { user: null, status: res.status, via: "body" };
+    }
   } catch {
-    return null;
+    return { user: null, status: 0, via: null };
   }
+}
+
+async function fetchMe(token?: string | null): Promise<AuthUser | null> {
+  return (await fetchMeVerbose(token)).user;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -79,7 +133,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const t = token || readStoredToken();
       const headers = new Headers(init?.headers);
-      if (t && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${t}`);
+      if (t) {
+        if (!headers.has("Authorization")) headers.set("Authorization", `Bearer ${t}`);
+        if (!headers.has("X-Auth-Token")) headers.set("X-Auth-Token", t);
+      }
       return fetch(input, { ...init, headers });
     },
     [token]
@@ -144,81 +201,99 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   /** Giriş/kayıt sonrası oturumu doğrula: çerez → token sırasıyla. */
-  const establishSession = useCallback(async (newToken: string | null, apiUser: AuthUser | null) => {
-    if (newToken) {
-      setToken(newToken);
-      writeStoredToken(newToken);
-    }
-    const viaCookie = await fetchMe();
-    if (viaCookie) {
-      setUser(viaCookie);
-      setCookieless(false);
-      return true;
-    }
-    if (newToken) {
-      const viaToken = await fetchMe(newToken);
-      if (viaToken) {
-        setUser(viaToken);
-        setCookieless(true); // çerez engelli ama token ile giriş tamam
+  const establishSession = useCallback(
+    async (newToken: string | null, onStage?: StageCallback): Promise<boolean> => {
+      if (newToken) {
+        setToken(newToken);
+        writeStoredToken(newToken);
+      }
+      const c = await fetchMeVerbose();
+      if (c.user) {
+        onStage?.({ id: "cookie", ok: true, detail: `HTTP ${c.status} ✓ (${c.user.email})` });
+        setUser(c.user);
+        setCookieless(false);
         return true;
       }
-    }
-    if (apiUser && !newToken) {
-      // Teorik yedek: token yok ama API kullanıcı döndüyse (eski davranış)
-      setUser(apiUser);
-      setCookieless(false);
-      return true;
-    }
-    return false;
-  }, []);
+      onStage?.({ id: "cookie", ok: false, detail: c.status === 0 ? "ağ hatası" : `HTTP ${c.status} (çerez gelmedi)` });
+      if (newToken) {
+        const t = await fetchMeVerbose(newToken);
+        if (t.user) {
+          onStage?.({ id: "token", ok: true, detail: `HTTP ${t.status} ✓ via=${t.via} çerezsiz kip (${t.user.email})` });
+          setUser(t.user);
+          setCookieless(true); // çerez engelli ama token ile giriş tamam
+          return true;
+        }
+        onStage?.({ id: "token", ok: false, detail: t.status === 0 ? "ağ hatası" : `HTTP ${t.status} (via=${t.via || "?"})` });
+      } else {
+        onStage?.({ id: "token", ok: false, detail: "atlandı (token yok)" });
+      }
+      return false;
+    },
+    []
+  );
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+  const doAuthRequest = useCallback(
+    async (
+      path: "/api/auth/login" | "/api/auth/register",
+      body: unknown,
+      onStage?: StageCallback
+    ): Promise<{ success: boolean; message?: string }> => {
+      const storageOk = testStorage();
+      onStage?.({ id: "storage", ok: storageOk, detail: storageOk ? "yazılabiliyor ✓" : "engelli (localStorage kapalı)" });
+      let res: Response;
+      try {
+        res = await fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        onStage?.({ id: "api", ok: false, detail: `ağ hatası: ${msg}` });
+        return {
+          success: false,
+          message: `Sunucuya ulaşılamadı (ağ hatası: ${msg}). Önizleme bağlantınızı kontrol edip tekrar deneyin.`,
+        };
+      }
       const data = await res.json().catch(() => ({}));
       if (data?.success) {
-        const ok = await establishSession(data.data.token || null, data.data.user || null);
+        onStage?.({ id: "api", ok: true, detail: `HTTP ${res.status} ✓` });
+        const ok = await establishSession(data.data.token || null, onStage);
         if (ok) return { success: true };
         return {
           success: false,
-          message: "Giriş doğrulandı ancak oturum sürdürülemedi. Tarayıcınız çerezleri ve site verilerini engelliyor olabilir — izin verip tekrar deneyin veya önizlemeyi yeni sekmede açın.",
+          message:
+            "Giriş doğrulandı ancak oturum sürdürülemedi. Tarayıcınız çerezleri ve site verilerini engelliyor olabilir — izin verip tekrar deneyin veya önizlemeyi yeni sekmede açın.",
         };
       }
-      return { success: false, message: data?.error?.message || "Giriş yapılamadı." };
+      const errMsg: string = data?.error?.message || "İşlem yapılamadı.";
+      const errCode: string = data?.error?.code ? ` [${data.error.code}]` : "";
+      onStage?.({ id: "api", ok: false, detail: `HTTP ${res.status}${errCode}: ${errMsg}` });
+      return { success: false, message: errMsg };
     },
     [establishSession]
   );
 
+  const login = useCallback(
+    (email: string, password: string, onStage?: StageCallback) =>
+      doAuthRequest("/api/auth/login", { email, password }, onStage),
+    [doAuthRequest]
+  );
+
   const register = useCallback(
-    async (input: { name: string; email: string; phone: string; password: string; city?: string }) => {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data?.success) {
-        const ok = await establishSession(data.data.token || null, data.data.user || null);
-        if (ok) return { success: true };
-        return {
-          success: false,
-          message: "Kaydınız oluştu ancak oturum sürdürülemedi. Tarayıcı çerez/site verisi engelini kaldırıp giriş yapmayı deneyin.",
-        };
-      }
-      return { success: false, message: data?.error?.message || "Kayıt oluşturulamadı." };
-    },
-    [establishSession]
+    (
+      input: { name: string; email: string; phone: string; password: string; city?: string },
+      onStage?: StageCallback
+    ) => doAuthRequest("/api/auth/register", input, onStage),
+    [doAuthRequest]
   );
 
   const logout = useCallback(async () => {
     const t = token || readStoredToken();
     await fetch("/api/auth/logout", {
       method: "POST",
-      headers: t ? { Authorization: `Bearer ${t}` } : undefined,
+      headers: { "Content-Type": "application/json", ...(t ? tokenHeaders(t) : {}) },
+      body: JSON.stringify(t ? { token: t } : {}),
     }).catch(() => undefined);
     writeStoredToken(null);
     setToken(null);
