@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { products, productVariants, categories, brands, inventory } from "@/db/schema";
-import { eq, or, desc, sql, and } from "drizzle-orm";
+import { products, productVariants, productImages, categories, brands, inventory } from "@/db/schema";
+import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 
 export async function GET(request: Request) {
   try {
@@ -22,6 +22,11 @@ export async function GET(request: Request) {
       const prod = prodList[0];
       const variants = await db.select().from(productVariants).where(eq(productVariants.productId, prod.id));
       const stocks = await db.select().from(inventory).where(eq(inventory.productId, prod.id));
+      const gallery = await db
+        .select()
+        .from(productImages)
+        .where(eq(productImages.productId, prod.id))
+        .orderBy(asc(productImages.sortOrder), asc(productImages.id));
       const totalStock = stocks.reduce((acc, s) => acc + (s.physicalQty - s.reservedQty), 0);
 
       return NextResponse.json({
@@ -29,6 +34,7 @@ export async function GET(request: Request) {
         data: {
           ...prod,
           variants,
+          images: gallery.map((g) => g.url),
           totalStock: Math.max(0, totalStock),
           stockDetails: stocks,
         },
@@ -118,11 +124,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // Fetch all variants and stocks to attach
+    // Fetch all variants, images and stocks to attach
     const allVariants = await db.select().from(productVariants);
     const allInventory = await db.select().from(inventory);
     const allCats = await db.select().from(categories);
     const allBrandsList = await db.select().from(brands);
+    const allImages = await db.select().from(productImages);
 
     const enriched = allProducts.map((p) => {
       const pVariants = allVariants.filter((v) => v.productId === p.id);
@@ -130,6 +137,10 @@ export async function GET(request: Request) {
       const totalStock = pStocks.reduce((sum, item) => sum + (item.physicalQty - item.reservedQty), 0);
       const cat = allCats.find((c) => c.id === p.categoryId);
       const br = allBrandsList.find((b) => b.id === p.brandId);
+      const pImages = allImages
+        .filter((g) => g.productId === p.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+        .map((g) => g.url);
 
       return {
         ...p,
@@ -138,6 +149,7 @@ export async function GET(request: Request) {
         brandName: br?.name || "Özel Üretim",
         brandSlug: br?.slug || "",
         variants: pVariants,
+        images: pImages,
         totalStock: Math.max(0, totalStock),
       };
     });
@@ -194,9 +206,14 @@ export async function POST(request: Request) {
       description,
       imageUrl,
       videoUrl,
+      images,
       initialStock = 50,
       warehouseId = 1,
     } = body;
+
+    const galleryUrls = Array.isArray(images)
+      ? images.map((u) => String(u || "").trim()).filter(Boolean).slice(0, 6)
+      : [];
 
     const [{ id: __newProd_id }] = await db.insert(products).values({
         name,
@@ -211,10 +228,20 @@ export async function POST(request: Request) {
         b2bPrice: String(b2bPrice || retailPrice),
         shortDescription,
         description,
-        imageUrl: imageUrl || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
+        imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
         videoUrl: videoUrl || null,
       }).$returningId();
     const [newProd] = await db.select().from(products).where(eq(products.id, __newProd_id));
+
+    // Insert gallery images (tek tek; köprü uyumluluğu için çoklu VALUES yok)
+    for (const [i, url] of galleryUrls.entries()) {
+      await db.insert(productImages).values({
+        productId: newProd.id,
+        url,
+        sortOrder: i,
+        isPrimary: i === 0,
+      });
+    }
 
     // Insert initial inventory
     if (initialStock > 0) {
@@ -266,11 +293,33 @@ export async function PATCH(request: Request) {
     if (body.minOrderQty !== undefined) updates.minOrderQty = Number(body.minOrderQty);
     if (body.packageQty !== undefined) updates.packageQty = Number(body.packageQty);
 
-    if (Object.keys(updates).length === 0) {
+    // Galeri değişimi: liste verildiyse satırları baştan yaz, kapağı eşitle.
+    const galleryUrls = Array.isArray(body.images)
+      ? body.images.map((u: unknown) => String(u || "").trim()).filter(Boolean).slice(0, 6)
+      : null;
+
+    if (Object.keys(updates).length === 0 && galleryUrls === null) {
       return NextResponse.json({ success: false, error: "Güncellenecek alan yok." }, { status: 422 });
     }
 
-    await db.update(products).set(updates).where(eq(products.id, id));
+    if (Object.keys(updates).length > 0) {
+      await db.update(products).set(updates).where(eq(products.id, id));
+    }
+    if (galleryUrls !== null) {
+      await db.delete(productImages).where(eq(productImages.productId, id));
+      for (const [i, url] of galleryUrls.entries()) {
+        await db.insert(productImages).values({
+          productId: id,
+          url,
+          sortOrder: i,
+          isPrimary: i === 0,
+        });
+      }
+      await db
+        .update(products)
+        .set({ imageUrl: galleryUrls[0] || null })
+        .where(eq(products.id, id));
+    }
     const [updated] = await db.select().from(products).where(eq(products.id, id));
     if (!updated) {
       return NextResponse.json({ success: false, error: "Ürün bulunamadı." }, { status: 404 });

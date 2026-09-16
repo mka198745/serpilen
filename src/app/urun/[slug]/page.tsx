@@ -2,8 +2,8 @@ import React from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/db";
-import { products, productVariants, categories, brands, inventory, warehouses } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { products, productVariants, productImages, categories, brands, inventory, warehouses } from "@/db/schema";
+import { eq, asc } from "drizzle-orm";
 import { ProductDetailClient } from "./ProductDetailClient";
 import { parseVideoUrl } from "@/lib/video";
 
@@ -36,6 +36,11 @@ async function loadProduct(rawSlug: string) {
 
   const allStock = await db.select().from(inventory).where(eq(inventory.productId, product.id));
   const allWh = await db.select().from(warehouses);
+  const gallery = await db
+    .select()
+    .from(productImages)
+    .where(eq(productImages.productId, product.id))
+    .orderBy(asc(productImages.sortOrder), asc(productImages.id));
 
   const warehouseStocks = allStock.map((st) => {
     const wh = allWh.find((w) => w.id === st.warehouseId);
@@ -50,7 +55,7 @@ async function loadProduct(rawSlug: string) {
     };
   });
 
-  return { product, variants, category, brand, warehouseStocks };
+  return { product, variants, images: gallery.map((g) => g.url), category, brand, warehouseStocks };
 }
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
@@ -93,7 +98,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
     notFound();
   }
 
-  const { product, variants, category, brand, warehouseStocks } = data;
+  const { product, variants, images, category, brand, warehouseStocks } = data;
   const totalAvailable = warehouseStocks.reduce((s, w) => s + w.availableQty, 0);
 
   // JSON-LD: Product + Offer + AggregateRating + BreadcrumbList
@@ -149,6 +154,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
       <ProductDetailClient
         product={product}
         variants={variants}
+        images={images}
         category={category}
         brand={brand}
         warehouseStocks={warehouseStocks}

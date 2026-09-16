@@ -35,6 +35,7 @@ interface WarehouseStockInfo {
 interface ProductDetailClientProps {
   product: Product;
   variants: ProductVariant[];
+  images: string[];
   category: Category | null;
   brand: Brand | null;
   warehouseStocks: WarehouseStockInfo[];
@@ -43,6 +44,7 @@ interface ProductDetailClientProps {
 export function ProductDetailClient({
   product,
   variants,
+  images,
   category,
   brand,
   warehouseStocks,
@@ -58,8 +60,9 @@ export function ProductDetailClient({
 
   const FALLBACK_IMG = "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800";
 
-  // Galeri: ana görsel + varyant görselleri (tekil liste)
+  // Galeri: yüklenen fotoğraflar (en fazla 6) önce, sonra kapak + varyant görselleri
   const galleryImages = [
+    ...(images || []),
     product.imageUrl,
     ...variants.map((v) => v.imageUrl),
   ].filter((u): u is string => !!u);
@@ -67,7 +70,8 @@ export function ProductDetailClient({
   const [activeImage, setActiveImage] = useState<string>(uniqueGallery[0]);
 
   const video = parseVideoUrl(product.videoUrl);
-  const hasVideo = video.kind !== "unknown";
+  const hasVideo = (product.videoUrl || "").trim() !== "";
+  const isPlayableVideo = video.kind !== "unknown";
 
   const handleSelectVariant = (v: ProductVariant) => {
     setSelectedVariant(v);
@@ -121,7 +125,7 @@ export function ProductDetailClient({
             <img
               src={activeImage}
               alt={product.name}
-              className="w-full h-full object-cover object-center"
+              className="w-full h-full object-contain object-center"
             />
 
             <button
@@ -400,19 +404,35 @@ export function ProductDetailClient({
                 <Play className="w-4 h-4 text-amber-800" />
                 {product.name} — Tanıtım Videosu
               </h4>
-              <div className="aspect-video rounded-xl overflow-hidden bg-black max-w-3xl">
-                {video.kind === "file" ? (
-                  <video src={product.videoUrl || ""} controls className="w-full h-full" />
-                ) : (
-                  <iframe
-                    src={video.embedUrl}
-                    title={`${product.name} videosu`}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                )}
-              </div>
+              {isPlayableVideo ? (
+                <div className="aspect-video rounded-xl overflow-hidden bg-black max-w-3xl">
+                  {video.kind === "file" ? (
+                    <video src={product.videoUrl || ""} controls className="w-full h-full" />
+                  ) : (
+                    <iframe
+                      key={video.embedUrl}
+                      src={video.embedUrl}
+                      title={`${product.name} videosu`}
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                    />
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  Bu video site içinde oynatılamıyor — orijinal sayfasından izleyebilirsiniz.
+                </p>
+              )}
+              <a
+                href={video.watchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-bold text-amber-800 hover:underline"
+              >
+                <Play className="w-4 h-4" />
+                Orijinal videoyu aç ↗
+              </a>
             </div>
           )}
 

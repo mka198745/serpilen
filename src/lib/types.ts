@@ -54,6 +54,7 @@ export interface Product {
   hasVariants: boolean;
   imageUrl: string | null;
   videoUrl: string | null;
+  images?: string[];
   isFeatured: boolean | null;
   isActive: boolean;
   campaignPrice?: string | null;
