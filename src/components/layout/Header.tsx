@@ -30,7 +30,7 @@ import {
 
 export function Header() {
   const { cartCount, setIsCartOpen, wishlist } = useCart();
-  const { user, loading: authLoading, openAuth, logout } = useAuth();
+  const { user, loading: authLoading, openAuth, logout, cookieless, openGuarded } = useAuth();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
@@ -85,6 +85,7 @@ export function Header() {
               <>
                 <Link
                   href="/pos"
+                  onClick={(e) => { if (cookieless) { e.preventDefault(); void openGuarded("/pos", false); } }}
                   className="bg-amber-800 hover:bg-amber-700 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
                 >
                   <MonitorCheck className="w-3 h-3" />
@@ -92,6 +93,7 @@ export function Header() {
                 </Link>
                 <Link
                   href="/toptan-b2b"
+                  onClick={(e) => { if (cookieless) { e.preventDefault(); void openGuarded("/toptan-b2b", false); } }}
                   className="bg-sky-900 hover:bg-sky-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
                 >
                   <Building2 className="w-3 h-3" />
@@ -99,6 +101,7 @@ export function Header() {
                 </Link>
                 <Link
                   href="/admin"
+                  onClick={(e) => { if (cookieless) { e.preventDefault(); void openGuarded("/admin", false); } }}
                   className="bg-emerald-900 hover:bg-emerald-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
                 >
                   <SlidersHorizontal className="w-3 h-3" />

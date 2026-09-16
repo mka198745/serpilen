@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useAuth, type LoginStage } from "@/context/AuthContext";
+import { useAuth, isGuardedPath, type LoginStage } from "@/context/AuthContext";
 import { X, LogIn, UserPlus, Mail, Lock, User, Phone, MapPin } from "lucide-react";
 
 /** İstemci sürüm etiketi — önbellekte eski sürüm kalıp kalmadığını gösterir. */
-const CLIENT_BUILD = "ui-4";
+const CLIENT_BUILD = "ui-5";
 
 const STAGE_LABELS: Record<LoginStage["id"], string> = {
   storage: "Depolama",
@@ -30,7 +30,7 @@ interface DiagInfo {
 }
 
 export function AuthModal() {
-  const { user, cookieless, modalOpen, modalTab, setModalTab, closeAuth, login, register, postLoginNext } = useAuth();
+  const { user, cookieless, modalOpen, modalTab, setModalTab, closeAuth, login, register, postLoginNext, openGuarded } = useAuth();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [regForm, setRegForm] = useState({ name: "", email: "", phone: "", city: "", password: "", password2: "" });
   const [busy, setBusy] = useState(false);
@@ -61,7 +61,11 @@ export function AuthModal() {
 
   const goAfterAuth = () => {
     const next = postLoginNext && postLoginNext.startsWith("/") ? postLoginNext : window.location.pathname + window.location.search;
-    window.location.href = next; // tam yükleme: sunucu oturumu görsün
+    if (cookieless && isGuardedPath(next)) {
+      void openGuarded(next, false); // çerezi claim üzerinden yazdırıp hedefe git
+    } else {
+      window.location.href = next; // tam yükleme: sunucu oturumu görsün
+    }
   };
 
   const pushStage = (s: LoginStage) =>
@@ -179,22 +183,22 @@ export function AuthModal() {
             <div className="p-4 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed">
               <p className="font-bold mb-1">Giriş yaptınız: {user.name} ({user.roleLabel})</p>
               <p>
-                Ancak tarayıcınız çerezleri engellediği için <strong>Yönetim Paneli / POS / B2B</strong> gibi
-                korumalı sayfalar bu pencerede açılamıyor. Devam etmek için sayfayı yeni sekmede açın —
-                orada girişiniz geçerli olacak.
+                Tarayıcınız çerezleri engellediği için korumalı sayfaya{" "}
+                <strong>güvenli geçiş</strong> ile girilecek: tek kullanımlık bir bağlantı
+                oturuma çevrilir, şifreniz tekrar istenmez.
               </p>
             </div>
             <button
-              onClick={() => { window.open(postLoginNext, "_blank", "noopener"); closeAuth(); }}
+              onClick={() => { void openGuarded(postLoginNext, false); closeAuth(); }}
               className="w-full py-2.5 bg-amber-800 hover:bg-amber-900 text-white text-sm font-bold rounded-xl transition"
             >
-              Yeni Sekmede Aç →
+              Güvenli Geçişle Devam Et →
             </button>
             <button
-              onClick={closeAuth}
+              onClick={() => { void openGuarded(postLoginNext, true); closeAuth(); }}
               className="w-full py-2 text-xs font-semibold text-stone-500 hover:text-stone-800 transition"
             >
-              Vazgeç
+              veya Yeni Sekmede Aç
             </button>
           </div>
         ) : modalTab === "login" ? (

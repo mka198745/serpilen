@@ -96,12 +96,14 @@ Ayrıca `GET /api/health` ilk çağrıda eksikse seed'i otomatik tamamlar.
   (`SUPER_ADMIN`, `STORE_MANAGER`, `WAREHOUSE_KEEPER`, `CASHIER`, `B2B_MANAGER`).
   Bu sayfalar sunucu tarafında da korunur (yetkisiz erişim giriş ekranına yönlenir).
 - Oturumlar httpOnly çerez + DB'deki `admin_sessions` tablosuyla yönetilir (7 gün).
-  Çerez isteğe göre uyarlanabilir yazılır: HTTPS'te `Secure + Partitioned (CHIPS)`
-  (iframe önizlemede çalışır), HTTP'de sade `Lax` çerez. Gerekirse
-  `COOKIE_SECURE=1` (zorla Secure) / `=0` (zorla sade) ile üzerine yazılabilir.
-  Çerezin tamamen engellendiği tarayıcılarda istemci, giriş yanıtındaki token'ı
-  `localStorage`'da saklayıp `Authorization: Bearer` ile API'lere erişmeye devam
-  eder; korumalı sayfalar (Admin/POS/B2B) bu durumda **yeni sekmede** açılmalıdır.
+  Çerez localhost dışında `SameSite=None + Secure + Partitioned (CHIPS)` yazılır
+  (iframe önizlemede çalışır; `Lax` iframe içinden hiç gönderilmez), localhost'ta
+  sade `Lax` çerez. Gerekirse `COOKIE_SECURE=1` (zorla Secure) / `=0` (zorla sade).
+- Çerezin engellendiği tarayıcılarda istemci token'ı `localStorage`'da saklayıp
+  `Authorization: Bearer` / `X-Auth-Token` / istek gövdesiyle API'lere erişir;
+  korumalı sayfalara (Admin/POS/B2B) ise **güvenli geçiş** ile girilir:
+  `POST /api/auth/handoff` kısa ömürlü jeton üretir,
+  `GET /api/auth/claim?nonce=...&next=...` çerezi yazıp hedefe yönlendirir.
 - Seed personelin başlangıç şifresi yoktur; tanımlamak için:
 
   ```bash

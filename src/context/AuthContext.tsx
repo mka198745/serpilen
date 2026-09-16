@@ -20,6 +20,13 @@ export interface LoginStage {
 
 export type StageCallback = (s: LoginStage) => void;
 
+/** Sunucu korumalı (çerez gerektiren) sayfa önekleri */
+export const GUARDED_PREFIXES = ["/admin", "/pos", "/toptan-b2b"];
+
+export function isGuardedPath(path: string): boolean {
+  return GUARDED_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));
+}
+
 type AuthTab = "login" | "register";
 
 interface AuthContextType {
@@ -42,6 +49,11 @@ interface AuthContextType {
   logout: () => Promise<void>;
   /** Token başlıklı istekler için yardımcı (çerez engelliyse token kullanır) */
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  /**
+   * Korumalı sayfaya git: çerez varsa düz gezinme, çerezsizse önce handoff
+   * jetonu alınıp /api/auth/claim üzerinden geçilir (çerez yazılır).
+   */
+  openGuarded: (next: string, newTab?: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -165,6 +177,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setCookieless(false);
   }, []);
+
+  const openGuarded = useCallback(
+    async (next: string, newTab = false) => {
+      const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      // Yeni sekme, tıklama jesti içinde SENKRON açılmalı (engelleyiciye takılmaması için).
+      const popup = newTab ? window.open("about:blank", "_blank", "noopener") : null;
+      const go = (url: string) => {
+        if (popup) popup.location.href = url;
+        else if (newTab) window.open(url, "_blank", "noopener");
+        else window.location.href = url;
+      };
+      if (!cookieless) {
+        go(safeNext);
+        return;
+      }
+      try {
+        const t = token || readStoredToken();
+        const res = await fetch("/api/auth/handoff", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(t ? tokenHeaders(t) : {}) },
+          body: JSON.stringify(t ? { token: t } : {}),
+        });
+        const data = await res.json().catch(() => ({}));
+        const nonce = data?.success ? data?.data?.nonce : null;
+        if (typeof nonce === "string" && nonce) {
+          go(`/api/auth/claim?nonce=${encodeURIComponent(nonce)}&next=${encodeURIComponent(safeNext)}`);
+          return;
+        }
+      } catch {
+        /* yedek: düz git, sunucu girişe yönlendirir */
+      }
+      go(safeNext);
+    },
+    [cookieless, token]
+  );
 
   const openAuth = useCallback((tab: AuthTab = "login", next: string | null = null) => {
     setModalTab(tab);
@@ -303,7 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, cookieless, modalOpen, modalTab, postLoginNext, openAuth, closeAuth, setModalTab, refresh, login, register, logout, authFetch }}
+      value={{ user, loading, cookieless, modalOpen, modalTab, postLoginNext, openAuth, closeAuth, setModalTab, refresh, login, register, logout, authFetch, openGuarded }}
     >
       {children}
     </AuthContext.Provider>

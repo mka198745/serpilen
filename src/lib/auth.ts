@@ -127,22 +127,26 @@ function isLocalHostname(host: string | null): boolean {
 
 export function sessionCookieOptions(request?: Request) {
   // Uyarlanabilir strateji:
-  // - TLS-sonlandırmalı proxy'ler proto'yu yanlış bildirebilir; bu yüzden localhost
-  //   DIŞI her host'ta (ör. *.e2b.app, gerçek alan adları) tarayıcı HTTPS kabul
-  //   edilip Secure + Partitioned (CHIPS) yazılır → iframe'de bile çalışır.
+  // - Localhost DIŞI host'larda (ör. *.e2b.app, gerçek alan adları) tarayıcı HTTPS
+  //   kabul edilir: SameSite=None + Secure + Partitioned (CHIPS). None ŞARTTIR
+  //   çünkü Lax çerezler iframe içinden ASLA gönderilmez; Partitioned ise
+  //   Chrome'un üçüncü-taraf engeline takılmadan saklanmayı sağlar (üst siteye
+  //   çift-anahtarlı olduğundan CSRF riski de taşımaz).
   // - Localhost/IP erişiminde proto'ya bakılır (HTTP → sade Lax çerez).
   // COOKIE_SECURE=1 zorla açar, =0 zorla kapatır.
   const override = process.env.COOKIE_SECURE;
   const host = request?.headers.get("host") || null;
   const secure =
     override === "1" ? true : override === "0" ? false : isHttpsRequest(request) || !isLocalHostname(host);
+  const partitioned = secure && !isLocalHostname(host);
+  const sameSite = (partitioned ? "none" : "lax") as "none" | "lax";
   return {
     httpOnly: true as const,
-    sameSite: "lax" as const,
+    sameSite,
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
     secure,
-    ...(secure ? { partitioned: true as const } : {}),
+    ...(partitioned ? { partitioned: true as const } : {}),
   };
 }
 
@@ -172,4 +176,35 @@ export async function getSessionUserFromRequest(request: Request): Promise<Sessi
   const byCookie = await getSessionUser();
   if (byCookie) return byCookie;
   return getUserByToken(getRequestToken(request));
+}
+
+/**
+ * Güvenli geçiş (handoff) jetonları: kısa ömürlü (120 sn), sınırlı kullanımlı
+ * (en fazla 5), bellekte saklanır. Jetonun kendisi oturum token'ı DEĞİLDİR;
+ * yalnızca claim anında tek oturuma çözülür.
+ */
+const HANDOFF_TTL_MS = 120_000;
+const HANDOFF_MAX_USES = 5;
+const handoffNonces = new Map<string, { token: string; expiresAt: number; uses: number }>();
+
+export function mintHandoffNonce(token: string): string {
+  const nonce = crypto.randomBytes(24).toString("base64url");
+  handoffNonces.set(nonce, { token, expiresAt: Date.now() + HANDOFF_TTL_MS, uses: 0 });
+  if (handoffNonces.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of handoffNonces) if (v.expiresAt < now) handoffNonces.delete(k);
+  }
+  return nonce;
+}
+
+export function consumeHandoffNonce(nonce: string | null): string | null {
+  if (!nonce) return null;
+  const rec = handoffNonces.get(nonce);
+  if (!rec) return null;
+  if (rec.expiresAt < Date.now() || rec.uses >= HANDOFF_MAX_USES) {
+    handoffNonces.delete(nonce);
+    return null;
+  }
+  rec.uses += 1;
+  return rec.token;
 }

@@ -73,7 +73,8 @@ export async function POST(request: Request) {
   await db.update(users).set({ lastLoginAt: new Date(), failedLoginCount: 0 }).where(eq(users.id, user.id));
 
   const sessionUser = await getUserByToken(token);
-  authLog("login", "OK", email, { ...reqMeta, role: sessionUser?.role, cookieSecure: !!sessionCookieOptions(request).secure });
+  const cookieOpts = sessionCookieOptions(request);
+  authLog("login", "OK", email, { ...reqMeta, role: sessionUser?.role, cookieSecure: !!cookieOpts.secure, sameSite: cookieOpts.sameSite });
   const res = NextResponse.json({
     success: true,
     data: { user: sessionUser, token, expiresAt: expiresAt.toISOString() },
