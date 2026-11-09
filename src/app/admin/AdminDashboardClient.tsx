@@ -71,6 +71,24 @@ interface AdminDashboardClientProps {
   coupons: any[];
   erpLogs: any[];
   shifts: any[];
+  dashboardStats?: {
+    totalRevenue: number;
+    totalOrders: number;
+    salesCount: number;
+    posCount: number;
+    onlineCount: number;
+    b2bCount: number;
+    channelRevenue: { pos: number; online: number; b2b: number };
+    avgBasket: number;
+    grossProfit: number;
+    monthRevenue: number;
+    lastMonthRevenue: number;
+    monthGrowth: number | null;
+    pendingOrdersCount: number;
+    returnedOrdersCount: number;
+    customersCount: number;
+    criticalStockCount: number;
+  };
 }
 
 export function AdminDashboardClient({
@@ -87,6 +105,7 @@ export function AdminDashboardClient({
   coupons: initialCoupons,
   erpLogs: initialErpLogs,
   shifts,
+  dashboardStats,
 }: AdminDashboardClientProps) {
   const [activeTab, setActiveTab] = useState<
     | "dashboard"
@@ -1001,30 +1020,41 @@ export function AdminDashboardClient({
 
   // AI Assistant states
 
-  // Dashboard calculations
-  const totalRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal), 0);
-  const posCount = orders.filter((o) => o.orderType === "POS").length;
-  const onlineCount = orders.filter((o) => o.orderType === "ONLINE_B2C").length;
-  const b2bCount = orders.filter((o) => o.orderType === "B2B").length;
-  const criticalStockCount = inventoryList.filter((i) => i.isCritical).length;
-
-  // FAZ 5: Dashboard KPI genişletmeleri
-  const estimatedGrossProfit = orders
-    .filter((o) => !["CANCELLED"].includes(o.status))
-    .reduce((sum, o) => {
-      const itemsCost = (o.items || []).reduce((c: number, it: any) => {
-        const p = products.find((x) => x.id === it.productId);
-        return c + Number(p?.buyPrice || 0) * it.quantity;
-      }, 0);
-      return sum + Number(o.grandTotal) - itemsCost;
-    }, 0);
-  const pendingOrdersCount = orders.filter((o) => ["PAID", "PREPARING", "READY_FOR_SHIPMENT"].includes(o.status)).length;
-  const returnedOrdersCount = orders.filter((o) => ["RETURN_REQUESTED", "RETURNED", "REFUNDED"].includes(o.status)).length;
-  const channelRevenue = {
-    pos: orders.filter((o) => o.orderType === "POS" && !["CANCELLED"].includes(o.status)).reduce((s, o) => s + Number(o.grandTotal), 0),
-    online: orders.filter((o) => o.orderType === "ONLINE_B2C" && !["CANCELLED"].includes(o.status)).reduce((s, o) => s + Number(o.grandTotal), 0),
-    b2b: orders.filter((o) => o.orderType === "B2B" && !["CANCELLED"].includes(o.status)).reduce((s, o) => s + Number(o.grandTotal), 0),
+  // Dashboard KPI'ları — sunucuda DB'den hesaplanan (tüm zamanlar) gerçek rakamlar.
+  // dashboardStats yoksa (eski derleme) istemci tarafında, sınırlı sipariş listesiyle hesaplanır.
+  const clientRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal), 0);
+  const clientChannel = {
+    pos: orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
+    online: orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
+    b2b: orders.filter((o) => o.orderType === "B2B" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
   };
+  const totalRevenue = dashboardStats?.totalRevenue ?? clientRevenue;
+  const salesCount = dashboardStats?.salesCount ?? orders.filter((o) => o.status !== "CANCELLED").length;
+  const totalOrders = dashboardStats?.totalOrders ?? orders.length;
+  const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").length;
+  const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").length;
+  const b2bCount = dashboardStats?.b2bCount ?? orders.filter((o) => o.orderType === "B2B" && o.status !== "CANCELLED").length;
+  const criticalStockCount = dashboardStats?.criticalStockCount ?? inventoryList.filter((i) => i.isCritical).length;
+  const channelRevenue = dashboardStats?.channelRevenue ?? clientChannel;
+  const estimatedGrossProfit =
+    dashboardStats?.grossProfit ??
+    orders
+      .filter((o) => !["CANCELLED"].includes(o.status))
+      .reduce((sum, o) => {
+        const itemsCost = (o.items || []).reduce((c: number, it: any) => {
+          const p = products.find((x) => x.id === it.productId);
+          return c + Number(p?.buyPrice || 0) * it.quantity;
+        }, 0);
+        return sum + Number(o.grandTotal) - itemsCost;
+      }, 0);
+  const pendingOrdersCount = dashboardStats?.pendingOrdersCount ?? orders.filter((o) => ["PAID", "PREPARING", "READY_FOR_SHIPMENT"].includes(o.status)).length;
+  const returnedOrdersCount = dashboardStats?.returnedOrdersCount ?? orders.filter((o) => ["RETURN_REQUESTED", "RETURNED", "REFUNDED"].includes(o.status)).length;
+  const customersCount = dashboardStats?.customersCount ?? customers.length;
+  const monthGrowth = dashboardStats ? dashboardStats.monthGrowth : null;
+  // Kanal kartındaki mağaza adı: veritabanındaki mağaza/merkez deposundan alınır
+  const storeName =
+    (warehouses.find((w: any) => ["CENTRAL", "STORE"].includes(String(w.type).toUpperCase()) && w.isActive !== false) || warehouses[0])?.name ||
+    "Mağaza";
 
   // Handlers
   /** Ürün ekleme modalını aç. */
@@ -1432,26 +1462,35 @@ export function AdminDashboardClient({
                 <div className="text-2xl font-black text-stone-900">
                   {totalRevenue.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-semibold">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  <span>Geçen aya göre +%18 artış</span>
+                <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${monthGrowth === null || monthGrowth >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                  {monthGrowth === null ? (
+                    <span className="text-stone-500">Geçen ay verisi yok — kıyas yapılamıyor</span>
+                  ) : (
+                    <>
+                      {monthGrowth >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                      <span>
+                        Geçen aya göre {monthGrowth >= 0 ? "+" : ""}%{monthGrowth.toFixed(1)}
+                        {dashboardStats ? ` • bu ay ${dashboardStats.monthRevenue.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL` : ""}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
                 <span className="text-xs font-bold text-stone-500 uppercase">Toplam Sipariş / Satış</span>
-                <div className="text-2xl font-black text-stone-900">{orders.length} İşlem</div>
+                <div className="text-2xl font-black text-stone-900">{totalOrders} İşlem</div>
                 <div className="text-[11px] text-stone-500">
-                  {posCount} POS • {onlineCount} Vitrin • {b2bCount} B2B
+                  {posCount} POS • {onlineCount} Vitrin • {b2bCount} B2B <span className="text-stone-400">(iptaller hariç satış: {salesCount})</span>
                 </div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
                 <span className="text-xs font-bold text-stone-500 uppercase">Ortalama Sepet</span>
                 <div className="text-2xl font-black text-stone-900">
-                  {(totalRevenue / (orders.length || 1)).toFixed(2)} TL
+                  {(salesCount > 0 ? totalRevenue / salesCount : 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
                 </div>
-                <div className="text-[11px] text-stone-500">Kasiyer ve Vitrin Ortalaması</div>
+                <div className="text-[11px] text-stone-500">Ciro ÷ satış adedi (iptaller hariç)</div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
@@ -1484,7 +1523,7 @@ export function AdminDashboardClient({
                 <div className="flex items-baseline gap-3">
                   <span className="text-2xl font-black text-rose-700">{returnedOrdersCount}</span>
                   <span className="text-xs text-stone-400">iade</span>
-                  <span className="text-2xl font-black text-sky-700">{customers.length}</span>
+                  <span className="text-2xl font-black text-sky-700">{customersCount}</span>
                   <span className="text-xs text-stone-400">müşteri</span>
                 </div>
                 <button onClick={() => setActiveTab("reports")} className="text-[11px] text-stone-500 hover:underline font-semibold block text-left">
@@ -1500,7 +1539,7 @@ export function AdminDashboardClient({
                 <div className="text-xl font-black text-amber-950 mt-1">{posCount} Satış</div>
                 <div className="text-sm font-bold text-amber-800">{channelRevenue.pos.toFixed(2)} TL</div>
                 <p className="text-xs text-amber-800 mt-1">
-                  Kadıköy Mağazası • Anında Kasa Fişi & Stok Düşümü
+                  {storeName} • Anında Kasa Fişi & Stok Düşümü
                 </p>
               </div>
 

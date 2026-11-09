@@ -17,7 +17,7 @@ import {
   erpSyncLogs,
   posShifts,
 } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, sql, count, and, ne, gte, lt, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
@@ -86,6 +86,80 @@ export default async function AdminPage() {
     items: allOrderItems.filter((it) => it.orderId === ord.id),
   }));
 
+  // ---- Gerçek KPI rakamları (tüm zamanlar, LIMIT 50'den bağımsız) ----
+  const notCancelled = ne(orders.status, "CANCELLED");
+  const sumGrand = sql<number>`coalesce(sum(${orders.grandTotal}), 0)`;
+
+  const [totals] = await db
+    .select({ totalOrders: count(orders.id), salesCount: count(sql`case when ${orders.status} != 'CANCELLED' then 1 end`) })
+    .from(orders);
+  const [revTotal] = await db.select({ v: sumGrand }).from(orders).where(notCancelled);
+
+  const channelRows = await db
+    .select({ orderType: orders.orderType, c: count(orders.id), revenue: sumGrand })
+    .from(orders)
+    .where(notCancelled)
+    .groupBy(orders.orderType);
+  const channelMap = new Map(channelRows.map((r) => [r.orderType, r]));
+
+  // Maliyet toplamı (satılan malın maliyeti): yalnız iptal edilmemiş siparişler
+  const [costRow] = await db
+    .select({ cost: sql<number>`coalesce(sum(${orderItems.quantity} * cast(${products.buyPrice} as real)), 0)` })
+    .from(orderItems)
+    .innerJoin(orders, sql`${orderItems.orderId} = ${orders.id}`)
+    .innerJoin(products, sql`${orderItems.productId} = ${products.id}`)
+    .where(notCancelled);
+
+  const now = new Date();
+  const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const [monthRow] = await db
+    .select({ v: sumGrand })
+    .from(orders)
+    .where(and(notCancelled, gte(orders.createdAt, firstOfThisMonth)));
+  const [lastMonthRow] = await db
+    .select({ v: sumGrand })
+    .from(orders)
+    .where(and(notCancelled, gte(orders.createdAt, firstOfLastMonth), lt(orders.createdAt, firstOfThisMonth)));
+  const monthRevenue = Number(monthRow?.v ?? 0);
+  const lastMonthRevenue = Number(lastMonthRow?.v ?? 0);
+  const monthGrowth = lastMonthRevenue > 0 ? ((monthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100 : null;
+
+  const [pendingRow] = await db
+    .select({ c: count(orders.id) })
+    .from(orders)
+    .where(inArray(orders.status, ["PAID", "PREPARING", "READY_FOR_SHIPMENT"]));
+  const [returnedRow] = await db
+    .select({ c: count(orders.id) })
+    .from(orders)
+    .where(inArray(orders.status, ["RETURN_REQUESTED", "RETURNED", "REFUNDED"]));
+
+  const totalRevenue = Number(revTotal?.v ?? 0);
+  const salesCount = Number(totals?.salesCount ?? 0);
+  const channelRevenue = {
+    pos: Number(channelMap.get("POS")?.revenue ?? 0),
+    online: Number(channelMap.get("ONLINE_B2C")?.revenue ?? 0),
+    b2b: Number(channelMap.get("B2B")?.revenue ?? 0),
+  };
+  const dashboardStats = {
+    totalRevenue,
+    totalOrders: Number(totals?.totalOrders ?? 0),
+    salesCount,
+    posCount: Number(channelMap.get("POS")?.c ?? 0),
+    onlineCount: Number(channelMap.get("ONLINE_B2C")?.c ?? 0),
+    b2bCount: Number(channelMap.get("B2B")?.c ?? 0),
+    channelRevenue,
+    avgBasket: salesCount > 0 ? totalRevenue / salesCount : 0,
+    grossProfit: totalRevenue - Number(costRow?.cost ?? 0),
+    monthRevenue,
+    lastMonthRevenue,
+    monthGrowth, // null => önceki ay verisi yok
+    pendingOrdersCount: Number(pendingRow?.c ?? 0),
+    returnedOrdersCount: Number(returnedRow?.c ?? 0),
+    customersCount: allCustomers.length,
+    criticalStockCount: allInv.filter((i) => Math.max(0, i.physicalQty - i.reservedQty) <= i.reorderPoint).length,
+  };
+
   return (
     <AdminDashboardClient
       products={enrichedProducts}
@@ -101,6 +175,7 @@ export default async function AdminPage() {
       coupons={allCoupons}
       erpLogs={allErpLogs}
       shifts={allShifts}
+      dashboardStats={dashboardStats}
     />
   );
 }
