@@ -4,7 +4,8 @@ import Link from "next/link";
 import { db } from "@/db";
 import { blogPosts, products } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { ArrowLeft, User, Calendar, Tag, ShoppingBag } from "lucide-react";
+import { ArrowLeft, User, Calendar, ShoppingBag } from "lucide-react";
+import { BlogContent } from "@/components/blog/BlogContent";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +70,8 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
 
       <div className="prose prose-stone max-w-none bg-white p-8 rounded-3xl border border-stone-200 shadow-xs text-sm leading-relaxed space-y-4 text-stone-700">
         <p className="font-semibold text-stone-900 text-base">{post.excerpt}</p>
-        <div className="border-t border-stone-100 pt-4 whitespace-pre-line">
-          {post.content}
+        <div className="border-t border-stone-100 pt-4 space-y-4">
+          <BlogContent content={post.content} />
         </div>
       </div>
 

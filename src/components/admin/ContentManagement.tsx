@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { BlogContent } from "@/components/blog/BlogContent";
+import { youtubeEmbedSrc, tiktokEmbedSrc, instagramEmbedSrc, isSafeImageSrc } from "@/lib/media-embed";
 import {
   Newspaper,
   Plus,
@@ -12,6 +14,11 @@ import {
   RefreshCw,
   ImagePlus,
   ArrowLeft,
+  Play,
+  Music2,
+  Camera,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -59,6 +66,10 @@ export function ContentManagement() {
   const [uploading, setUploading] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [filter, setFilter] = useState<"all" | "published" | "draft">("all");
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const [mediaPanel, setMediaPanel] = useState<null | "image" | "youtube" | "tiktok" | "instagram">(null);
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -99,6 +110,95 @@ export function ContentManagement() {
     setFeedback(null);
     setView("editor");
   };
+
+  const insertAtCursor = (snippet: string) => {
+    const ta = contentRef.current;
+    const block = snippet.trim();
+    if (!ta) {
+      setForm((f) => ({ ...f, content: (f.content ? f.content.replace(/\s*$/, "") + "\n" : "") + block + "\n" }));
+      return;
+    }
+    const start = ta.selectionStart ?? form.content.length;
+    const end = ta.selectionEnd ?? form.content.length;
+    const before = form.content.slice(0, start);
+    const after = form.content.slice(end);
+    const prefix = before && !before.endsWith("\n") ? "\n" : "";
+    const blockText = prefix + block + "\n";
+    const next = before + blockText + after;
+    setForm((f) => ({ ...f, content: next }));
+    window.requestAnimationFrame(() => {
+      ta.focus();
+      const pos = (before + blockText).length;
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
+  const MEDIA_PANEL_META: Record<string, { title: string; placeholder: string; hint: string }> = {
+    image: {
+      title: "Görsel",
+      placeholder: "https://…/gorsel.jpg veya /uploads/products/…",
+      hint: "Yüklenen / dışarıdan bir görsel URL'si yapıştırın, ya da dosya yükleyin.",
+    },
+    youtube: {
+      title: "YouTube Videosu",
+      placeholder: "https://www.youtube.com/watch?v=… veya https://youtu.be/…",
+      hint: "watch?v=…, youtu.be/… veya /shorts/… biçimindeki linkler desteklenir.",
+    },
+    tiktok: {
+      title: "TikTok Videosu",
+      placeholder: "https://www.tiktok.com/@kullanici/video/1234567890",
+      hint: "tiktok.com/@kullanıcı/video/… linkini yapıştırın (kısa vm.tiktok linkleri desteklenmez).",
+    },
+    instagram: {
+      title: "Instagram Gönderisi / Reels",
+      placeholder: "https://www.instagram.com/reel/ABC123…/ veya /p/ABC123…/",
+      hint: "instagram.com/p/… veya instagram.com/reel/… linkini yapıştırın.",
+    },
+  };
+
+  const insertMediaFromPanel = () => {
+    const url = mediaUrl.trim();
+    if (!mediaPanel || !url) return;
+    const fail = (msg: string) => setFeedback({ text: msg, isError: true });
+    if (mediaPanel === "youtube" && !youtubeEmbedSrc(url)) return fail("Geçerli bir YouTube linki değil.");
+    if (mediaPanel === "tiktok" && !tiktokEmbedSrc(url)) return fail("Geçerli bir TikTok video linki değil (ör. tiktok.com/@kullanıcı/video/…).");
+    if (mediaPanel === "instagram" && !instagramEmbedSrc(url)) return fail("Geçerli bir Instagram linki değil (ör. instagram.com/p/… veya /reel/…).");
+    if (mediaPanel === "image" && !isSafeImageSrc(url)) return fail("Görsel adresi https://… veya /uploads/… ile başlamalı.");
+    insertAtCursor(`[media:${mediaPanel}]${url}[/media]`);
+    setMediaPanel(null);
+    setMediaUrl("");
+    setFeedback({ text: "Medya içeriğe eklendi.", isError: false });
+  };
+
+  const uploadInlineImage = async (file: File) => {
+    setUploading(true);
+    setFeedback(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/uploads", { method: "POST", body: fd });
+      const d = await res.json();
+      if (d.success) {
+        insertAtCursor(`[media:image]${d.data.url}[/media]`);
+        setMediaPanel(null);
+        setMediaUrl("");
+        setFeedback({ text: "Görsel yüklendi ve içeriğe eklendi.", isError: false });
+      } else {
+        setFeedback({ text: d?.error || "Görsel yüklenemedi.", isError: true });
+      }
+    } catch {
+      setFeedback({ text: "Görsel yüklenemedi (sunucu).", isError: true });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const mediaBtn = (kind: "image" | "youtube" | "tiktok" | "instagram") =>
+    `flex items-center gap-1 px-2 py-1.5 rounded-lg border text-[10px] font-bold transition ${
+      mediaPanel === kind
+        ? "border-amber-800 bg-amber-800 text-white"
+        : "border-stone-200 bg-stone-50 text-stone-700 hover:border-amber-500 hover:text-amber-900"
+    }`;
 
   const save = async () => {
     if (!form.title.trim() || !form.content.trim()) {
@@ -264,8 +364,69 @@ export function ContentManagement() {
             <textarea className={inputCls} rows={2} value={form.excerpt} onChange={(e) => setForm({ ...form, excerpt: e.target.value })} placeholder="1-2 cümlelik özet" />
           </div>
           <div>
-            <label className={labelCls}>İçerik *</label>
-            <textarea className={`${inputCls} font-mono leading-relaxed`} rows={14} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder="Makale içeriği… (satır sonları korunur)" />
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <label className="text-[10px] font-bold text-stone-500 uppercase">İçerik * <span className="normal-case font-semibold text-stone-400">(medya eklemek için aşağıdaki düğmeleri kullanın)</span></label>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button type="button" onClick={() => { setMediaPanel(mediaPanel === "image" ? null : "image"); setMediaUrl(""); }} className={mediaBtn("image")} title="Görsel ekle">
+                  <ImagePlus className="w-3.5 h-3.5" /> Görsel
+                </button>
+                <button type="button" onClick={() => { setMediaPanel(mediaPanel === "youtube" ? null : "youtube"); setMediaUrl(""); }} className={mediaBtn("youtube")} title="YouTube videosu ekle">
+                  <Play className="w-3.5 h-3.5" /> YouTube
+                </button>
+                <button type="button" onClick={() => { setMediaPanel(mediaPanel === "tiktok" ? null : "tiktok"); setMediaUrl(""); }} className={mediaBtn("tiktok")} title="TikTok videosu ekle">
+                  <Music2 className="w-3.5 h-3.5" /> TikTok
+                </button>
+                <button type="button" onClick={() => { setMediaPanel(mediaPanel === "instagram" ? null : "instagram"); setMediaUrl(""); }} className={mediaBtn("instagram")} title="Instagram içeriği ekle">
+                  <Camera className="w-3.5 h-3.5" /> Instagram
+                </button>
+                <button type="button" onClick={() => setShowPreview((v) => !v)} className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-stone-200 bg-white text-[10px] font-bold text-stone-600 hover:border-amber-500 hover:text-amber-900 transition" title="Önizlemeyi aç/kapat">
+                  {showPreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {showPreview ? "Önizlemeyi Kapat" : "Önizleme"}
+                </button>
+              </div>
+            </div>
+
+            {mediaPanel && (
+              <div className="mb-2 p-3 rounded-xl border border-sky-200 bg-sky-50 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-black text-sky-900 uppercase tracking-wider">{MEDIA_PANEL_META[mediaPanel].title} Ekle</p>
+                  <button type="button" onClick={() => { setMediaPanel(null); setMediaUrl(""); }} className="p-1 rounded-lg text-sky-800 hover:bg-sky-100 transition" title="Vazgeç">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    autoFocus
+                    className={inputCls}
+                    value={mediaUrl}
+                    onChange={(e) => setMediaUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); insertMediaFromPanel(); } }}
+                    placeholder={MEDIA_PANEL_META[mediaPanel].placeholder}
+                  />
+                  {mediaPanel === "image" && (
+                    <label className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-white border border-sky-300 hover:bg-sky-100 text-sky-900 text-xs font-bold rounded-xl cursor-pointer transition">
+                      <ImagePlus className="w-4 h-4" />
+                      {uploading ? "Yükleniyor…" : "Dosya Yükle"}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadInlineImage(f); e.target.value = ""; }} />
+                    </label>
+                  )}
+                  <button type="button" onClick={insertMediaFromPanel} disabled={uploading} className="shrink-0 px-4 py-2 bg-sky-800 hover:bg-sky-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
+                    İçeriğe Ekle
+                  </button>
+                </div>
+                <p className="text-[10px] text-sky-800/80">{MEDIA_PANEL_META[mediaPanel].hint} Medya, imlecin bulunduğu satıra eklenir.</p>
+              </div>
+            )}
+
+            <textarea ref={contentRef} className={`${inputCls} font-mono leading-relaxed`} rows={14} value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder="Makale içeriği… (satır sonları korunur, medya satırları [media:…] etiketleriyle işaretlenir)" />
+
+            {showPreview && (
+              <div className="mt-2 p-4 rounded-2xl border border-amber-200 bg-amber-50/40">
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-900 mb-2">Önizleme</p>
+                <div className="text-sm leading-relaxed text-stone-700 space-y-3 max-h-[480px] overflow-y-auto">
+                  {form.content.trim() ? <BlogContent content={form.content} /> : <p className="text-stone-400">Önizlenecek içerik henüz yok.</p>}
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex items-center justify-end gap-2">
             <button onClick={() => setView("list")} className="px-4 py-2.5 text-xs font-bold text-stone-600 hover:bg-stone-100 rounded-xl transition">
