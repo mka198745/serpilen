@@ -61,48 +61,12 @@ export default async function HomePage() {
       <section className="relative overflow-hidden bg-gradient-to-br from-amber-950 via-stone-900 to-stone-950 text-white py-12 md:py-20 px-4">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
           <div className="lg:col-span-7 space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-semibold backdrop-blur-xs">
-              <Sparkles className="w-4 h-4" />
-              <span>Yeni Nesil Çok Kanallı Tuhafiye Platformu</span>
-            </div>
-
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1]">
               Dikiş, Nakış ve Hobi Dünyasında <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">
                 Usta İmzası Kalite.
               </span>
             </h1>
-
-            <p className="text-stone-300 text-sm sm:text-base md:text-lg max-w-xl font-normal leading-relaxed">
-              Orijinal <strong>Gütermann, YKK ve Prym</strong> ürünleri; perakende e-ticaret vitrini, toptan B2B fiyatları, mağaza içi web POS ve ortak stok altyapısıyla parmaklarınızın ucunda.
-            </p>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link
-                href="/urunler"
-                className="px-6 py-3.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl shadow-lg shadow-amber-900/30 flex items-center gap-2 transition"
-              >
-                <span>Tüm Ürünleri İncele</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-
-              <Link
-                href="/pos"
-                className="px-5 py-3.5 bg-stone-800/80 hover:bg-stone-800 text-amber-200 font-semibold rounded-xl border border-stone-700/80 flex items-center gap-2 transition"
-              >
-                <MonitorCheck className="w-4 h-4 text-amber-400" />
-                <span>Web POS Kasa Ekranı</span>
-              </Link>
-
-              <Link
-                href="/toptan-b2b"
-                className="px-5 py-3.5 bg-sky-950/80 hover:bg-sky-900 text-sky-200 font-semibold rounded-xl border border-sky-800/80 flex items-center gap-2 transition"
-              >
-                <Building2 className="w-4 h-4 text-sky-400" />
-                <span>B2B Toptan Portalı</span>
-              </Link>
-            </div>
 
             {/* Quick Stats */}
             <div className="grid grid-cols-3 gap-4 pt-4 border-t border-stone-800 text-xs">
