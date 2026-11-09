@@ -211,13 +211,6 @@ export function Header() {
           {/* User actions: Wishlist & Cart */}
           <div className="flex items-center gap-3 md:gap-4 shrink-0">
             <Link
-              href="/urunler"
-              className="text-xs font-semibold text-gray-700 hover:text-amber-800 hidden md:block"
-            >
-              Katalog
-            </Link>
-
-            <Link
               href="/blog"
               className="text-xs font-semibold text-gray-700 hover:text-amber-800 hidden md:block"
             >
