@@ -204,23 +204,6 @@ export function Footer() {
       <div className="border-t border-stone-800 py-5 px-4 text-xs text-stone-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>{siteSettings["site.footer.copyright"]}</p>
-          {socialLinks.length > 0 && (
-            <div className="flex items-center gap-2">
-              {socialLinks.map(({ key, label, href, Icon }) => (
-                <a
-                  key={key}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={label}
-                  title={label}
-                  className="w-8 h-8 rounded-full border border-stone-700 flex items-center justify-center text-stone-500 hover:text-amber-400 hover:border-amber-500 transition"
-                >
-                  <Icon />
-                </a>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </footer>
