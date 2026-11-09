@@ -5,6 +5,27 @@ import Link from "next/link";
 import { Scissors, Phone, Mail, MapPin, ShieldCheck, RefreshCw, CreditCard, Clock } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
+/* Marka ikonları (lucide bu sürümde marka ikonları içermiyor; alt bilgi için satır-ikon olarak çizilir) */
+const iconProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className: "w-4 h-4" };
+const InstagramIcon = () => (
+  <svg {...iconProps}><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none" /></svg>
+);
+const FacebookIcon = () => (
+  <svg {...iconProps}><path fill="currentColor" stroke="none" d="M13.4 21v-6.4h2.2l.3-2.6h-2.5V9.3c0-.75.2-1.26 1.3-1.26h1.3V5.75c-.3-.04-1.3-.13-2.5-.13-2.6 0-4.3 1.57-4.3 4.4v2.45H9.6v2.6h2.1V21h1.7z" /></svg>
+);
+const YoutubeIcon = () => (
+  <svg {...iconProps}><path d="M22 12s0-3.4-.4-5a3 3 0 0 0-2.3-2.1C17.6 4.5 12 4.5 12 4.5s-5.6 0-7.3.4A3 3 0 0 0 2.4 7C2 8.6 2 12 2 12s0 3.4.4 5a3 3 0 0 0 2.3 2.1c1.7.4 7.3.4 7.3.4s5.6 0 7.3-.4a3 3 0 0 0 2.3-2.1c.4-1.6.4-5 .4-5z" /><path d="M10.2 9.7l4.8 2.3-4.8 2.3z" fill="currentColor" stroke="none" /></svg>
+);
+const TikTokIcon = () => (
+  <svg {...iconProps}><path d="M14.5 4v10.4a4.2 4.2 0 1 1-4.2-4.2" /><path d="M14.5 5.4a6.4 6.4 0 0 0 4.9 4.6" /></svg>
+);
+const XIcon = () => (
+  <svg {...iconProps}><path d="M4.5 4.5l15 15M19.5 4.5l-15 15" /></svg>
+);
+const LinkedInIcon = () => (
+  <svg {...iconProps}><path d="M6.5 10.2V18.5" /><circle cx="6.5" cy="6" r="1.2" fill="currentColor" stroke="none" /><path d="M11.4 18.5v-5.3a3.1 3.1 0 0 1 6.2 0v5.3" /></svg>
+);
+
 export function Footer() {
   const [siteSettings, setSiteSettings] = useState<Record<string, string>>(DEFAULT_SITE_SETTINGS);
   useEffect(() => {
@@ -23,6 +44,19 @@ export function Footer() {
   const brandParts = brandName.trim().split(/\s+/);
   const brandLast = brandParts.length > 1 ? brandParts[brandParts.length - 1] : "";
   const brandHead = brandParts.length > 1 ? brandParts.slice(0, -1).join(" ") : brandName;
+  const normUrl = (v?: string) => {
+    const t = (v || "").trim();
+    if (!t) return null;
+    return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+  };
+  const socialLinks = [
+    { key: "instagram", label: "Instagram", href: normUrl(siteSettings["site.social.instagram"]), Icon: InstagramIcon },
+    { key: "facebook", label: "Facebook", href: normUrl(siteSettings["site.social.facebook"]), Icon: FacebookIcon },
+    { key: "youtube", label: "YouTube", href: normUrl(siteSettings["site.social.youtube"]), Icon: YoutubeIcon },
+    { key: "tiktok", label: "TikTok", href: normUrl(siteSettings["site.social.tiktok"]), Icon: TikTokIcon },
+    { key: "x", label: "X (Twitter)", href: normUrl(siteSettings["site.social.x"]), Icon: XIcon },
+    { key: "linkedin", label: "LinkedIn", href: normUrl(siteSettings["site.social.linkedin"]), Icon: LinkedInIcon },
+  ].filter((x) => x.href) as { key: string; label: string; href: string; Icon: () => React.JSX.Element }[];
   return (
     <footer className="bg-stone-900 text-stone-300 border-t border-stone-800">
       {/* Trust badges banner */}
@@ -104,6 +138,25 @@ export function Footer() {
               <span>{siteSettings["site.footer.email"]}</span>
             </p>
           </div>
+
+          {socialLinks.length > 0 && (
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-stone-500 mr-1">Bizi Takip Edin</span>
+              {socialLinks.map(({ key, label, href, Icon }) => (
+                <a
+                  key={key}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={label}
+                  title={label}
+                  className="w-8 h-8 rounded-full border border-stone-700 flex items-center justify-center text-stone-400 hover:text-amber-400 hover:border-amber-500 transition"
+                >
+                  <Icon />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Categories */}

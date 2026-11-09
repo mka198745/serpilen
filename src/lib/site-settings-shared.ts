@@ -15,6 +15,13 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.footer.phone_line": "0850 888 20 26 & 0216 333 44 55",
   "site.footer.email": "siparis@ipektuhafiye.com",
   "site.footer.copyright": "© 2026 İpek Tuhafiye San. ve Tic. Ltd. Şti. Tüm Hakları Saklıdır.",
+  // Sosyal medya (boş bırakılan ikon footer'da gösterilmez)
+  "site.social.instagram": "",
+  "site.social.facebook": "",
+  "site.social.youtube": "",
+  "site.social.tiktok": "",
+  "site.social.x": "",
+  "site.social.linkedin": "",
 };
 
 export const SITE_SETTING_KEYS = Object.keys(DEFAULT_SITE_SETTINGS);

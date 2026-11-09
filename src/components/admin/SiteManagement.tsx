@@ -122,6 +122,12 @@ const FOOTER_KEYS = [
   "site.footer.phone_line",
   "site.footer.email",
   "site.footer.copyright",
+  "site.social.instagram",
+  "site.social.facebook",
+  "site.social.youtube",
+  "site.social.tiktok",
+  "site.social.x",
+  "site.social.linkedin",
 ];
 
 function HeaderSettingsPanel() {
@@ -173,6 +179,15 @@ function HeaderSettingsPanel() {
   );
 }
 
+const SOCIAL_FIELDS: { key: string; label: string; placeholder: string }[] = [
+  { key: "site.social.instagram", label: "Instagram", placeholder: "https://instagram.com/kullaniciadi" },
+  { key: "site.social.facebook", label: "Facebook", placeholder: "https://facebook.com/sayfaadi" },
+  { key: "site.social.youtube", label: "YouTube", placeholder: "https://youtube.com/@kanaladi" },
+  { key: "site.social.tiktok", label: "TikTok", placeholder: "https://tiktok.com/@kullaniciadi" },
+  { key: "site.social.x", label: "X (Twitter)", placeholder: "https://x.com/kullaniciadi" },
+  { key: "site.social.linkedin", label: "LinkedIn", placeholder: "https://linkedin.com/company/sirketadi" },
+];
+
 function FooterSettingsPanel() {
   const { form, setForm, loading, saving, feedback, save } = useSiteSettings();
   return (
@@ -209,6 +224,26 @@ function FooterSettingsPanel() {
           <div>
             <label className={labelCls}>Telif (Copyright) Metni</label>
             <input className={inputCls} value={form["site.footer.copyright"]} onChange={(e) => setForm({ ...form, "site.footer.copyright": e.target.value })} />
+          </div>
+
+          <div className="pt-2 border-t border-stone-100">
+            <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1">Sosyal Medya</p>
+            <p className="text-[10px] text-stone-400 mb-2">Boş bırakılan alan footer'da gösterilmez. Tam adres (https://...) girin.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {SOCIAL_FIELDS.map((f) => (
+                <div key={f.key}>
+                  <label className={labelCls}>{f.label}</label>
+                  <input
+                    className={inputCls}
+                    type="url"
+                    inputMode="url"
+                    value={form[f.key] || ""}
+                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                    placeholder={f.placeholder}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
           <div className="flex justify-end">
             <button onClick={() => save(FOOTER_KEYS)} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
