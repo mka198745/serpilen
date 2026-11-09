@@ -60,56 +60,57 @@ export default async function HomePage() {
       {/* 1. Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-amber-950 via-stone-900 to-stone-950 text-white py-12 md:py-20 px-4">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-          <div className="lg:col-span-7 space-y-6">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1]">
-              Dikiş, Nakış ve Hobi Dünyasında <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">
-                Usta İmzası Kalite.
-              </span>
-            </h1>
-
-            {/* Quick Stats */}
-            <div className="grid grid-cols-3 gap-4 pt-4 border-t border-stone-800 text-xs">
-              <div>
-                <span className="block text-xl font-black text-amber-400">10.000+</span>
-                <span className="text-stone-400">Aktif Stok Kalemi</span>
-              </div>
-              <div>
-                <span className="block text-xl font-black text-amber-400">Tekil</span>
-                <span className="text-stone-400">Merkezi Depo / POS</span>
-              </div>
-              <div>
-                <span className="block text-xl font-black text-amber-400">GİB</span>
-                <span className="text-stone-400">e-Fatura / e-Arşiv</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Hero Visual Cards */}
-          <div className="lg:col-span-5 relative">
-            <div className="relative mx-auto max-w-md bg-stone-900/90 rounded-3xl p-4 border border-stone-800 shadow-2xl backdrop-blur-md">
-              <div className="relative aspect-4/3 rounded-2xl overflow-hidden mb-4 border border-stone-700/60">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80"
-                  alt="Gütermann Dikiş İplikleri"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
-                  <div>
-                    <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                      Vitrin Öne Çıkan
-                    </span>
-                    <h3 className="text-white font-bold text-base mt-1">
-                      Gütermann Sew-All Dikiş İpliği Serisi
-                    </h3>
-                    <p className="text-stone-300 text-xs">Tüm renk kodlarıyla stokta</p>
+          {/* Left: Vitrin Öne Çıkan vitrinler (sola yanaşık, iki kart) */}
+          <div className="lg:col-span-7">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Vitrin Kartı 1 — Gütermann */}
+              <div className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
+                <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80"
+                    alt="Gütermann Dikiş İplikleri"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex items-end p-4">
+                    <div>
+                      <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                        Vitrin Öne Çıkan
+                      </span>
+                      <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">
+                        Gütermann Sew-All Dikiş İpliği Serisi
+                      </h3>
+                      <p className="text-stone-300 text-[11px]">Tüm renk kodlarıyla stokta</p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Multi-Channel Unified Status Box */}
-              <div className="bg-stone-950/90 rounded-xl p-3 border border-stone-800 space-y-2 text-xs">
+              {/* Vitrin Kartı 2 — YKK Metal Fermuar */}
+              <div className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
+                <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="https://images.unsplash.com/photo-1544441893-675973e31985?w=800&auto=format&fit=crop&q=80"
+                    alt="YKK Metal Dişli Fermuar"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex items-end p-4">
+                    <div>
+                      <span className="bg-sky-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                        Vitrin Öne Çıkan
+                      </span>
+                      <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">
+                        YKK Metal Dişli Fermuar No.5
+                      </h3>
+                      <p className="text-stone-300 text-[11px]">3 finisaj, antik pirinç · stokta</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Multi-Channel Unified Status Box (her iki vitrin için ortak) */}
+              <div className="sm:col-span-2 bg-stone-950/90 rounded-xl p-3 border border-stone-800 space-y-2 text-xs">
                 <div className="flex items-center justify-between text-stone-300">
                   <span className="flex items-center gap-1.5 font-medium">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -130,6 +131,16 @@ export default async function HomePage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Right: Başlık */}
+          <div className="lg:col-span-5 space-y-6">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-black tracking-tight leading-[1.1]">
+              Dikiş, Nakış ve Hobi Dünyasında <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">
+                Usta İmzası Kalite.
+              </span>
+            </h1>
           </div>
         </div>
       </section>
