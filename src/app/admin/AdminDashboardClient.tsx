@@ -2258,54 +2258,57 @@ export function AdminDashboardClient({
 
             {/* ---- FAZ 3 / WMS ALT-SEKME: DEPOLAR (Depo Ekleme) ---- */}
             {wmsSubTab === "warehouses" && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <form onSubmit={handleAddWarehouseForm} className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3 h-max">
+              <div className="flex flex-col gap-4">
+                <form onSubmit={handleAddWarehouseForm} className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3">
                   <div>
                     <h3 className="font-bold text-sm text-stone-900">Yeni Depo Ekle</h3>
                     <p className="text-[11px] text-stone-400">Depo kodu addan otomatik üretilir (örn. Bursa Depo → BRD).</p>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Depo Adı *</label>
-                    <input
-                      value={newWarehouseForm.name}
-                      onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, name: e.target.value })}
-                      placeholder="örn. Bursa Bölge Deposu"
-                      className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    <div className="md:col-span-4">
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Depo Adı *</label>
+                      <input
+                        value={newWarehouseForm.name}
+                        onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, name: e.target.value })}
+                        placeholder="örn. Bursa Bölge Deposu"
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs h-[38px]"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Depo Tipi</label>
+                      <select
+                        value={newWarehouseForm.type}
+                        onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, type: e.target.value })}
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs h-[38px]"
+                      >
+                        <option value="CENTRAL">Merkez Depo (CENTRAL)</option>
+                        <option value="STORE">Mağaza Deposu (STORE)</option>
+                        <option value="ONLINE">E-Ticaret Deposu (ONLINE)</option>
+                        <option value="WHOLESALE">Toptan / B2B Deposu (WHOLESALE)</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-5">
+                      <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Adres (opsiyonel)</label>
+                      <input
+                        value={newWarehouseForm.address}
+                        onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, address: e.target.value })}
+                        placeholder="Mahalle, cadde, şehir…"
+                        className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs h-[38px]"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Depo Tipi</label>
-                    <select
-                      value={newWarehouseForm.type}
-                      onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, type: e.target.value })}
-                      className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
+                  <div className="flex md:justify-end">
+                    <button
+                      type="submit"
+                      disabled={addingWarehouseForm}
+                      className="w-full md:w-auto md:px-8 py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition"
                     >
-                      <option value="CENTRAL">Merkez Depo (CENTRAL)</option>
-                      <option value="STORE">Mağaza Deposu (STORE)</option>
-                      <option value="ONLINE">E-Ticaret Deposu (ONLINE)</option>
-                      <option value="WHOLESALE">Toptan / B2B Deposu (WHOLESALE)</option>
-                    </select>
+                      {addingWarehouseForm ? "Ekleniyor…" : "Depo Oluştur"}
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-stone-500 uppercase mb-1">Adres (opsiyonel)</label>
-                    <textarea
-                      value={newWarehouseForm.address}
-                      onChange={(e) => setNewWarehouseForm({ ...newWarehouseForm, address: e.target.value })}
-                      placeholder="Mahalle, cadde, şehir…"
-                      rows={2}
-                      className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={addingWarehouseForm}
-                    className="w-full py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition"
-                  >
-                    {addingWarehouseForm ? "Ekleniyor…" : "Depo Oluştur"}
-                  </button>
                 </form>
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-stone-200 overflow-hidden h-max">
-                  <table className="w-full text-xs text-left">
+                <div className="w-full bg-white rounded-2xl border border-stone-200 overflow-x-auto">
+                  <table className="w-full text-xs text-left min-w-[760px]">
                     <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                       <tr>
                         <th className="py-2.5 px-3">Kod</th>
