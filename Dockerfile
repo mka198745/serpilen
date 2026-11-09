@@ -3,6 +3,8 @@
 FROM node:22-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+# better-sqlite3 header indirme (nodejs.org) kapalı ortamlarda yerel Node başlıkları kullanılır
+ENV npm_config_nodedir=/usr/local
 COPY package.json package-lock.json* ./
 RUN npm ci
 
@@ -18,7 +20,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
-ENV DATABASE_URL=sqlite:./data/tuhafiye.db
+ENV DATABASE_URL=sqlite:/app/data/tuhafiye.db
 
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json

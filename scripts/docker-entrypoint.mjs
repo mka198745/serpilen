@@ -16,5 +16,5 @@ console.log("[entrypoint] Migration uygulanıyor...");
 await run("node", ["scripts/db-apply.mjs"]);
 console.log("[entrypoint] Seed kontrol ediliyor...");
 await run("npx", ["tsx", "scripts/seed.ts"]);
-console.log("[entrypoint] Uygulama başlatılıyor...");
-await run("npm", ["start", "--", "--hostname", "0.0.0.0", "--port", process.env.PORT || "3000"]);
+console.log("[entrypoint] Uygulama başlatılıyor (standalone)...");
+await run("npm", ["start"]);

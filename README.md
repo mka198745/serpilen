@@ -50,7 +50,7 @@ Durdurmak: `docker compose down` (veriler `app-data` volume'ünde kalır).
 
    ```bash
    npm run dev          # geliştirme (http://localhost:3000)
-   npm run build && npm start   # üretim
+   npm run build && npm start   # üretim (standalone sunucu: .next/standalone/server.js)
    ```
 
 ## Yararlı Komutlar
@@ -59,7 +59,7 @@ Durdurmak: `docker compose down` (veriler `app-data` volume'ünde kalır).
 | ------------------ | ----------------------------------------------- |
 | `npm run dev`      | Geliştirme sunucusu                             |
 | `npm run build`    | Üretim derlemesi                                |
-| `npm run start`    | Üretim sunucusu                                 |
+| `npm run start`    | Üretim sunucusu — standalone (`.next/standalone/server.js`); `DATABASE_URL` tanımsızsa depo kökündeki mutlak `./data/tuhafiye.db` kullanılır |
 | `npm run typecheck`| TypeScript kontrolü                             |
 | `npm run db:apply`   | `drizzle-sqlite/` migration'larını uygular     |
 | `npm run db:generate`| `drizzle-sqlite/` altına SQL migration üretir  |
@@ -67,6 +67,20 @@ Durdurmak: `docker compose down` (veriler `app-data` volume'ünde kalır).
 | `npm run db:studio`| Drizzle Studio (veritabanı arayüzü)             |
 
 Ayrıca `GET /api/health` ilk çağrıda eksikse seed'i otomatik tamamlar.
+
+`next.config.ts` içinde `output: "standalone"` tanımlıdır. `npm run build` sonrası
+`postbuild` betiği (`scripts/prepare-standalone.mjs`) `.next/static` içeriğini
+standalone çıktısına kopyalar ve yerel geliştirme veritabanı (`data/`) ile gizli
+dosyaların bu çıktıya girmediğini garanti eder. Fresh klon üzerinde üretim:
+
+```bash
+npm ci && npm run db:apply && npm run db:seed   # bir kez
+npm run build && npm start
+```
+
+Not: Build-time `.env` dosyası varsa Next.js tasarımı gereği standalone çıktısına
+kopyalanır; gizli anahtarları build-time `.env` yerine çalışma-anında ortam
+değişkeni olarak verin.
 
 ## MySQL'e Geçiş (sonraki aşama)
 
