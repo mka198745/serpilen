@@ -374,6 +374,12 @@ export async function PATCH(request: Request) {
     const updates: Record<string, unknown> = {};
     const changedBy = String(body.changedBy || "Sipariş Yönetimi");
 
+    // Kargo alanlarını normalize et (trim + uzunluk sınırı, boş string = "yok say")
+    const cleanCarrier =
+      typeof body.carrier === "string" && body.carrier.trim() !== "" ? body.carrier.trim().slice(0, 80) : undefined;
+    const cleanTracking =
+      typeof body.trackingNumber === "string" && body.trackingNumber.trim() !== "" ? body.trackingNumber.trim().slice(0, 80) : undefined;
+
     // Durum geçişi
     if (body.status && body.status !== order.status) {
       const allowed = ORDER_FLOW[order.status] || [];
@@ -385,18 +391,21 @@ export async function PATCH(request: Request) {
       }
       updates.status = body.status;
 
-      // Kargoya verilirken otomatik takip no üret
-      if (body.status === "SHIPPED" && !order.trackingNumber) {
-        updates.trackingNumber = `YK-${Date.now().toString().slice(-8)}`;
-        updates.carrier = order.carrier || "Yurtiçi Kargo";
+      // Kargoya verilirken: admin'in girdiği firma/takip no önceliklidir;
+      // takip no yoksa otomatik üret.
+      if (body.status === "SHIPPED") {
+        const effectiveTracking = cleanTracking || order.trackingNumber;
+        if (!effectiveTracking) updates.trackingNumber = `YK-${Date.now().toString().slice(-8)}`;
+        if (cleanCarrier) updates.carrier = cleanCarrier;
+        else if (!order.carrier) updates.carrier = "Yurtiçi Kargo";
       }
       if (body.status === "CANCELLED") updates.paymentStatus = "REFUNDED";
       if (body.status === "REFUNDED") updates.paymentStatus = "REFUNDED";
     }
 
-    // Kargo bilgisi güncelleme
-    if (body.trackingNumber !== undefined) updates.trackingNumber = body.trackingNumber;
-    if (body.carrier !== undefined) updates.carrier = body.carrier;
+    // Kargo bilgisi güncelleme (yalnız dolu değerler; asla boşla üzerine yazma)
+    if (cleanTracking) updates.trackingNumber = cleanTracking;
+    if (cleanCarrier) updates.carrier = cleanCarrier;
     if (body.notes !== undefined) updates.notes = body.notes;
 
     if (Object.keys(updates).length === 0) {
@@ -407,11 +416,18 @@ export async function PATCH(request: Request) {
     const [updated] = await db.select().from(orders).where(eq(orders.id, id));
 
     if (updates.status) {
+      let historyNote = typeof body.note === "string" && body.note.trim() !== "" ? body.note.trim() : undefined;
+      if (!historyNote && updates.status === "SHIPPED") {
+        const c = (updates.carrier as string) || cleanCarrier || order.carrier || "";
+        const t = (updates.trackingNumber as string) || cleanTracking || order.trackingNumber || "";
+        historyNote = `Kargoya verildi${c ? ` — ${c}` : ""}${t ? ` · Takip: ${t}` : ""}`;
+      }
+      if (!historyNote) historyNote = `Durum güncellendi: ${ORDER_STATUS_LABELS[String(updates.status)] || updates.status}`;
       await db.insert(orderStatusHistory).values({
         orderId: id,
         fromStatus: order.status,
         toStatus: String(updates.status),
-        note: body.note || `Durum güncellendi: ${ORDER_STATUS_LABELS[String(updates.status)] || updates.status}`,
+        note: historyNote,
         changedBy,
       });
     }

@@ -460,6 +460,61 @@ export function AdminDashboardClient({
     }
   };
 
+  // --- Sevke Hazır aşaması: kargo firması + takip no taslakları ---
+  const CARGO_CARRIERS = [
+    "Yurtiçi Kargo",
+    "Aras Kargo",
+    "MNG Kargo",
+    "PTT Kargo",
+    "Sürat Kargo",
+    "Trendyol Express",
+    "Hepsijet",
+    "Kolay Gelsin",
+    "UPS",
+    "DHL",
+  ];
+  const [cargoDrafts, setCargoDrafts] = useState<Record<number, { carrier: string; trackingNumber: string }>>({});
+  const cargoDraftFor = (ord: any) =>
+    cargoDrafts[ord.id] ?? { carrier: ord.carrier || "Yurtiçi Kargo", trackingNumber: ord.trackingNumber || "" };
+  const setCargoDraft = (ord: any, patch: Partial<{ carrier: string; trackingNumber: string }>) =>
+    setCargoDrafts((prev) => {
+      const base = prev[ord.id] ?? { carrier: ord.carrier || "Yurtiçi Kargo", trackingNumber: ord.trackingNumber || "" };
+      return { ...prev, [ord.id]: { ...base, ...patch } };
+    });
+
+  const saveCargoInfo = async (ord: any, markShipped: boolean) => {
+    const draft = cargoDraftFor(ord);
+    const payload: Record<string, unknown> = {
+      id: ord.id,
+      carrier: draft.carrier,
+      trackingNumber: draft.trackingNumber.trim() || undefined,
+      changedBy: "Sipariş Yönetimi",
+    };
+    if (markShipped) payload.status = "SHIPPED";
+    const res = await fetch("/api/orders", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setOrders((prev) => prev.map((o) => (o.id === ord.id ? { ...o, ...data.data } : o)));
+      setCargoDrafts((prev) => {
+        const next = { ...prev };
+        delete next[ord.id];
+        return next;
+      });
+      setOrderFeedback({
+        text: markShipped
+          ? `${ord.orderNumber} kargoya verildi — ${data.data?.carrier || draft.carrier}${data.data?.trackingNumber ? ` · Takip: ${data.data.trackingNumber}` : ""}`
+          : `${ord.orderNumber} kargo bilgileri kaydedildi.`,
+        isError: false,
+      });
+    } else {
+      setOrderFeedback({ text: data.error || "Kargo bilgileri kaydedilemedi.", isError: true });
+    }
+  };
+
   const openReturnModal = (order: any) => {
     setReturnModalOrder(order);
     const initial: Record<number, number> = {};
@@ -3611,8 +3666,10 @@ export function AdminDashboardClient({
                               </span>
                             </td>
                             <td className="py-3 px-3">
-                              <div className="flex flex-wrap gap-1">
-                                {(ORDER_NEXT[ord.status] || []).map((next) => (
+                              <div className="flex flex-wrap gap-1 items-start">
+                                {(ORDER_NEXT[ord.status] || [])
+                                  .filter((next) => !(ord.status === "READY_FOR_SHIPMENT" && next === "SHIPPED"))
+                                  .map((next) => (
                                   <button
                                     key={next}
                                     onClick={() => void advanceOrder(ord.id, next)}
@@ -3621,6 +3678,47 @@ export function AdminDashboardClient({
                                     {ORDER_STATUS_LABELS[next] || next}
                                   </button>
                                 ))}
+                                {ord.status === "READY_FOR_SHIPMENT" && (() => {
+                                  const draft = cargoDraftFor(ord);
+                                  const carrierOptions = [...new Set([...CARGO_CARRIERS, draft.carrier])];
+                                  return (
+                                    <div className="flex flex-col gap-1 min-w-[160px]">
+                                      <select
+                                        value={draft.carrier}
+                                        onChange={(e) => setCargoDraft(ord, { carrier: e.target.value })}
+                                        aria-label="Kargo Firması Seç"
+                                        className="px-1.5 py-1 border border-stone-200 rounded-lg text-[10px] bg-white text-stone-700 focus:outline-none focus:ring-1 focus:ring-amber-600"
+                                      >
+                                        {carrierOptions.map((c) => (
+                                          <option key={c} value={c}>{c}</option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        value={draft.trackingNumber}
+                                        onChange={(e) => setCargoDraft(ord, { trackingNumber: e.target.value })}
+                                        placeholder="Kargo Takip No"
+                                        aria-label="Kargo Takip No"
+                                        className="px-1.5 py-1 border border-stone-200 rounded-lg text-[10px] font-mono placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-600"
+                                      />
+                                      <div className="flex gap-1">
+                                        <button
+                                          onClick={() => void saveCargoInfo(ord, false)}
+                                          title="Takip bilgisini kaydet (durum değişmez)"
+                                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-stone-200 text-stone-700 hover:bg-stone-300"
+                                        >
+                                          Kaydet
+                                        </button>
+                                        <button
+                                          onClick={() => void saveCargoInfo(ord, true)}
+                                          title="Durumu Kargoda yap ve takip bilgisini kaydet"
+                                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-700 text-white hover:bg-amber-800"
+                                        >
+                                          Kargoda →
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                                 {ord.status === "DELIVERED" && (
                                   <button onClick={() => openReturnModal(ord)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-600 text-white">
                                     İade Başlat
