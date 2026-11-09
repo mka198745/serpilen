@@ -124,6 +124,7 @@ export function AdminDashboardClient({
     | "erp"
     | "ai"
     | "users"
+    | "roleMatrix"
     | "audit"
     | "reports"
     | "b2b"
@@ -1436,6 +1437,18 @@ export function AdminDashboardClient({
           >
             <Users2 className="w-4 h-4" />
             <span>Kullanıcılar & Roller</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("roleMatrix")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "roleMatrix"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Rol Yetki Matrisi</span>
           </button>
 
           <button
@@ -3978,14 +3991,38 @@ export function AdminDashboardClient({
               </div>
             </div>
 
-            {/* Rol → Modül yetki matrisi (bilgilendirme) */}
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB: ROL YETKİ MATRİSİ (ayrı sekme) */}
+        {/* ============================================================ */}
+        {activeTab === "roleMatrix" && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-black text-stone-900">Rol Yetki Matrisi</h2>
+                <p className="text-xs text-stone-500">
+                  Hangi rolün hangi modüle erişebildiğini gösteren matris (FAZ 1 — Temel modülü).
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveTab("users")}
+                className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
+              >
+                <Users2 className="w-4 h-4" />
+                <span>Kullanıcılar & Roller'e Git</span>
+              </button>
+            </div>
+
             <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-3">
-              <h3 className="font-bold text-sm text-stone-900">Rol Yetki Matrisi</h3>
+              <h3 className="font-bold text-sm text-stone-900">Rol → Modül Yetki Matrisi</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-[11px] text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                     <tr>
                       <th className="py-2 px-3">Rol</th>
+                      <th className="py-2 px-3">Kod</th>
                       <th className="py-2 px-3 text-center">Yönetim & WMS</th>
                       <th className="py-2 px-3 text-center">Web POS</th>
                       <th className="py-2 px-3 text-center">B2B Toptan</th>
@@ -4001,6 +4038,7 @@ export function AdminDashboardClient({
                     ].map(([key, label, adm, pos, b2b]) => (
                       <tr key={String(key)}>
                         <td className="py-2 px-3 font-bold text-stone-800">{String(label)}</td>
+                        <td className="py-2 px-3 font-mono text-[10px] text-stone-500">{String(key)}</td>
                         {[adm, pos, b2b].map((granted, i) => (
                           <td key={i} className="py-2 px-3 text-center">
                             {granted ? (
@@ -4018,6 +4056,24 @@ export function AdminDashboardClient({
               <p className="text-[10px] text-stone-400">
                 Matris bilgilendirme amaçlıdır; roller veritabanında tutulur ve ileride modül erişim kısıtları bu tabloya bağlanabilir.
               </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                ["Süper Admin", "SUPER_ADMIN", "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans, stok, ERP ve B2B."],
+                ["Mağaza Müdürü", "STORE_MANAGER", "Mağaza operasyonu: POS, stok, sipariş ve raporlar. Kullanıcı yönetimi ve kritik ayarlar hariç."],
+                ["Depo Sorumlusu", "WAREHOUSE_KEEPER", "Depo/WMS: stok hareketleri, sayım, transfer, mal kabul. POS ve finansal ekranlara erişemez."],
+                ["POS Kasiyeri", "CASHIER", "Yalnızca Web POS: satış, iade, vardiya aç/kapat. Yönetim ve rapor ekranlarına erişemez."],
+                ["B2B Temsilcisi", "B2B_MANAGER", "B2B toptan portalı: cari hesaplar, siparişler, kredili satış ve iskonto yönetimi."],
+              ].map(([label, code, desc]) => (
+                <div key={String(code)} className="bg-white rounded-2xl border border-stone-200 p-4 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-bold text-stone-900">{label}</h4>
+                    <code className="text-[10px] font-mono text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{code}</code>
+                  </div>
+                  <p className="text-[11px] text-stone-500 leading-relaxed">{desc}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
