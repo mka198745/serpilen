@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
 import { B2BCenter } from "@/components/admin/B2BCenter";
@@ -56,6 +56,8 @@ import {
   PanelBottom,
   Database,
   Newspaper,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
@@ -135,6 +137,26 @@ export function AdminDashboardClient({
     | "database"
     | "content"
   >("dashboard");
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("admin-sidebar-collapsed") === "1") {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      /* localStorage erişilemiyorsa sorun değil */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("admin-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
+    } catch {
+      /* yoksay */
+    }
+  }, [sidebarCollapsed]);
 
   /* --- FAZ 7: POS & Kasa Yönetimi (Admin) --- */
   const [shiftsList, setShiftsList] = useState(shifts);
@@ -1252,18 +1274,32 @@ export function AdminDashboardClient({
 
   return (
     <div className="min-h-screen bg-stone-100 flex flex-col md:flex-row text-stone-900">
-      {/* 1. Admin Sidebar Navigation */}
-      <aside className="w-full md:w-64 bg-stone-900 text-stone-300 flex flex-col shrink-0 border-r border-stone-800">
-        <div className="p-4 border-b border-stone-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center text-white font-bold text-sm">
+      {/* 1. Admin Sidebar Navigation — sola kapanabilir / açılabilir */}
+      <aside
+        aria-hidden={sidebarCollapsed}
+        className={`w-full md:w-64 bg-stone-900 text-stone-300 flex flex-col shrink-0 border-r border-stone-800 overflow-hidden transition-all duration-300 ease-in-out ${
+          sidebarCollapsed ? "max-h-0 border-r-0 opacity-0 pointer-events-none md:max-h-none md:w-0 md:-ml-64" : "max-h-[3000px]"
+        }`}
+      >
+        <div className="p-4 border-b border-stone-800 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
               İK
             </div>
-            <div>
+            <div className="min-w-0">
               <span className="font-black text-white text-sm block tracking-tight">İPEK TUHAFİYE</span>
               <span className="text-[10px] text-stone-400 font-mono block">Yönetim SaaS & WMS</span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed(true)}
+            title="Menüyü kapat (sola katla)"
+            aria-label="Menüyü kapat"
+            className="p-2 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition shrink-0"
+          >
+            <PanelLeftClose className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Navigation Tabs */}
@@ -1549,8 +1585,22 @@ export function AdminDashboardClient({
         </div>
       </aside>
 
+      {/* Sidebar kapalıyken solda "Aç" düğmesi */}
+      {sidebarCollapsed && (
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(false)}
+          title="Menüyü aç"
+          aria-label="Menüyü aç"
+          className="fixed left-0 top-4 z-40 flex items-center gap-1.5 pl-2 pr-3 py-3 rounded-r-2xl bg-stone-900 text-amber-400 border border-stone-800 border-l-0 shadow-lg hover:bg-stone-800 hover:text-amber-300 transition"
+        >
+          <PanelLeftOpen className="w-5 h-5" />
+          <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Menü</span>
+        </button>
+      )}
+
       {/* 2. Main Work Area */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto space-y-6 min-w-0">
         {/* ============================================================ */}
         {/* TAB 1: DASHBOARD (KPIs) */}
         {/* ============================================================ */}
