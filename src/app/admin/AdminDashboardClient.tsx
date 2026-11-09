@@ -1537,7 +1537,7 @@ export function AdminDashboardClient({
               <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
                 <span className="text-xs font-bold text-amber-900 uppercase">Fiziki Mağaza Web POS</span>
                 <div className="text-xl font-black text-amber-950 mt-1">{posCount} Satış</div>
-                <div className="text-sm font-bold text-amber-800">{channelRevenue.pos.toFixed(2)} TL</div>
+                <div className="text-sm font-bold text-amber-800">{channelRevenue.pos.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
                 <p className="text-xs text-amber-800 mt-1">
                   {storeName} • Anında Kasa Fişi & Stok Düşümü
                 </p>
@@ -1546,7 +1546,7 @@ export function AdminDashboardClient({
               <div className="bg-sky-50 p-4 rounded-2xl border border-sky-200">
                 <span className="text-xs font-bold text-sky-900 uppercase">B2B Toptan Sevk</span>
                 <div className="text-xl font-black text-sky-950 mt-1">{b2bCount} Sipariş</div>
-                <div className="text-sm font-bold text-sky-800">{channelRevenue.b2b.toFixed(2)} TL</div>
+                <div className="text-sm font-bold text-sky-800">{channelRevenue.b2b.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
                 <p className="text-xs text-sky-800 mt-1">
                   Cari Açık Hesap & Toptan İskontolu Siparişler
                 </p>
@@ -1555,7 +1555,7 @@ export function AdminDashboardClient({
               <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-200">
                 <span className="text-xs font-bold text-emerald-900 uppercase">Online B2C E-Ticaret</span>
                 <div className="text-xl font-black text-emerald-950 mt-1">{onlineCount} Sipariş</div>
-                <div className="text-sm font-bold text-emerald-800">{channelRevenue.online.toFixed(2)} TL</div>
+                <div className="text-sm font-bold text-emerald-800">{channelRevenue.online.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
                 <p className="text-xs text-emerald-800 mt-1">
                   Kredi Kartı / 3D Secure / Yurtiçi Kargo
                 </p>
@@ -1588,6 +1588,13 @@ export function AdminDashboardClient({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
+                    {orders.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-stone-400 text-xs">
+                          Henüz sipariş/satış kaydı yok — sistem yeni. İlk satıştan sonra bu liste otomatik dolar.
+                        </td>
+                      </tr>
+                    )}
                     {orders.slice(0, 5).map((ord) => (
                       <tr key={ord.id} className="hover:bg-stone-50/50">
                         <td className="py-3 px-3 font-mono font-bold">{ord.orderNumber}</td>
