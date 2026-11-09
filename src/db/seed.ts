@@ -107,6 +107,8 @@ export async function seedDatabase() {
     { name: "Örgü & Hobi", slug: "orgu-hobi", icon: "Sparkles", description: "El örgü ipleri, tığ, şiş, punch ve makrome malzemeleri", displayOrder: 5 },
     { name: "Dikiş Malzemeleri", slug: "dikis-malzemeleri", icon: "Package", description: "Mezuralar, dikiş iğneleri, kumaş makasları, yüksükler", displayOrder: 6 },
     { name: "Tekstil Yardımcı Malzemeleri", slug: "tekstil-yardimci", icon: "Layers", description: "Tela, vatka, lastik, cırt cırt, kordon ve çıtçıtlar", displayOrder: 7 },
+    { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: "Handbag", description: "Çanta tokası, sapı, çıtçıt, mıknatıs kapama, metal çerçeve ve çanta aksesuarları", displayOrder: 8 },
+    { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: "Puzzle", description: "Nakış, punch, makrome, tığ işi ve DIY hobi başlangıç kitleri", displayOrder: 9 },
   ]).returning({ id: categories.id });
   const insertedCats = await db.select().from(categories).where(inArray(categories.id, __insertedCats_ids.map((r) => r.id))).orderBy(asc(categories.id));
 
