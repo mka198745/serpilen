@@ -44,3 +44,6 @@ data/uploads/
 
 # Veritabani yedekleri
 data/backups/
+
+# Tool artifacts (image search scratch)
+image-search/
