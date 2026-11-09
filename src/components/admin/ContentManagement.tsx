@@ -328,29 +328,26 @@ export function ContentManagement() {
       </div>
 
       <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
+        <table className="w-full text-xs text-left table-fixed">
             <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
               <tr>
-                <th className="py-3 px-3">Başlık</th>
-                <th className="py-3 px-3">Kategori</th>
-                <th className="py-3 px-3">Yazar</th>
-                <th className="py-3 px-3">Yayın</th>
-                <th className="py-3 px-3">Durum</th>
-                <th className="py-3 px-3 text-right">İşlemler</th>
+                <th className="py-3 px-3 w-[38%]">Başlık</th>
+                <th className="py-3 px-3 w-[17%]">Kategori</th>
+                <th className="py-3 px-3 w-[13%]">Yayın</th>
+                <th className="py-3 px-3 w-[12%]">Durum</th>
+                <th className="py-3 px-3 w-[20%] text-right">İşlemler</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
               {filtered.map((p) => (
                 <tr key={p.id} className="hover:bg-stone-50/50 align-middle">
-                  <td className="py-3 px-3 max-w-[320px]">
-                    <span className="font-bold text-stone-900 block truncate" title={p.title}>{p.title}</span>
-                    <span className="text-[10px] text-stone-400 font-mono">/blog/{p.slug}</span>
+                  <td className="py-3 px-3">
+                    <span className="font-bold text-stone-900 block leading-snug break-words" title={p.title}>{p.title}</span>
+                    <span className="text-[10px] text-stone-400 font-mono break-all">/blog/{p.slug}</span>
                   </td>
                   <td className="py-3 px-3">
-                    <span className="bg-amber-50 text-amber-900 px-2 py-0.5 rounded-full text-[10px] font-bold">{p.category || "Dikiş Rehberi"}</span>
+                    <span className="bg-amber-50 text-amber-900 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap">{p.category || "Dikiş Rehberi"}</span>
                   </td>
-                  <td className="py-3 px-3 text-stone-600">{p.author || "—"}</td>
                   <td className="py-3 px-3 text-stone-500 whitespace-nowrap">{new Date(p.publishedAt).toLocaleDateString("tr-TR")}</td>
                   <td className="py-3 px-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.isPublished ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-600"}`}>
@@ -374,14 +371,13 @@ export function ContentManagement() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-stone-400">
+                  <td colSpan={5} className="py-8 text-center text-stone-400">
                     {loading ? "Yükleniyor…" : filter === "all" ? "Henüz içerik yok — “Yeni İçerik” ile ilk makaleyi ekleyin." : "Bu filtrede kayıt yok."}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
       </div>
     </div>
   );
