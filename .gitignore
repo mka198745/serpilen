@@ -41,3 +41,6 @@ tsconfig.tsbuildinfo
 
 # Siteye yüklenen ürün görselleri (çalışma anında oluşur, commitlenmez)
 data/uploads/
+
+# Veritabani yedekleri
+data/backups/

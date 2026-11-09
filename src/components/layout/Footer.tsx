@@ -1,8 +1,28 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Scissors, Phone, Mail, MapPin, ShieldCheck, RefreshCw, CreditCard, Clock } from "lucide-react";
+import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
 export function Footer() {
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/site-settings", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.success && d.data) setSiteSettings({ ...DEFAULT_SITE_SETTINGS, ...d.data });
+        })
+        .catch(() => {});
+    load();
+    window.addEventListener("site-settings-updated", load);
+    return () => window.removeEventListener("site-settings-updated", load);
+  }, []);
+  const brandName = siteSettings["site.brand_name"] || DEFAULT_SITE_SETTINGS["site.brand_name"];
+  const brandParts = brandName.trim().split(/\s+/);
+  const brandLast = brandParts.length > 1 ? brandParts[brandParts.length - 1] : "";
+  const brandHead = brandParts.length > 1 ? brandParts.slice(0, -1).join(" ") : brandName;
   return (
     <footer className="bg-stone-900 text-stone-300 border-t border-stone-800">
       {/* Trust badges banner */}
@@ -59,29 +79,29 @@ export function Footer() {
               <Scissors className="w-4 h-4 -rotate-45" />
             </div>
             <span className="text-lg font-black text-white tracking-tight">
-              İPEK <span className="text-amber-500">TUHAFİYE</span>
+              {brandHead} <span className="text-amber-500">{brandLast}</span>
             </span>
           </div>
           <p className="text-xs text-stone-400 leading-relaxed max-w-sm">
-            1994 yılından bu yana kaliteli dikiş iplikleri, fermuarlar, düğmeler, kurdeleler ve örgü malzemeleriyle terzilerin, moda tasarımcılarının ve hobi tutkunlarının yanındayız.
+            {siteSettings["site.footer.description"]}
           </p>
 
           <div className="space-y-2 text-xs text-stone-400 pt-2">
             <p className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-amber-500 shrink-0" />
-              <span><strong>Mağaza:</strong> Moda Cad. No: 18, Kadıköy / İstanbul</span>
+              <span><strong>Mağaza:</strong> {siteSettings["site.footer.store_address"]}</span>
             </p>
             <p className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-amber-500 shrink-0" />
-              <span><strong>Merkez Depo:</strong> İkitelli OSB Dokumacılar San. Sitesi No: 42, İstanbul</span>
+              <span><strong>Merkez Depo:</strong> {siteSettings["site.footer.warehouse_address"]}</span>
             </p>
             <p className="flex items-center gap-2">
               <Phone className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>0850 888 20 26 & 0216 333 44 55</span>
+              <span>{siteSettings["site.footer.phone_line"]}</span>
             </p>
             <p className="flex items-center gap-2">
               <Mail className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>siparis@ipektuhafiye.com</span>
+              <span>{siteSettings["site.footer.email"]}</span>
             </p>
           </div>
         </div>
@@ -130,11 +150,11 @@ export function Footer() {
       {/* Copyright */}
       <div className="border-t border-stone-800 py-5 px-4 text-xs text-stone-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>© 2026 İpek Tuhafiye San. ve Tic. Ltd. Şti. Tüm Hakları Saklıdır.</p>
+          <p>{siteSettings["site.footer.copyright"]}</p>
           <p className="flex items-center gap-2">
             <span>ERP & GİB e-Fatura Entegre Altyapı</span>
             <span>•</span>
-            <span className="text-stone-400">Next.js & MySQL Drizzle Powered</span>
+            <span className="text-stone-400">Next.js & SQLite Drizzle Powered</span>
           </p>
         </div>
       </div>

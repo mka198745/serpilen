@@ -52,10 +52,14 @@ import {
   Coins,
   Banknote,
   Video,
+  PanelTop,
+  PanelBottom,
+  Database,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
+import { SiteManagement } from "@/components/admin/SiteManagement";
 
 interface AdminDashboardClientProps {
   products: any[];
@@ -123,6 +127,9 @@ export function AdminDashboardClient({
     | "audit"
     | "reports"
     | "b2b"
+    | "siteHeader"
+    | "siteFooter"
+    | "database"
   >("dashboard");
 
   /* --- FAZ 7: POS & Kasa Yönetimi (Admin) --- */
@@ -1441,6 +1448,48 @@ export function AdminDashboardClient({
           >
             <ScrollText className="w-4 h-4" />
             <span>Denetim Kaydı (Audit)</span>
+          </button>
+
+          <div className="pt-3 border-t border-stone-800">
+            <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
+              Site Yönetimi
+            </p>
+          </div>
+
+          <button
+            onClick={() => setActiveTab("siteHeader")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "siteHeader"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <PanelTop className="w-4 h-4" />
+            <span>Header Ayarı</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("siteFooter")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "siteFooter"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <PanelBottom className="w-4 h-4" />
+            <span>Footer Ayarı</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("database")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "database"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>Veritabanı Ayarı</span>
           </button>
 
           <div className="pt-3 border-t border-stone-800">
@@ -4047,6 +4096,10 @@ export function AdminDashboardClient({
           </div>
         )}
 
+        {/* SİTE YÖNETİMİ bölümleri */}
+        {activeTab === "siteHeader" && <SiteManagement tab="header" />}
+        {activeTab === "siteFooter" && <SiteManagement tab="footer" />}
+        {activeTab === "database" && <SiteManagement tab="database" />}
       </main>
 
 

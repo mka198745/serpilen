@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
+import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
 import {
   ShoppingBag,
@@ -30,6 +31,23 @@ import {
 } from "lucide-react";
 
 export function Header() {
+  const [siteSettings, setSiteSettings] = useState<Record<string, string>>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => {
+    const load = () =>
+      fetch("/api/site-settings", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d?.success && d.data) setSiteSettings({ ...DEFAULT_SITE_SETTINGS, ...d.data });
+        })
+        .catch(() => {});
+    load();
+    window.addEventListener("site-settings-updated", load);
+    return () => window.removeEventListener("site-settings-updated", load);
+  }, []);
+  const brandName = siteSettings["site.brand_name"] || DEFAULT_SITE_SETTINGS["site.brand_name"];
+  const brandParts = brandName.trim().split(/\s+/);
+  const brandLast = brandParts.length > 1 ? brandParts[brandParts.length - 1] : "";
+  const brandHead = brandParts.length > 1 ? brandParts.slice(0, -1).join(" ") : brandName;
   const { cartCount, setIsCartOpen, wishlist } = useCart();
   const { user, loading: authLoading, openAuth, logout, cookieless, openGuarded } = useAuth();
   const pathname = usePathname();
@@ -65,13 +83,14 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-40 bg-white shadow-xs">
-      {/* 1. Announcement Bar */}
+      {/* 1. Announcement Bar (admin → Site Yönetimi → Header Ayarı) */}
+      {siteSettings["site.header.announcement_enabled"] === "true" && (
       <div className="bg-amber-950 text-amber-100 text-xs px-4 py-2">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 font-medium">
               <Truck className="w-3.5 h-3.5 text-amber-400" />
-              1.000 TL ve Üzeri Ücretsiz Kargo | Aynı Gün Hızlı Gönderim
+              {siteSettings["site.header.announcement_text"]}
             </span>
           </div>
 
@@ -146,6 +165,7 @@ export function Header() {
           </div>
         </div>
       </div>
+      )}
 
       {/* 2. Main Header (Logo, Search, Cart) */}
       <div className="border-b border-gray-100 px-4 py-3.5">
@@ -157,10 +177,10 @@ export function Header() {
             </div>
             <div>
               <span className="text-xl md:text-2xl font-black tracking-tight text-gray-900 block leading-tight">
-                İPEK <span className="text-amber-800 font-extrabold">TUHAFİYE</span>
+                {brandHead} <span className="text-amber-800 font-extrabold">{brandLast}</span>
               </span>
               <span className="text-[10px] tracking-wider text-gray-500 font-medium uppercase block">
-                Dikiş, Nakış, Fermuar & Hobi
+                {siteSettings["site.brand_tagline"]}
               </span>
             </div>
           </Link>
@@ -275,7 +295,7 @@ export function Header() {
           <div className="flex items-center gap-4 text-[11px] text-gray-500 py-1">
             <span className="flex items-center gap-1">
               <Phone className="w-3 h-3 text-amber-700" />
-              Destek: <strong>0850 888 20 26</strong>
+              Destek: <strong>{siteSettings["site.header.support_phone"]}</strong>
             </span>
           </div>
         </div>
