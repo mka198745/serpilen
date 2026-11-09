@@ -64,6 +64,7 @@ import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import { SiteManagement } from "@/components/admin/SiteManagement";
+import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
 interface AdminDashboardClientProps {
@@ -136,6 +137,7 @@ export function AdminDashboardClient({
     | "siteHeader"
     | "siteFooter"
     | "siteCart"
+    | "paymentApi"
     | "database"
     | "content"
   >("dashboard");
@@ -1562,6 +1564,18 @@ export function AdminDashboardClient({
           >
             <ShoppingCart className="w-4 h-4" />
             <span>Sepetim Ayarı</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("paymentApi")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "paymentApi"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Wallet className="w-4 h-4" />
+            <span>Ödeme API Ayarları</span>
           </button>
 
           <button
@@ -4242,6 +4256,7 @@ export function AdminDashboardClient({
         {activeTab === "siteFooter" && <SiteManagement tab="footer" />}
         {activeTab === "database" && <SiteManagement tab="database" />}
         {activeTab === "siteCart" && <SiteManagement tab="cart" />}
+        {activeTab === "paymentApi" && <PaymentApiSettings />}
         {activeTab === "content" && <ContentManagement />}
       </main>
 

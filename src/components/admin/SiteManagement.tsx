@@ -28,7 +28,7 @@ const inputCls =
   "w-full px-3 py-2 border border-stone-300 rounded-xl text-xs focus:outline-none focus:border-amber-700 bg-white";
 const labelCls = "block text-[10px] font-bold text-stone-500 uppercase mb-1";
 
-function PanelShell({
+export function PanelShell({
   title,
   desc,
   icon: Icon,
