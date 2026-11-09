@@ -102,7 +102,10 @@ export async function POST(request: Request) {
       spentPoints = 0,
       couponCode = null,
       applyCampaigns = true, // sunucu tarafı kural motoru
+      orderNumber: clientOrderNumberIn = null, // checkout'ta müşteriye gösterilen numara (online siparişler)
     } = body;
+
+    const clientOrderNumber = typeof clientOrderNumberIn === "string" ? clientOrderNumberIn.trim().toUpperCase().slice(0, 40) : null;
 
     let discountTotal = Number(discountTotalIn) || 0;
     let shippingTotal = Number(shippingTotalIn) || 0;
@@ -187,12 +190,19 @@ export async function POST(request: Request) {
       /* varsayılanlar */
     }
 
-    const orderNumber =
+    const generatedOrderNumber =
       orderType === "POS"
         ? `POS-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
         : orderType === "B2B"
         ? `B2B-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
         : `OR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+
+    // İstemcinin gösterdiği sipariş numarası geçerli ve çakışmıyorsa AYNI NUMARA İLE kaydedilir
+    let orderNumber = generatedOrderNumber;
+    if (clientOrderNumber && /^[A-Z0-9-]{5,40}$/.test(clientOrderNumber)) {
+      const clash = await db.select({ id: orders.id }).from(orders).where(eq(orders.orderNumber, clientOrderNumber)).limit(1);
+      if (clash.length === 0) orderNumber = clientOrderNumber;
+    }
 
     // 1. Generate e-Fatura / e-Arşiv via ERP Adapter
     const erpInvoice = await erpAdapter.createInvoice({

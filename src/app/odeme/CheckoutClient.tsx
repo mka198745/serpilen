@@ -14,6 +14,10 @@ import {
   Truck,
   RotateCcw,
   Sparkles,
+  Hash,
+  Info,
+  Copy,
+  Check,
 } from "lucide-react";
 
 export function CheckoutClient() {
@@ -35,6 +39,24 @@ export function CheckoutClient() {
     taxOffice: "",
     taxNumber: "",
   });
+
+  // /odeme açılışında bu siparişe özel numara üretilir; havale açıklamasına yazılır ve sipariş kaydı bu numarayla oluşturulur
+  const [orderNumber, setOrderNumber] = useState<string>("");
+  const [orderNumberCopied, setOrderNumberCopied] = useState(false);
+  React.useEffect(() => {
+    setOrderNumber(`OR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`);
+  }, []);
+
+  const copyOrderNumber = async () => {
+    if (!orderNumber) return;
+    try {
+      await navigator.clipboard.writeText(orderNumber);
+      setOrderNumberCopied(true);
+      window.setTimeout(() => setOrderNumberCopied(false), 1600);
+    } catch {
+      /* pano kullanılamıyorsa metin zaten seçilebilir */
+    }
+  };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<any | null>(null);
@@ -109,6 +131,7 @@ export function CheckoutClient() {
     try {
       const payload = {
         orderType: "ONLINE_B2C",
+        orderNumber: orderNumber || undefined,
         customerName: formData.name,
         customerEmail: formData.email,
         customerPhone: formData.phone,
@@ -311,6 +334,31 @@ export function CheckoutClient() {
             <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-xs space-y-4">
               <h2 className="font-black text-base text-stone-900">2. Güvenli Ödeme Yöntemi</h2>
 
+              {/* Sipariş Numarası — bu siparişe özel üretilir */}
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50/70 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 flex items-center gap-1.5">
+                    <Hash className="w-4 h-4" /> Sipariş Numaranız
+                  </p>
+                  <p className="mt-1.5 text-2xl sm:text-3xl font-black font-mono tracking-[0.18em] text-stone-900 select-all leading-none">
+                    {orderNumber || "OR-…"}
+                  </p>
+                  <p className="mt-1.5 text-[11px] text-amber-900/90 font-medium">
+                    Bu numara bu sipariş size özeldir; siparişiniz tamamlandığında aynı numarayla kaydedilir.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={copyOrderNumber}
+                  disabled={!orderNumber}
+                  title="Sipariş numarasını panoya kopyala"
+                  className="shrink-0 inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-800 hover:bg-amber-900 disabled:opacity-50 text-white text-xs font-bold transition shadow-xs"
+                >
+                  {orderNumberCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {orderNumberCopied ? "Kopyalandı!" : "Kopyala"}
+                </button>
+              </div>
+
               {!anyPaymentMethod && (
                 <p className="text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2">
                   Şu anda seçilebilir ödeme yöntemi bulunmuyor. Lütfen mağazayla iletişime geçin.
@@ -365,9 +413,12 @@ export function CheckoutClient() {
                       IBAN: <strong className="font-mono select-all">{checkoutCfg.eftIban}</strong>
                     </p>
                   )}
-                  <p className="text-[10px] text-emerald-800/80 pt-1 border-t border-emerald-200">
-                    Havale açıklamasına sipariş numaranızı yazın; ödemeniz hesabımıza geçtiğinde siparişiniz hazırlamaya alınır.
-                  </p>
+                  <div className="flex items-start gap-2.5 mt-2 px-4 py-3 rounded-xl border-2 border-emerald-400 bg-emerald-100/80 text-emerald-950 shadow-xs">
+                    <Info className="w-6 h-6 shrink-0 text-emerald-700 mt-0.5" />
+                    <p className="text-sm sm:text-base font-extrabold leading-snug">
+                      Havale açıklamasına <span className="font-mono bg-white border border-emerald-300 rounded-md px-2 py-0.5 select-all tracking-wider">{orderNumber || "sipariş numaranızı"}</span> yazın; ödemeniz hesabımıza geçtiğinde siparişiniz hazırlamaya alınır.
+                    </p>
+                  </div>
                 </div>
               )}
 
