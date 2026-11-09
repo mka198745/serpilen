@@ -1,33 +1,50 @@
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import fs from "node:fs";
+import path from "node:path";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema";
 
-const databaseUrl = process.env.DATABASE_URL;
+// SQLite (dosya) sürücüsü — uygulamayla aynı dizinde kalıcı dosya kullanır.
+// DATABASE_URL biçimleri:
+//   sqlite:./data/tuhafiye.db   (önerilen)
+//   ./data/tuhafiye.db          (sqlite: öneki atlanabilir)
+//   sqlite::memory:             (yalnız testler)
+// MySQL'e geçiş yapıldığında bu dosya yerine mysql2 sürücüsü kullanılacak;
+// MySQL şeması schema.mysql.ts olarak korunmaktadır.
 
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required");
+const databaseUrl = process.env.DATABASE_URL || "sqlite:./data/tuhafiye.db";
+
+function resolveSqlitePath(url: string): string {
+  let p = url.trim();
+  for (const prefix of ["sqlite:", "file:"]) {
+    if (p.startsWith(prefix)) p = p.slice(prefix.length);
+  }
+  if (p === ":memory:") return p;
+  return path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
 }
 
 const globalForDb = globalThis as typeof globalThis & {
-  __tuhafiyeMysqlPool?: mysql.Pool;
+  __tuhafiyeSqlite?: Database.Database;
 };
 
-export const pool =
-  globalForDb.__tuhafiyeMysqlPool ??
-  mysql.createPool({
-    uri: databaseUrl,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    // UTC tutarlılığı: TIMESTAMP/DATETIME değerleri UTC olarak okunur/yazılır
-    timezone: "Z",
-    // utf8mb4 Türkçe karakter desteği (sunucu tarafında da utf8mb4 önerilir)
-    charset: "utf8mb4",
-  });
+export const sqlitePath = resolveSqlitePath(databaseUrl);
 
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.__tuhafiyeMysqlPool = pool;
+function openDatabase(): Database.Database {
+  if (sqlitePath !== ":memory:") {
+    fs.mkdirSync(path.dirname(sqlitePath), { recursive: true });
+  }
+  const conn = new Database(sqlitePath);
+  conn.pragma("journal_mode = WAL");
+  conn.pragma("foreign_keys = ON");
+  return conn;
 }
 
-export const db = drizzle(pool, { schema, mode: "default" });
+export const sqlite: Database.Database =
+  globalForDb.__tuhafiyeSqlite ?? openDatabase();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForDb.__tuhafiyeSqlite = sqlite;
+}
+
+export const db = drizzle(sqlite, { schema });
 export { schema };

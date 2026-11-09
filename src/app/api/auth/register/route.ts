@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   const [{ id: customerId }] = await db
     .insert(customers)
     .values({ type: "B2C", name, email, phone, city, segment: "YENİ", notes: "Web sitesi üyeliği ile oluşturuldu." })
-    .$returningId();
+    .returning({ id: customers.id });
   // 2. Kullanıcı
   const [{ id: userId }] = await db
     .insert(users)
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       role: "B2C_CUSTOMER",
       customerId,
     })
-    .$returningId();
+    .returning({ id: users.id });
 
   const { token, expiresAt } = await createSession(userId, {
     ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null,

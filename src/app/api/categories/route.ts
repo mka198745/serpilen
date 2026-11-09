@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         description: body.description?.trim() || null,
         icon: body.icon?.trim() || "Package",
         displayOrder: Number(body.displayOrder || all.length + 1),
-      }).$returningId();
+      }).returning({ id: categories.id });
     const [created] = await db.select().from(categories).where(eq(categories.id, __created_id));
 
     return NextResponse.json({ success: true, data: created });

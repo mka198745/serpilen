@@ -104,7 +104,7 @@ export async function POST(request: Request) {
         priority: Number(priority ?? 50),
         startDate: startDate ? new Date(startDate) : new Date(),
         endDate: endDate ? new Date(endDate) : null,
-      }).$returningId();
+      }).returning({ id: promotions.id });
     const [created] = await db.select().from(promotions).where(eq(promotions.id, __created_id));
 
     await db.insert(auditLogs).values({ userName: "Yönetici", action: "PROMOTION_CREATED", entity: "Promotion", entityId: String(created.id), details: `${created.name} (${ruleType})` });

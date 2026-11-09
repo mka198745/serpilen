@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       if (!whId) return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Depo seçin." } }, { status: 422 });
 
       const countNumber = `COUNT-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-      const [{ id: __session_id }] = await db.insert(stockCountSessions).values({ countNumber, warehouseId: whId, status: "IN_PROGRESS", startedBy: user }).$returningId();
+      const [{ id: __session_id }] = await db.insert(stockCountSessions).values({ countNumber, warehouseId: whId, status: "IN_PROGRESS", startedBy: user }).returning({ id: stockCountSessions.id });
       const [session] = await db.select().from(stockCountSessions).where(eq(stockCountSessions.id, __session_id));
       return NextResponse.json({ success: true, data: session });
     }
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
           expectedQty: expected,
           countedQty: counted,
           scannedBarcode: barcode,
-        }).$returningId();
+        }).returning({ id: stockCountItems.id });
       const [item] = await db.select().from(stockCountItems).where(eq(stockCountItems.id, __item_id));
 
       return NextResponse.json({

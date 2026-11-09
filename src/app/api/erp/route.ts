@@ -210,7 +210,7 @@ export async function POST(request: Request) {
           errorMessage: errorMsg,
           payload: JSON.stringify({ entityId, test: true, timestamp: new Date().toISOString() }),
           response: JSON.stringify({ error: errorMsg, code: 504 }),
-        }).$returningId();
+        }).returning({ id: erpSyncLogs.id });
       const [log] = await db.select().from(erpSyncLogs).where(eq(erpSyncLogs.id, __log_id));
 
       return NextResponse.json({

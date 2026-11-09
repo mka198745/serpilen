@@ -60,7 +60,7 @@ export async function POST(request: Request) {
           description: body.description || null,
           defaultDiscountRate: String(body.defaultDiscountRate || "0.00"),
           isDefault: Boolean(body.isDefault),
-        }).$returningId();
+        }).returning({ id: priceLists.id });
       const [created] = await db.select().from(priceLists).where(eq(priceLists.id, __created_id_3));
 
       if (created.isDefault) {
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
           variantId: body.variantId ? Number(body.variantId) : null,
           unitPrice: String(body.unitPrice),
           minQty: Number(body.minQty || 1),
-        }).$returningId();
+        }).returning({ id: priceListItems.id });
       const [created] = await db.select().from(priceListItems).where(eq(priceListItems.id, __created_id_2));
       return NextResponse.json({ success: true, data: created });
     }
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
           maxQty: body.maxQty ? Number(body.maxQty) : null,
           discountRate: body.discountRate ? String(body.discountRate) : null,
           unitPrice: body.unitPrice ? String(body.unitPrice) : null,
-        }).$returningId();
+        }).returning({ id: priceTiers.id });
       const [created] = await db.select().from(priceTiers).where(eq(priceTiers.id, __created_id));
       return NextResponse.json({ success: true, data: created });
     }

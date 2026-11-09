@@ -50,7 +50,7 @@ export async function createSession(userId: number, opts?: { ip?: string | null;
       userAgent: opts?.userAgent ? String(opts.userAgent).slice(0, 500) : null,
       expiresAt,
     })
-    .$returningId();
+    .returning({ id: adminSessions.id });
   const [session] = await db.select().from(adminSessions).where(eq(adminSessions.id, jtiId));
   void session;
   return { token, expiresAt };

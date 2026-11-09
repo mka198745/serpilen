@@ -79,7 +79,7 @@ export async function POST(request: Request) {
         retailPrice,
         b2bPrice: body.b2bPrice ? String(body.b2bPrice) : prod.b2bPrice,
         imageUrl: body.imageUrl || prod.imageUrl,
-      }).$returningId();
+      }).returning({ id: productVariants.id });
     const [created] = await db.select().from(productVariants).where(eq(productVariants.id, __created_id));
 
     await db.update(products).set({ hasVariants: true }).where(eq(products.id, productId));

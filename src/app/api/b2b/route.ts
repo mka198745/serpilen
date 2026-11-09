@@ -126,7 +126,7 @@ export async function POST(request: Request) {
           referenceId: body.reference || `TAH-${Date.now().toString(36).toUpperCase()}`,
           description: body.description || `Tahsilat (${body.method || "HAVALE"})`,
           createdBy: "Muhasebe",
-        }).$returningId();
+        }).returning({ id: accountTransactions.id });
       const [tx] = await db.select().from(accountTransactions).where(eq(accountTransactions.id, __tx_id));
 
       // Vadesi geçmiş borçları FIFO kapat
@@ -206,7 +206,7 @@ export async function POST(request: Request) {
         address,
         city,
         notes,
-      }).$returningId();
+      }).returning({ id: customers.id });
     const [newCustomer] = await db.select().from(customers).where(eq(customers.id, __newCustomer_id));
 
     return NextResponse.json({ success: true, data: newCustomer });

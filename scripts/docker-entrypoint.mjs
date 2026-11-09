@@ -1,13 +1,8 @@
-// Docker entrypoint: MySQL'i bekle -> migrate -> seed -> Next.js'i başlat.
-// (drizzle-kit migrate + tsx seed, üretim imajının içinde mevcuttur.)
-import mysql from "mysql2/promise";
+// Docker entrypoint: SQLite veritabanını hazırla -> migrate -> seed -> Next.js'i başlat.
+// (better-sqlite3 ile dosya tabanlıdır; ayrı bir veritabanı sunucusu gerekmez.)
 import { spawn } from "node:child_process";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error("[entrypoint] DATABASE_URL tanımlı değil!");
-  process.exit(1);
-}
+const DATABASE_URL = process.env.DATABASE_URL || "sqlite:./data/tuhafiye.db";
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -16,25 +11,9 @@ function run(cmd, args) {
   });
 }
 
-async function waitForDb(tries = 60) {
-  for (let i = 1; i <= tries; i++) {
-    try {
-      const conn = await mysql.createConnection({ uri: DATABASE_URL });
-      await conn.query("select 1");
-      await conn.end();
-      console.log("[entrypoint] MySQL hazır.");
-      return;
-    } catch (err) {
-      console.log(`[entrypoint] MySQL bekleniyor... (${i}/${tries})`);
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-  }
-  throw new Error("MySQL'e bağlanılamadı (zaman aşımı).");
-}
-
-await waitForDb();
+console.log(`[entrypoint] Veritabanı hazırlanıyor (${DATABASE_URL})...`);
 console.log("[entrypoint] Migration uygulanıyor...");
-await run("npx", ["drizzle-kit", "migrate"]);
+await run("node", ["scripts/db-apply.mjs"]);
 console.log("[entrypoint] Seed kontrol ediliyor...");
 await run("npx", ["tsx", "scripts/seed.ts"]);
 console.log("[entrypoint] Uygulama başlatılıyor...");

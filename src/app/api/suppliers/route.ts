@@ -162,7 +162,7 @@ export async function POST(request: Request) {
             paymentTerms: paymentTerms || "30 Gün Vade",
             rating: String(rating || "4.5"),
             address: address || null,
-          }).$returningId();
+          }).returning({ id: suppliers.id });
         const [created] = await db.select().from(suppliers).where(eq(suppliers.id, __created_id));
         return NextResponse.json({ success: true, data: created });
       }
@@ -186,7 +186,7 @@ export async function POST(request: Request) {
       const validItems = items.filter((i: any) => Number(i.qty) > 0 && i.productId);
       if (!validItems.length) return NextResponse.json({ success: false, error: "En az bir kalem ekleyin." }, { status: 422 });
       const requestNumber = `TAL-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-      const [{ id: __req_id }] = await db.insert(purchaseRequests).values({ requestNumber, warehouseId: Number(warehouseId), status: "REQUESTED", priority, notes, createdBy: user }).$returningId();
+      const [{ id: __req_id }] = await db.insert(purchaseRequests).values({ requestNumber, warehouseId: Number(warehouseId), status: "REQUESTED", priority, notes, createdBy: user }).returning({ id: purchaseRequests.id });
       const [req] = await db.select().from(purchaseRequests).where(eq(purchaseRequests.id, __req_id));
       const allProds = await db.select().from(products);
       for (const it of validItems) {
@@ -222,7 +222,7 @@ export async function POST(request: Request) {
       const poNumber = `SAT-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
       const allProds = await db.select().from(products);
       let total = 0;
-      const [{ id: __po_id }] = await db.insert(purchaseOrders).values({ poNumber, supplierId, warehouseId: req.warehouseId, status: "ORDERED", totalAmount: "0.00", notes: `Talep ${req.requestNumber}'den`, expectedDate: body.expectedDate || null }).$returningId();
+      const [{ id: __po_id }] = await db.insert(purchaseOrders).values({ poNumber, supplierId, warehouseId: req.warehouseId, status: "ORDERED", totalAmount: "0.00", notes: `Talep ${req.requestNumber}'den`, expectedDate: body.expectedDate || null }).returning({ id: purchaseOrders.id });
       const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, __po_id));
       for (const ri of reqItems) {
         const p = allProds.find((x) => x.id === ri.productId);
@@ -250,7 +250,7 @@ export async function POST(request: Request) {
       if (!valid.length) return NextResponse.json({ success: false, error: "Kalem ekleyin." }, { status: 422 });
       const poNumber = `SAT-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
       const totalAmount = valid.reduce((s: number, it: any) => s + Number(it.unitCost) * Number(it.quantity), 0);
-      const [{ id: __newPo_id }] = await db.insert(purchaseOrders).values({ poNumber, supplierId: Number(supplierId), warehouseId: Number(warehouseId), status: "ORDERED", totalAmount: String(totalAmount), notes, expectedDate }).$returningId();
+      const [{ id: __newPo_id }] = await db.insert(purchaseOrders).values({ poNumber, supplierId: Number(supplierId), warehouseId: Number(warehouseId), status: "ORDERED", totalAmount: String(totalAmount), notes, expectedDate }).returning({ id: purchaseOrders.id });
       const [newPo] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, __newPo_id));
       for (const item of valid) {
         await db.insert(purchaseOrderItems).values({
@@ -282,7 +282,7 @@ export async function POST(request: Request) {
       if (po.status === "CANCELLED") return NextResponse.json({ success: false, error: "İptal siparişe kabul yapılamaz." }, { status: 409 });
 
       const receiptNumber = `MK-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-      const [{ id: __receipt_id }] = await db.insert(goodsReceipts).values({ receiptNumber, purchaseOrderId: po.id, warehouseId: po.warehouseId, receivedBy: user, notes: body.notes || null }).$returningId();
+      const [{ id: __receipt_id }] = await db.insert(goodsReceipts).values({ receiptNumber, purchaseOrderId: po.id, warehouseId: po.warehouseId, receivedBy: user, notes: body.notes || null }).returning({ id: goodsReceipts.id });
       const [receipt] = await db.select().from(goodsReceipts).where(eq(goodsReceipts.id, __receipt_id));
 
       let receivedAny = 0;

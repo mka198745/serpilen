@@ -231,7 +231,7 @@ export async function POST(request: Request) {
         posShiftId: posShiftId ? Number(posShiftId) : null,
         erpInvoiceNumber: erpInvoice.invoiceNumber,
         notes,
-      }).$returningId();
+      }).returning({ id: orders.id });
     const [newOrder] = await db.select().from(orders).where(eq(orders.id, __newOrder_id));
 
     // 3. Insert Order Items & Deduct Inventory in Stock Ledger

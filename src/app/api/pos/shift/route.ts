@@ -109,7 +109,7 @@ export async function POST(request: Request) {
           cashOutTotal: "0.00",
           status: "OPEN",
           notes,
-        }).$returningId();
+        }).returning({ id: posShifts.id });
       const [newShift] = await db.select().from(posShifts).where(eq(posShifts.id, __newShift_id));
 
       await db.insert(auditLogs).values({
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
           amount: String(transAmount.toFixed(2)),
           reason: reason || (isIncoming ? "Kasa Nakit Girişi" : "Kasa Masraf / Avans Çıkışı"),
           cashierName,
-        }).$returningId();
+        }).returning({ id: posCashTransactions.id });
       const [trans] = await db.select().from(posCashTransactions).where(eq(posCashTransactions.id, __trans_id));
 
       await db

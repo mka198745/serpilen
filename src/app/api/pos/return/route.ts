@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         warehouseId: Number(warehouseId),
         createdBy: cashierName,
         resolvedAt: new Date(),
-      }).$returningId();
+      }).returning({ id: orderReturns.id });
     const [ret] = await db.select().from(orderReturns).where(eq(orderReturns.id, __ret_id));
 
     for (const item of validItems) {

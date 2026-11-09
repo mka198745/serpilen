@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     const slug = ensureUniqueSlug(slugifyTr(name) || "marka", (s) => all.some((b) => b.slug === s));
-    const [{ id: __created_id }] = await db.insert(brands).values({ name, slug }).$returningId();
+    const [{ id: __created_id }] = await db.insert(brands).values({ name, slug }).returning({ id: brands.id });
     const [created] = await db.select().from(brands).where(eq(brands.id, __created_id));
 
     return NextResponse.json({ success: true, data: created });

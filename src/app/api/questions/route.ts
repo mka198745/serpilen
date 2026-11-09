@@ -50,7 +50,7 @@ export async function POST(request: Request) {
         productId: Number(body.productId),
         askerName: String(body.askerName).slice(0, 80),
         question: String(body.question).slice(0, 800),
-      }).$returningId();
+      }).returning({ id: productQuestions.id });
     const [created] = await db.select().from(productQuestions).where(eq(productQuestions.id, __created_id));
     return NextResponse.json({ success: true, message: "Sorunuz iletildi. Uzman ekibimiz en kısa sürede yanıtlayacak.", data: created });
   } catch (err: any) {

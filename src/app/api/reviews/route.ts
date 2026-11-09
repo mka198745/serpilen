@@ -70,7 +70,7 @@ export async function POST(request: Request) {
         comment: String(comment).slice(0, 1500),
         verifiedPurchase: verified,
         status: "PENDING",
-      }).$returningId();
+      }).returning({ id: productReviews.id });
     const [created] = await db.select().from(productReviews).where(eq(productReviews.id, __created_id));
 
     return NextResponse.json({ success: true, message: "Yorumunuz alındı. Moderasyon onayıyla yayınlanacak.", data: created });

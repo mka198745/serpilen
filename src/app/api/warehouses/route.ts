@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       suffix++;
     }
 
-    const [{ id: __created_id }] = await db.insert(warehouses).values({ name, code, type, address }).$returningId();
+    const [{ id: __created_id }] = await db.insert(warehouses).values({ name, code, type, address }).returning({ id: warehouses.id });
     const [created] = await db.select().from(warehouses).where(eq(warehouses.id, __created_id));
 
     return NextResponse.json({ success: true, data: created });

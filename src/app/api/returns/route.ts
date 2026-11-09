@@ -78,7 +78,7 @@ export async function POST(request: Request) {
           refundAmount: refundTotal.toFixed(2),
           restock: body.restock !== false,
           warehouseId: Number(body.warehouseId || 3),
-        }).$returningId();
+        }).returning({ id: orderReturns.id });
       const [ret] = await db.select().from(orderReturns).where(eq(orderReturns.id, __ret_id));
 
       for (const r of itemRows) {

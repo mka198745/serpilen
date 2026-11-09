@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   // Giriş modülü devre dışı; parola alanı schema gereği dolu tutulur (scrypt özet).
   const placeholderHash = `scrypt$${crypto.scryptSync(crypto.randomUUID(), "ipek-tuhafiye", 64).toString("hex")}`;
 
-  const [{ id: __created_id }] = await db.insert(users).values({ name, email, phone, role, passwordHash: placeholderHash }).$returningId();
+  const [{ id: __created_id }] = await db.insert(users).values({ name, email, phone, role, passwordHash: placeholderHash }).returning({ id: users.id });
   const [created] = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive }).from(users).where(eq(users.id, __created_id));
 
   await db.insert(auditLogs).values({

@@ -81,7 +81,7 @@ export async function seedDatabase() {
       type: "WHOLESALE",
       address: "Zeytinburnu Tekstilciler Çarşısı No: 104, İstanbul",
     },
-  ]).$returningId();
+  ]).returning({ id: warehouses.id });
   const insertedWarehouses = await db.select().from(warehouses).where(inArray(warehouses.id, __insertedWarehouses_ids.map((r) => r.id))).orderBy(asc(warehouses.id));
 
   const mrkWarehouseId = insertedWarehouses[0].id;
@@ -107,7 +107,7 @@ export async function seedDatabase() {
     { name: "Örgü & Hobi", slug: "orgu-hobi", icon: "Sparkles", description: "El örgü ipleri, tığ, şiş, punch ve makrome malzemeleri", displayOrder: 5 },
     { name: "Dikiş Malzemeleri", slug: "dikis-malzemeleri", icon: "Package", description: "Mezuralar, dikiş iğneleri, kumaş makasları, yüksükler", displayOrder: 6 },
     { name: "Tekstil Yardımcı Malzemeleri", slug: "tekstil-yardimci", icon: "Layers", description: "Tela, vatka, lastik, cırt cırt, kordon ve çıtçıtlar", displayOrder: 7 },
-  ]).$returningId();
+  ]).returning({ id: categories.id });
   const insertedCats = await db.select().from(categories).where(inArray(categories.id, __insertedCats_ids.map((r) => r.id))).orderBy(asc(categories.id));
 
   // 5. Brands
@@ -120,7 +120,7 @@ export async function seedDatabase() {
     { name: "Nako İplik", slug: "nako" },
     { name: "DMC Embroidery", slug: "dmc" },
     { name: "Ören Bayan", slug: "oren-bayan" },
-  ]).$returningId();
+  ]).returning({ id: brands.id });
   const insertedBrands = await db.select().from(brands).where(inArray(brands.id, __insertedBrands_ids.map((r) => r.id))).orderBy(asc(brands.id));
 
   // 6. Products & Variants
@@ -143,7 +143,7 @@ export async function seedDatabase() {
     hasVariants: true,
     imageUrl: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
     isFeatured: true,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p1] = await db.select().from(products).where(eq(products.id, __p1_id));
 
   const __p1Variants_ids = await db.insert(productVariants).values([
@@ -151,7 +151,7 @@ export async function seedDatabase() {
     { productId: p1.id, sku: "GUT-100-BEYAZ", barcode: "8690011223368", colorName: "Optik Beyaz (No: 800)", colorHex: "#F9FAFB", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
     { productId: p1.id, sku: "GUT-100-KIRMIZI", barcode: "8690011223375", colorName: "Bayrak Kırmızısı (No: 364)", colorHex: "#DC2626", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
     { productId: p1.id, sku: "GUT-100-LACIVERT", barcode: "8690011223382", colorName: "Gece Laciverti (No: 339)", colorHex: "#1E3A8A", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
-  ]).$returningId();
+  ]).returning({ id: productVariants.id });
   const p1Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p1Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
   // Product 2: YKK Metal Diş Fermuar
@@ -173,14 +173,14 @@ export async function seedDatabase() {
     hasVariants: true,
     imageUrl: "https://images.unsplash.com/photo-1544441893-675973e31985?w=800&auto=format&fit=crop&q=80",
     isFeatured: true,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p2] = await db.select().from(products).where(eq(products.id, __p2_id));
 
   const __p2Variants_ids = await db.insert(productVariants).values([
     { productId: p2.id, sku: "YKK-MET-50CM-ANT", barcode: "8690022334462", colorName: "Antik Pirinç / Siyah Şerit", colorHex: "#374151", size: "50 cm", length: "50 cm", retailPrice: "85.00", buyPrice: "45.00", b2bPrice: "60.00" },
     { productId: p2.id, sku: "YKK-MET-70CM-ANT", barcode: "8690022334479", colorName: "Antik Pirinç / Siyah Şerit", colorHex: "#374151", size: "70 cm", length: "70 cm", retailPrice: "98.00", buyPrice: "52.00", b2bPrice: "70.00" },
     { productId: p2.id, sku: "YKK-MET-50CM-GUM", barcode: "8690022334486", colorName: "Parlak Gümüş / Lacivert Şerit", colorHex: "#1E293B", size: "50 cm", length: "50 cm", retailPrice: "85.00", buyPrice: "45.00", b2bPrice: "60.00" },
-  ]).$returningId();
+  ]).returning({ id: productVariants.id });
   const p2Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p2Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
   // Product 3: Çift Taraflı Saten Kurdele Rulo (25 Metre)
@@ -202,14 +202,14 @@ export async function seedDatabase() {
     hasVariants: true,
     imageUrl: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=800&auto=format&fit=crop&q=80",
     isFeatured: true,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p3] = await db.select().from(products).where(eq(products.id, __p3_id));
 
   const __p3Variants_ids = await db.insert(productVariants).values([
     { productId: p3.id, sku: "SAT-10MM-BORDO", barcode: "8690033445573", colorName: "Gül Kurusu / Bordo", colorHex: "#881337", size: "10 mm x 25 m", length: "25m", retailPrice: "75.00", buyPrice: "38.00", b2bPrice: "52.00" },
     { productId: p3.id, sku: "SAT-20MM-ALTIN", barcode: "8690033445580", colorName: "Şampanya / Altın", colorHex: "#D97706", size: "20 mm x 25 m", length: "25m", retailPrice: "95.00", buyPrice: "50.00", b2bPrice: "68.00" },
     { productId: p3.id, sku: "SAT-40MM-ZUMRUT", barcode: "8690033445597", colorName: "Zümrüt Yeşili", colorHex: "#065F46", size: "40 mm x 25 m", length: "25m", retailPrice: "135.00", buyPrice: "70.00", b2bPrice: "95.00" },
-  ]).$returningId();
+  ]).returning({ id: productVariants.id });
   const p3Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p3Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
   // Product 4: Prym Ergonomik Kumaş Terzi Makası (9 İnç)
@@ -231,7 +231,7 @@ export async function seedDatabase() {
     hasVariants: false,
     imageUrl: "https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&auto=format&fit=crop&q=80",
     isFeatured: true,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p4] = await db.select().from(products).where(eq(products.id, __p4_id));
 
   // Product 5: Alize Puffy Battaniye & Hobi İpi
@@ -253,14 +253,14 @@ export async function seedDatabase() {
     hasVariants: true,
     imageUrl: "https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=800&auto=format&fit=crop&q=80",
     isFeatured: true,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p5] = await db.select().from(products).where(eq(products.id, __p5_id));
 
   const __p5Variants_ids = await db.insert(productVariants).values([
     { productId: p5.id, sku: "ALZ-PUF-PUDRA", barcode: "8690055667795", colorName: "Pudra Pembe (No: 161)", colorHex: "#FDA4AF", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00", b2bPrice: "56.00" },
     { productId: p5.id, sku: "ALZ-PUF-BEBE-MAVI", barcode: "8690055667801", colorName: "Bebe Mavisi (No: 183)", colorHex: "#93C5FD", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00", b2bPrice: "56.00" },
     { productId: p5.id, sku: "ALZ-PUF-KREM", barcode: "8690055667818", colorName: "Doğal Krem (No: 62)", colorHex: "#FEF3C7", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00", b2bPrice: "56.00" },
-  ]).$returningId();
+  ]).returning({ id: productVariants.id });
   const p5Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p5Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
   // Product 6: Doğal Ahşap 4 Delikli Düğme Paketi (50 Adet)
@@ -282,7 +282,7 @@ export async function seedDatabase() {
     hasVariants: false,
     imageUrl: "https://images.unsplash.com/photo-1615886753866-79396abc446e?w=800&auto=format&fit=crop&q=80",
     isFeatured: true,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p6] = await db.select().from(products).where(eq(products.id, __p6_id));
 
   // Product 7: Bez Tela Dokuma Yapışkanlı (100cm En)
@@ -304,7 +304,7 @@ export async function seedDatabase() {
     hasVariants: false,
     imageUrl: "https://images.unsplash.com/photo-1528458876861-544fd1761a91?w=800&auto=format&fit=crop&q=80",
     isFeatured: false,
-  }).$returningId();
+  }).returning({ id: products.id });
   const [p7] = await db.select().from(products).where(eq(products.id, __p7_id));
 
   // 7. Inventory Stocks across Warehouses
@@ -443,7 +443,7 @@ export async function seedDatabase() {
       address: "Tunalı Hilmi Cad. No: 88 D: 12, Çankaya / Ankara",
       notes: "Online alışveriş müşterisi.",
     },
-  ]).$returningId();
+  ]).returning({ id: customers.id });
   const insertedCustomers = await db.select().from(customers).where(inArray(customers.id, __insertedCustomers_ids.map((r) => r.id))).orderBy(asc(customers.id));
 
   // 10. Sample Orders
@@ -467,7 +467,7 @@ export async function seedDatabase() {
     carrier: "Yurtiçi Kargo",
     erpInvoiceNumber: "GIB2026000001049",
     notes: "Hediye paketi istendi, paketlendi.",
-  }).$returningId();
+  }).returning({ id: orders.id });
   const [order1] = await db.select().from(orders).where(eq(orders.id, __order1_id));
 
   await db.insert(orderItems).values([
@@ -532,7 +532,7 @@ export async function seedDatabase() {
     carrier: "Ambar / Özel Sevk",
     erpInvoiceNumber: "GIB2026000001050",
     notes: "30 Gün Vade, sevk irsaliyesi ile koli teslim.",
-  }).$returningId();
+  }).returning({ id: orders.id });
   const [order2] = await db.select().from(orders).where(eq(orders.id, __order2_id));
 
   await db.insert(orderItems).values([
@@ -609,7 +609,7 @@ export async function seedDatabase() {
       rating: "4.9",
       address: "Güneşli Bağcılar, İstanbul",
     },
-  ]).$returningId();
+  ]).returning({ id: suppliers.id });
   const [sup1] = await db.select().from(suppliers).where(eq(suppliers.id, __sup1_id));
 
   const [{ id: __po1_id }] = await db.insert(purchaseOrders).values({
@@ -620,7 +620,7 @@ export async function seedDatabase() {
     totalAmount: "16250.00",
     notes: "Bahar sezonu dikiş iplikleri eksik stok tamamlama.",
     expectedDate: "2026-04-18",
-  }).$returningId();
+  }).returning({ id: purchaseOrders.id });
   const [po1] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, __po1_id));
 
   await db.insert(purchaseOrderItems).values([

@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       }
 
       const transferNumber = `TRF-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-      const [{ id: __t_id }] = await db.insert(stockTransfers).values({ transferNumber, fromWarehouseId: fromId, toWarehouseId: toId, status: "REQUESTED", note: body.note || null, createdBy: user }).$returningId();
+      const [{ id: __t_id }] = await db.insert(stockTransfers).values({ transferNumber, fromWarehouseId: fromId, toWarehouseId: toId, status: "REQUESTED", note: body.note || null, createdBy: user }).returning({ id: stockTransfers.id });
       const [t] = await db.select().from(stockTransfers).where(eq(stockTransfers.id, __t_id));
 
       for (const it of items) {

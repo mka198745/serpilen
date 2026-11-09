@@ -230,7 +230,7 @@ export async function POST(request: Request) {
         description,
         imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
         videoUrl: videoUrl || null,
-      }).$returningId();
+      }).returning({ id: products.id });
     const [newProd] = await db.select().from(products).where(eq(products.id, __newProd_id));
 
     // Insert gallery images (tek tek; köprü uyumluluğu için çoklu VALUES yok)

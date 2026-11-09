@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, existed: true, data: dup });
   }
 
-  const [{ id: __created_id }] = await db.insert(warehouseLocations).values({ warehouseId, locationCode, zone, aisle, rack, shelf }).$returningId();
+  const [{ id: __created_id }] = await db.insert(warehouseLocations).values({ warehouseId, locationCode, zone, aisle, rack, shelf }).returning({ id: warehouseLocations.id });
   const [created] = await db.select().from(warehouseLocations).where(eq(warehouseLocations.id, __created_id));
 
   return NextResponse.json({ success: true, data: created });

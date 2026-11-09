@@ -201,7 +201,7 @@ Environment variables (`DATABASE_URL`, `ERP_API_KEY`, `APP_ENV`) üzerinden ayr�
 GitHub Actions / Pipeline: TypeCheck -> Lint -> Production Build -> Database Migration -> HealthCheck.
 
 ### 30. BACKUP & DISASTER RECOVERY
-Günlük MySQL `mysqldump` snapshot'ları ve S3 uyumlu nesne deposu yedekleme stratejisi.
+Günlük SQLite dosya snapshot'ları ve S3 uyumlu nesne deposu yedekleme stratejisi (MySQL'e geçişte `mysqldump`).
 
 ### 31. MONITORING VE LOGGING
 Sağlık kontrolü `/api/health`, endpoint süreleri ve yapılandırılmış JSON loglama.

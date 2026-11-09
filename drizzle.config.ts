@@ -1,11 +1,11 @@
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  dialect: "mysql",
+  dialect: "sqlite",
   schema: "./src/db/schema.ts",
-  out: "./drizzle",
+  out: "./drizzle-sqlite",
   dbCredentials: {
-    // Örn: mysql://kullanici:sifre@127.0.0.1:3306/tuhafiye
-    url: process.env.DATABASE_URL || "mysql://root:root@127.0.0.1:3306/tuhafiye",
+    // Örn: sqlite:./data/tuhafiye.db
+    url: (process.env.DATABASE_URL || "sqlite:./data/tuhafiye.db").replace(/^sqlite:/, ""),
   },
 });

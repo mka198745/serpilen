@@ -143,7 +143,7 @@ async function getOrCreateStockRow(warehouseId: number, productId: number, varia
       physicalQty: 0,
       reservedQty: 0,
       locationCode: "GENEL-A-01",
-    }).$returningId();
+    }).returning({ id: inventory.id });
   const [created] = await db.select().from(inventory).where(eq(inventory.id, __created_id));
   return created;
 }
@@ -186,7 +186,7 @@ export async function reserveStock(input: ReserveStockInput) {
       status: "ACTIVE",
       expiresAt: new Date(Date.now() + (input.ttlMinutes || RESERVATION_TTL_MINUTES) * 60_000),
       createdBy: input.createdBy || "Sistem",
-    }).$returningId();
+    }).returning({ id: inventoryReservations.id });
   const [reservation] = await db.select().from(inventoryReservations).where(eq(inventoryReservations.id, __reservation_id));
 
   await db
@@ -281,7 +281,7 @@ export async function expireReservations() {
   const expired = await db
     .select()
     .from(inventoryReservations)
-    .where(and(eq(inventoryReservations.status, "ACTIVE"), sql`${inventoryReservations.expiresAt} < NOW()`));
+    .where(and(eq(inventoryReservations.status, "ACTIVE"), sql`${inventoryReservations.expiresAt} < ${Math.floor(Date.now() / 1000)}`));
 
   let count = 0;
   for (const r of expired) {

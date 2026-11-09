@@ -41,7 +41,7 @@ export async function PUT(request: Request) {
         minCartAmount: String(body.minCartAmount || "0.00"),
         maxDiscount: body.maxDiscount ? String(body.maxDiscount) : null,
         usageLimit: Number(body.usageLimit || 100),
-      }).$returningId();
+      }).returning({ id: coupons.id });
     const [created] = await db.select().from(coupons).where(eq(coupons.id, __created_id));
 
     return NextResponse.json({ success: true, data: created });

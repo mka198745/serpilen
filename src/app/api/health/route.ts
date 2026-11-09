@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    await db.execute(sql`select 1`);
+    await db.run(sql`select 1`);
     // Attempt non-blocking seed initialization if categories empty
     await seedDatabase().catch((e) => console.error("Auto-seed error on health:", e));
     return Response.json({
