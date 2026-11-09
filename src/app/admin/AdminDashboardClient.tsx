@@ -975,6 +975,44 @@ export function AdminDashboardClient({
     }
   };
 
+  const handleToggleWarehouse = async (id: number, nextActive: boolean) => {
+    setWmsFeedback(null);
+    try {
+      const res = await fetch("/api/warehouses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, isActive: nextActive }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setWmsFeedback({ text: data?.error?.message || "Depo güncellenemedi.", isError: true });
+        return;
+      }
+      const newVal: boolean = typeof data.data?.isActive === "boolean" ? data.data.isActive : nextActive;
+      setWarehousesList((prev) => prev.map((w) => (w.id === id ? { ...w, isActive: newVal } : w)));
+      setWmsFeedback({ text: `Depo ${newVal ? "aktif" : "pasif"} duruma getirildi.`, isError: false });
+    } catch {
+      setWmsFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
+    }
+  };
+
+  const handleDeleteWarehouse = async (id: number, name: string) => {
+    if (typeof window !== "undefined" && !window.confirm(`"${name}" deposu silinsin mi? Bu işlem geri alınamaz.`)) return;
+    setWmsFeedback(null);
+    try {
+      const res = await fetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) {
+        setWmsFeedback({ text: data?.error?.message || "Depo silinemedi.", isError: true });
+        return;
+      }
+      setWarehousesList((prev) => prev.filter((w) => w.id !== id));
+      setWmsFeedback({ text: `Depo silindi: ${name}`, isError: false });
+    } catch {
+      setWmsFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
+    }
+  };
+
   const handleReserveDemo = async () => {
     const res = await fetch("/api/reservations", {
       method: "POST",
@@ -2275,6 +2313,7 @@ export function AdminDashboardClient({
                         <th className="py-2.5 px-3">Tip</th>
                         <th className="py-2.5 px-3">Adres</th>
                         <th className="py-2.5 px-3">Durum</th>
+                        <th className="py-2.5 px-3 text-right">İşlemler</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100">
@@ -2293,10 +2332,36 @@ export function AdminDashboardClient({
                               <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold text-[10px]">Aktif</span>
                             )}
                           </td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleWarehouse(w.id, w.isActive === false)}
+                                title={w.isActive === false ? "Depoyu aktif yap" : "Depoyu pasife al"}
+                                className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border transition ${
+                                  w.isActive === false
+                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                                    : "bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100"
+                                }`}
+                              >
+                                <Power className="w-3 h-3" />
+                                <span className="hidden sm:inline">{w.isActive === false ? "Aktife Al" : "Pasife Al"}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteWarehouse(w.id, w.name)}
+                                title="Depoyu sil"
+                                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 transition"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span className="hidden sm:inline">Sil</span>
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                       {warehousesList.length === 0 && (
-                        <tr><td colSpan={5} className="py-8 text-center text-stone-400">Depo yok.</td></tr>
+                        <tr><td colSpan={6} className="py-8 text-center text-stone-400">Depo yok.</td></tr>
                       )}
                     </tbody>
                   </table>
