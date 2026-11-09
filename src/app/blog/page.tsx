@@ -2,13 +2,13 @@ import React from "react";
 import Link from "next/link";
 import { db } from "@/db";
 import { blogPosts } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { BookOpen, Calendar, User, ArrowRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function BlogListPage() {
-  const posts = await db.select().from(blogPosts).orderBy(desc(blogPosts.id));
+  const posts = await db.select().from(blogPosts).where(eq(blogPosts.isPublished, true)).orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id));
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-10 space-y-8">
@@ -26,6 +26,11 @@ export default async function BlogListPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {posts.length === 0 && (
+          <div className="col-span-full py-16 text-center text-stone-400 text-sm">
+            Henüz yayında içerik yok — yakında yeni rehberler eklenecek.
+          </div>
+        )}
         {posts.map((post) => (
           <article
             key={post.id}

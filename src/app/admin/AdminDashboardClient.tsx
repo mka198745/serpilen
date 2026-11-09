@@ -55,11 +55,13 @@ import {
   PanelTop,
   PanelBottom,
   Database,
+  Newspaper,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import { SiteManagement } from "@/components/admin/SiteManagement";
+import { ContentManagement } from "@/components/admin/ContentManagement";
 
 interface AdminDashboardClientProps {
   products: any[];
@@ -131,6 +133,7 @@ export function AdminDashboardClient({
     | "siteHeader"
     | "siteFooter"
     | "database"
+    | "content"
   >("dashboard");
 
   /* --- FAZ 7: POS & Kasa Yönetimi (Admin) --- */
@@ -1461,6 +1464,24 @@ export function AdminDashboardClient({
           >
             <ScrollText className="w-4 h-4" />
             <span>Denetim Kaydı (Audit)</span>
+          </button>
+
+          <div className="pt-3 border-t border-stone-800">
+            <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
+              İçerik Yönetimi
+            </p>
+          </div>
+
+          <button
+            onClick={() => setActiveTab("content")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "content"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Newspaper className="w-4 h-4" />
+            <span>İçerik Yönetimi</span>
           </button>
 
           <div className="pt-3 border-t border-stone-800">
@@ -4156,6 +4177,7 @@ export function AdminDashboardClient({
         {activeTab === "siteHeader" && <SiteManagement tab="header" />}
         {activeTab === "siteFooter" && <SiteManagement tab="footer" />}
         {activeTab === "database" && <SiteManagement tab="database" />}
+        {activeTab === "content" && <ContentManagement />}
       </main>
 
 

@@ -19,6 +19,10 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
 
   const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1);
 
+  if (post && !post.isPublished) {
+    notFound();
+  }
+
   if (!post) {
     notFound();
   }
