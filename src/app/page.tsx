@@ -21,7 +21,6 @@ import {
   Building2,
   SlidersHorizontal,
   BookOpen,
-  CheckCircle2,
   Star,
 } from "lucide-react";
 
@@ -113,27 +112,6 @@ export default async function HomePage() {
                 </div>
               </div>
 
-              {/* Multi-Channel Unified Status Box (her iki vitrin için ortak) */}
-              <div className="sm:col-span-2 bg-stone-950/90 rounded-xl p-3 border border-stone-800 space-y-2 text-xs">
-                <div className="flex items-center justify-between text-stone-300">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    Kadıköy Mağaza Stok: <strong>45 Adet</strong>
-                  </span>
-                  <span className="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded text-[10px] font-semibold border border-emerald-800">
-                    Kasa Satışına Açık
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-stone-300">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    Merkez Depo: <strong>140 Adet</strong>
-                  </span>
-                  <span className="bg-sky-950 text-sky-300 px-2 py-0.5 rounded text-[10px] font-semibold border border-sky-800">
-                    B2B Sevk Edilebilir
-                  </span>
-                </div>
-              </div>
             </div>
           </div>
 
