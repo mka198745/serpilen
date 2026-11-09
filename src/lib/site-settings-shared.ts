@@ -29,6 +29,17 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.cart.notice": "14 gün içinde koşulsuz iade • Aynı gün hızlı gönderim",
   "site.cart.empty_message": "Dikiş iplikleri, fermuarlar, düğmeler ve örgü malzemelerimize göz atın.",
   "site.cart.trust_text": "256-Bit SSL & 3D Secure Güvenli Ödeme Altyapısı",
+  // Güvenli Sipariş Tamamlama & Ödeme (checkout) — Sepetim Ayarı, 2. bölüm
+  "site.checkout.title": "Güvenli Sipariş Tamamlama & Ödeme",
+  "site.checkout.payment_card_enabled": "true",
+  "site.checkout.payment_eft_enabled": "true",
+  "site.checkout.card_note": "3D Secure ile anında onay",
+  "site.checkout.eft_note": "Havale / EFT ile transfer",
+  "site.checkout.eft_bank": "Türkiye İş Bankası — Kadıköy Şubesi",
+  "site.checkout.eft_iban": "TR12 0006 4000 0011 2345 6789 01",
+  "site.checkout.eft_account_name": "İpek Tuhafiye San. ve Tic. Ltd. Şti.",
+  "site.checkout.trust_text": "256-Bit SSL & 3D Secure Güvenli Ödeme",
+  "site.checkout.success_note": "Siparişiniz alındı; ödeme adımınız tamamlandığında depomuz hazırlığa başlar.",
 };
 
 export const SITE_SETTING_KEYS = Object.keys(DEFAULT_SITE_SETTINGS);
@@ -58,6 +69,35 @@ export function parseCartSettings(s: Record<string, string>): CartSettings {
     notice: (s["site.cart.notice"] ?? "").trim(),
     emptyMessage: (s["site.cart.empty_message"] ?? "").trim(),
     trustText: (s["site.cart.trust_text"] ?? "").trim(),
+  };
+}
+
+export interface CheckoutSettings {
+  title: string;
+  paymentCardEnabled: boolean;
+  paymentEftEnabled: boolean;
+  cardNote: string;
+  eftNote: string;
+  eftBank: string;
+  eftIban: string;
+  eftAccountName: string;
+  trustText: string;
+  successNote: string;
+}
+
+/** site.checkout.* anahtarlarını tiplenmiş CheckoutSettings'e çevirir (istemci+sunucu). */
+export function parseCheckoutSettings(s: Record<string, string>): CheckoutSettings {
+  return {
+    title: (s["site.checkout.title"] ?? "").trim() || "Güvenli Sipariş Tamamlama & Ödeme",
+    paymentCardEnabled: (s["site.checkout.payment_card_enabled"] ?? "true") !== "false",
+    paymentEftEnabled: (s["site.checkout.payment_eft_enabled"] ?? "true") !== "false",
+    cardNote: (s["site.checkout.card_note"] ?? "").trim(),
+    eftNote: (s["site.checkout.eft_note"] ?? "").trim(),
+    eftBank: (s["site.checkout.eft_bank"] ?? "").trim(),
+    eftIban: (s["site.checkout.eft_iban"] ?? "").trim(),
+    eftAccountName: (s["site.checkout.eft_account_name"] ?? "").trim(),
+    trustText: (s["site.checkout.trust_text"] ?? "").trim(),
+    successNote: (s["site.checkout.success_note"] ?? "").trim(),
   };
 }
 

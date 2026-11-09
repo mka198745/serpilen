@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { useSiteSettings } from "@/lib/use-site-settings";
-import { parseCartSettings, shippingCostFor } from "@/lib/site-settings-shared";
+import { parseCartSettings, parseCheckoutSettings, shippingCostFor } from "@/lib/site-settings-shared";
 import {
   ShieldCheck,
   CreditCard,
@@ -84,12 +84,26 @@ export function CheckoutClient() {
 
   const siteSettings = useSiteSettings();
   const cartCfg = parseCartSettings(siteSettings);
+  const checkoutCfg = parseCheckoutSettings(siteSettings);
+  const cardOn = checkoutCfg.paymentCardEnabled;
+  const eftOn = checkoutCfg.paymentEftEnabled;
+  const anyPaymentMethod = cardOn || eftOn;
+  const bothPaymentMethods = cardOn && eftOn;
+
+  // Kapatılan ödeme yöntemi seçiliyse açık olana otomatik geç
+  React.useEffect(() => {
+    setFormData((f) => {
+      if (f.paymentMethod === "CREDIT_CARD" && !cardOn && eftOn) return { ...f, paymentMethod: "EFT_HAVALE" };
+      if (f.paymentMethod === "EFT_HAVALE" && !eftOn && cardOn) return { ...f, paymentMethod: "CREDIT_CARD" };
+      return f;
+    });
+  }, [cardOn, eftOn]);
   const shippingCost = shippingCostFor(subtotal, cartCfg);
   const grandTotal = Math.max(0, subtotal - discountTotal + shippingCost);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0 || !cartCfg.enabled) return;
+    if (items.length === 0 || !cartCfg.enabled || !anyPaymentMethod) return;
     setIsSubmitting(true);
 
     try {
@@ -154,7 +168,7 @@ export function CheckoutClient() {
             Siparişiniz Başarıyla Alındı!
           </h1>
           <p className="text-stone-500 text-sm">
-            Ödemeniz 3D Secure ile doğrulandı. Depomuz siparişinizi hazırlamaya başladı.
+            {checkoutCfg.successNote || "Siparişiniz alındı; ödeme adımınız tamamlandığında depomuz hazırlığa başlar."}
           </p>
         </div>
 
@@ -203,7 +217,7 @@ export function CheckoutClient() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight mb-8">
-        Güvenli Sipariş Tamamlama & Ödeme
+        {checkoutCfg.title}
       </h1>
 
       {items.length === 0 ? (
@@ -297,7 +311,14 @@ export function CheckoutClient() {
             <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-xs space-y-4">
               <h2 className="font-black text-base text-stone-900">2. Güvenli Ödeme Yöntemi</h2>
 
-              <div className="grid grid-cols-2 gap-3">
+              {!anyPaymentMethod && (
+                <p className="text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2">
+                  Şu anda seçilebilir ödeme yöntemi bulunmuyor. Lütfen mağazayla iletişime geçin.
+                </p>
+              )}
+
+              <div className={`grid gap-3 ${bothPaymentMethods ? "grid-cols-2" : "grid-cols-1"}`}>
+                {cardOn && (
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, paymentMethod: "CREDIT_CARD" })}
@@ -310,10 +331,12 @@ export function CheckoutClient() {
                   <CreditCard className="w-5 h-5 text-amber-800" />
                   <div>
                     <span className="font-bold text-xs text-stone-900 block">Kredi / Banka Kartı</span>
-                    <span className="text-[11px] text-stone-500">3D Secure ile anında onay</span>
+                    <span className="text-[11px] text-stone-500">{checkoutCfg.cardNote || "3D Secure ile anında onay"}</span>
                   </div>
                 </button>
+                )}
 
+                {eftOn && (
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, paymentMethod: "EFT_HAVALE" })}
@@ -326,10 +349,27 @@ export function CheckoutClient() {
                   <Building2 className="w-5 h-5 text-amber-800" />
                   <div>
                     <span className="font-bold text-xs text-stone-900 block">Havale / EFT</span>
-                    <span className="text-[11px] text-stone-500">Banka hesaplarımıza transfer</span>
+                    <span className="text-[11px] text-stone-500">{checkoutCfg.eftNote || "Havale / EFT ile transfer"}</span>
                   </div>
                 </button>
+                )}
               </div>
+
+              {formData.paymentMethod === "EFT_HAVALE" && (checkoutCfg.eftBank || checkoutCfg.eftIban || checkoutCfg.eftAccountName) && (
+                <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200 text-xs text-emerald-950 space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Havale / EFT Hesap Bilgileri</p>
+                  {checkoutCfg.eftBank && <p>Banka / Şube: <strong>{checkoutCfg.eftBank}</strong></p>}
+                  {checkoutCfg.eftAccountName && <p>Hesap Adı: <strong>{checkoutCfg.eftAccountName}</strong></p>}
+                  {checkoutCfg.eftIban && (
+                    <p className="flex flex-wrap items-center gap-2">
+                      IBAN: <strong className="font-mono select-all">{checkoutCfg.eftIban}</strong>
+                    </p>
+                  )}
+                  <p className="text-[10px] text-emerald-800/80 pt-1 border-t border-emerald-200">
+                    Havale açıklamasına sipariş numaranızı yazın; ödemeniz hesabımıza geçtiğinde siparişiniz hazırlamaya alınır.
+                  </p>
+                </div>
+              )}
 
               {formData.paymentMethod === "CREDIT_CARD" && (
                 <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-3 text-xs">
@@ -425,19 +465,26 @@ export function CheckoutClient() {
                   Sepet şu anda geçici olarak siparişe kapatılmıştır.
                 </p>
               )}
+              {!anyPaymentMethod && (
+                <p className="text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 mb-2 text-center">
+                  Ödeme yöntemi tanımlı değil — sipariş alınamıyor.
+                </p>
+              )}
               <button
                 type="submit"
-                disabled={isSubmitting || !cartCfg.enabled}
+                disabled={isSubmitting || !cartCfg.enabled || !anyPaymentMethod}
                 className="w-full py-3.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <span>{isSubmitting ? "İşleniyor..." : "Siparişi Onayla & Öde"}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              <div className="flex items-center justify-center gap-2 text-[11px] text-stone-500 pt-1">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>256-Bit SSL & 3D Secure Güvenli Ödeme</span>
-              </div>
+              {checkoutCfg.trustText && (
+                <div className="flex items-center justify-center gap-2 text-[11px] text-stone-500 pt-1">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>{checkoutCfg.trustText}</span>
+                </div>
+              )}
             </div>
           </div>
         </form>

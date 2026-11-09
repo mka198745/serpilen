@@ -6,6 +6,9 @@ import {
   PanelBottom,
   Database,
   ShoppingCart,
+  LockKeyhole,
+  Landmark,
+  CreditCard,
   Save,
   RefreshCw,
   Archive,
@@ -123,6 +126,19 @@ const CART_KEYS = [
   "site.cart.notice",
   "site.cart.empty_message",
   "site.cart.trust_text",
+];
+
+const CHECKOUT_KEYS = [
+  "site.checkout.title",
+  "site.checkout.payment_card_enabled",
+  "site.checkout.payment_eft_enabled",
+  "site.checkout.card_note",
+  "site.checkout.eft_note",
+  "site.checkout.eft_bank",
+  "site.checkout.eft_iban",
+  "site.checkout.eft_account_name",
+  "site.checkout.trust_text",
+  "site.checkout.success_note",
 ];
 
 const FOOTER_KEYS = [
@@ -273,10 +289,11 @@ function CartSettingsPanel() {
   const fee = parseFloat(String(form["site.cart.shipping_fee"] || "0").replace(",", ".")) || 0;
   const cartOn = form["site.cart.enabled"] !== "false";
   return (
-    <PanelShell icon={ShoppingCart} title="Sepetim Ayarı" desc="Üst header'daki 'Sepetim' düğmesi, sepet çekmecesi ve ücretsiz kargo kurallarını yönetin.">
+    <PanelShell icon={ShoppingCart} title="Sepetim Ayarı" desc="Üst header'daki 'Sepetim' düğmesi, sepet çekmecesi, ücretsiz kargo kuralları ve güvenli ödeme sayfası (2. bölüm).">
       {loading ? (
         <p className="text-xs text-stone-400">Yükleniyor…</p>
       ) : (
+        <>
         <div className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4 max-w-3xl">
           <Feedback feedback={feedback} />
 
@@ -373,8 +390,136 @@ function CartSettingsPanel() {
             </button>
           </div>
         </div>
+
+        <CheckoutSettingsCard />
+        </>
       )}
     </PanelShell>
+  );
+}
+
+function CheckoutSettingsCard() {
+  const { form, setForm, loading, saving, feedback, save } = useSiteSettings();
+  if (loading) {
+    return <p className="text-xs text-stone-400">Yükleniyor…</p>;
+  }
+  const cardOn = form["site.checkout.payment_card_enabled"] !== "false";
+  const eftOn = form["site.checkout.payment_eft_enabled"] !== "false";
+  return (
+    <div className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4 max-w-3xl">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+            <LockKeyhole className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-stone-900 uppercase tracking-wide">Güvenli Sipariş Tamamlama & Ödeme Ayarı</h3>
+            <p className="text-[10px] text-stone-500">/odeme sayfasının başlığı, ödeme yöntemleri ve güvenli ödeme mesajları.</p>
+          </div>
+        </div>
+      </div>
+
+      <Feedback feedback={feedback} />
+
+      <div>
+        <label className={labelCls}>Sayfa Başlığı</label>
+        <input
+          className={inputCls}
+          value={form["site.checkout.title"]}
+          onChange={(e) => setForm({ ...form, "site.checkout.title": e.target.value })}
+          placeholder="Güvenli Sipariş Tamamlama & Ödeme"
+        />
+        <p className="text-[10px] text-stone-400 mt-1">/odeme sayfasının en üstünde görünür.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="flex items-start gap-3 p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="w-4 h-4 accent-amber-800 mt-0.5"
+            checked={cardOn}
+            onChange={(e) => setForm({ ...form, "site.checkout.payment_card_enabled": e.target.checked ? "true" : "false" })}
+          />
+          <span>
+            <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5"><CreditCard className="w-4 h-4 text-amber-800" /> Kredi / Banka Kartı</span>
+            <span className="text-[10px] text-stone-500">Ödeme sayfasında kart seçeneği görünür.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="w-4 h-4 accent-amber-800 mt-0.5"
+            checked={eftOn}
+            onChange={(e) => setForm({ ...form, "site.checkout.payment_eft_enabled": e.target.checked ? "true" : "false" })}
+          />
+          <span>
+            <span className="text-xs font-bold text-stone-800 flex items-center gap-1.5"><Landmark className="w-4 h-4 text-amber-800" /> Havale / EFT</span>
+            <span className="text-[10px] text-stone-500">Ödeme sayfasında havale seçeneği görünür.</span>
+          </span>
+        </label>
+      </div>
+      {!cardOn && !eftOn && (
+        <p className="text-[11px] font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+          Uyarı: İki ödeme yöntemi de kapalı — müşteriler siparişi tamamlayamaz.
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label className={labelCls}>Kart Notu</label>
+          <input className={inputCls} value={form["site.checkout.card_note"]} onChange={(e) => setForm({ ...form, "site.checkout.card_note": e.target.value })} placeholder="3D Secure ile anında onay" />
+        </div>
+        <div>
+          <label className={labelCls}>Havale / EFT Notu</label>
+          <input className={inputCls} value={form["site.checkout.eft_note"]} onChange={(e) => setForm({ ...form, "site.checkout.eft_note": e.target.value })} placeholder="Havale / EFT ile transfer" />
+        </div>
+      </div>
+
+      <div className="pt-1 border-t border-stone-100">
+        <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1 mt-1 flex items-center gap-1.5"><Landmark className="w-3.5 h-3.5" /> Havale / EFT Hesap Bilgileri</p>
+        <p className="text-[10px] text-stone-400 mb-2">Müşteri ödeme sayfasında Havale/EFT seçtiğinde gösterilir. IBAN'ı boş bırakırsanız hesap kutusu gizlenir.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Banka & Şube</label>
+            <input className={inputCls} value={form["site.checkout.eft_bank"]} onChange={(e) => setForm({ ...form, "site.checkout.eft_bank": e.target.value })} placeholder="Türkiye İş Bankası — Kadıköy Şubesi" />
+          </div>
+          <div>
+            <label className={labelCls}>Hesap Adı</label>
+            <input className={inputCls} value={form["site.checkout.eft_account_name"]} onChange={(e) => setForm({ ...form, "site.checkout.eft_account_name": e.target.value })} placeholder="İpek Tuhafiye San. ve Tic. Ltd. Şti." />
+          </div>
+        </div>
+        <div className="mt-3">
+          <label className={labelCls}>IBAN</label>
+          <input className={`${inputCls} font-mono`} value={form["site.checkout.eft_iban"]} onChange={(e) => setForm({ ...form, "site.checkout.eft_iban": e.target.value })} placeholder="TR12 0006 4000 0011 2345 6789 01" />
+        </div>
+      </div>
+
+      <div>
+        <label className={labelCls}>Ödeme Altı Güven Mesajı</label>
+        <input className={inputCls} value={form["site.checkout.trust_text"]} onChange={(e) => setForm({ ...form, "site.checkout.trust_text": e.target.value })} placeholder="256-Bit SSL & 3D Secure Güvenli Ödeme" />
+        <p className="text-[10px] text-stone-400 mt-1">“Siparişi Onayla & Öde” düğmesinin altında görünür; boş bırakırsanız gizlenir.</p>
+      </div>
+
+      <div>
+        <label className={labelCls}>Sipariş Başarı Mesajı</label>
+        <input className={inputCls} value={form["site.checkout.success_note"]} onChange={(e) => setForm({ ...form, "site.checkout.success_note": e.target.value })} placeholder="Siparişiniz alındı…" />
+        <p className="text-[10px] text-stone-400 mt-1">Sipariş tamamlandığında “Siparişiniz Başarıyla Alındı!” ekranında görünür.</p>
+      </div>
+
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-[11px] text-emerald-950 space-y-1">
+        <p className="font-black uppercase tracking-widest text-[9px] text-emerald-800">Önizleme</p>
+        <p>Açık ödeme yöntemleri: <strong>{[cardOn ? "Kredi/Banka Kartı" : null, eftOn ? "Havale/EFT" : null].filter(Boolean).join(" + ") || "YOK — sipariş alınamaz"}</strong></p>
+        <p>Havale kutusu: <strong>{form["site.checkout.eft_iban"].trim() ? "görünür" : "gizli (IBAN boş)"}</strong> • Güven mesajı: <strong>{form["site.checkout.trust_text"].trim() ? "görünür" : "gizli"}</strong></p>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-[10px] text-stone-400">Kaydedince /odeme sayfasına yansır.</p>
+        <button onClick={() => save(CHECKOUT_KEYS)} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
+          <Save className="w-4 h-4" />
+          {saving ? "Kaydediliyor…" : "Kaydet"}
+        </button>
+      </div>
+    </div>
   );
 }
 
