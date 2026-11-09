@@ -58,6 +58,7 @@ import {
   Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
+  ShoppingCart,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
@@ -134,6 +135,7 @@ export function AdminDashboardClient({
     | "b2b"
     | "siteHeader"
     | "siteFooter"
+    | "siteCart"
     | "database"
     | "content"
   >("dashboard");
@@ -1548,6 +1550,18 @@ export function AdminDashboardClient({
           >
             <PanelBottom className="w-4 h-4" />
             <span>Footer Ayarı</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("siteCart")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "siteCart"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4" />
+            <span>Sepetim Ayarı</span>
           </button>
 
           <button
@@ -4227,6 +4241,7 @@ export function AdminDashboardClient({
         {activeTab === "siteHeader" && <SiteManagement tab="header" />}
         {activeTab === "siteFooter" && <SiteManagement tab="footer" />}
         {activeTab === "database" && <SiteManagement tab="database" />}
+        {activeTab === "siteCart" && <SiteManagement tab="cart" />}
         {activeTab === "content" && <ContentManagement />}
       </main>
 

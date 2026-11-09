@@ -2,8 +2,10 @@
 
 import React, { useState } from "react";
 import { useCart } from "@/context/CartContext";
-import { X, Trash2, ShoppingBag, ArrowRight, Tag, Check, ShieldCheck } from "lucide-react";
+import { X, Trash2, ShoppingBag, ArrowRight, Tag, Check, ShieldCheck, Ban } from "lucide-react";
 import Link from "next/navigation";
+import { useSiteSettings } from "@/lib/use-site-settings";
+import { parseCartSettings, shippingCostFor } from "@/lib/site-settings-shared";
 
 export function CartDrawer() {
   const {
@@ -22,12 +24,36 @@ export function CartDrawer() {
   const [couponCode, setCouponCode] = useState("");
   const [couponFeedback, setCouponFeedback] = useState<{ msg: string; isError: boolean } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  const siteSettings = useSiteSettings();
+  const cartCfg = parseCartSettings(siteSettings);
+
+  const freeShippingThreshold = cartCfg.freeShippingThreshold;
+  const shippingCost = shippingCostFor(subtotal, cartCfg);
+  const remainingForFreeShipping = freeShippingThreshold > 0 ? Math.max(0, freeShippingThreshold - subtotal) : 0;
 
   if (!isCartOpen) return null;
 
-  const grandTotal = Math.max(0, subtotal - discountTotal);
-  const freeShippingThreshold = 1000;
-  const remainingForFreeShipping = Math.max(0, freeShippingThreshold - subtotal);
+  // Sepet kapatılmışsa çekmece yerine bilgilendirme göster
+  if (!cartCfg.enabled) {
+    return (
+      <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-xs">
+        <div className="absolute inset-y-0 right-0 flex max-w-full pl-10">
+          <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col items-center justify-center text-center p-10 gap-4">
+            <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center text-stone-400">
+              <Ban className="w-8 h-8" />
+            </div>
+            <h2 className="font-bold text-lg text-gray-900">Sepet Şu Anda Kapalı</h2>
+            <p className="text-sm text-gray-500 max-w-xs">Mağazamız geçici olarak siparişe kapalıdır. Lütfen daha sonra tekrar deneyin.</p>
+            <button onClick={() => setIsCartOpen(false)} className="px-5 py-2.5 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-xl transition">
+              Kapat
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const grandTotal = Math.max(0, subtotal - discountTotal + shippingCost);
 
   const handleApplyCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +89,15 @@ export function CartDrawer() {
             </button>
           </div>
 
+          {/* Bilgi Bandı (Sepetim Ayarı) */}
+          {cartCfg.notice && (
+            <div className="bg-amber-50 border-b border-amber-100 px-6 py-2 text-[11px] font-semibold text-amber-900 text-center">
+              {cartCfg.notice}
+            </div>
+          )}
+
           {/* Free Shipping Progress */}
+          {freeShippingThreshold > 0 && (
           <div className="bg-emerald-50 px-6 py-2.5 border-b border-emerald-100">
             {remainingForFreeShipping > 0 ? (
               <p className="text-xs text-emerald-800 font-medium flex items-center justify-between">
@@ -83,6 +117,7 @@ export function CartDrawer() {
               />
             </div>
           </div>
+          )}
 
           {/* Items List */}
           <div className="flex-1 overflow-y-auto px-6 py-4 divide-y divide-gray-100">
@@ -93,7 +128,7 @@ export function CartDrawer() {
                 </div>
                 <h3 className="font-semibold text-gray-900 text-lg">Sepetiniz Boş</h3>
                 <p className="text-sm text-gray-500 mt-1 max-w-xs">
-                  Dikiş iplikleri, fermuarlar, düğmeler ve örgü malzemelerimize göz atın.
+                  {cartCfg.emptyMessage || "Dikiş iplikleri, fermuarlar, düğmeler ve örgü malzemelerimize göz atın."}
                 </p>
                 <button
                   onClick={() => setIsCartOpen(false)}
@@ -215,15 +250,13 @@ export function CartDrawer() {
                 )}
                 <div className="flex justify-between">
                   <span>Kargo Ücreti</span>
-                  <span className="font-semibold text-emerald-700">
-                    {remainingForFreeShipping === 0 ? "Ücretsiz" : "59.00 TL"}
+                  <span className={`font-semibold ${shippingCost === 0 ? "text-emerald-700" : "text-gray-900"}`}>
+                    {shippingCost === 0 ? "Ücretsiz" : `${shippingCost.toFixed(2)} TL`}
                   </span>
                 </div>
                 <div className="border-t border-gray-200 pt-2 flex justify-between text-base font-bold text-gray-900">
                   <span>Ödenecek Tutar</span>
-                  <span className="text-amber-800">
-                    {(grandTotal + (remainingForFreeShipping === 0 ? 0 : 59)).toFixed(2)} TL
-                  </span>
+                  <span className="text-amber-800">{grandTotal.toFixed(2)} TL</span>
                 </div>
               </div>
 
@@ -238,10 +271,12 @@ export function CartDrawer() {
                   <ArrowRight className="w-4 h-4" />
                 </a>
 
-                <div className="flex items-center justify-center gap-2 text-[11px] text-gray-500 pt-1">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>256-Bit SSL & 3D Secure Güvenli Ödeme Altyapısı</span>
-                </div>
+                {cartCfg.trustText && (
+                  <div className="flex items-center justify-center gap-2 text-[11px] text-gray-500 pt-1">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>{cartCfg.trustText}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { Trash2, ArrowRight, ShoppingBag, ShieldCheck, Tag, Check } from "lucide-react";
+import { useSiteSettings } from "@/lib/use-site-settings";
+import { parseCartSettings, shippingCostFor } from "@/lib/site-settings-shared";
 
 export default function CartPage() {
   const {
@@ -20,7 +22,10 @@ export default function CartPage() {
   const [couponInput, setCouponInput] = useState("");
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
 
-  const shippingCost = subtotal >= 1000 ? 0 : 59;
+  const siteSettings = useSiteSettings();
+  const cartCfg = parseCartSettings(siteSettings);
+  const shippingCost = shippingCostFor(subtotal, cartCfg);
+  const freeShippingThreshold = cartCfg.freeShippingThreshold;
   const grandTotal = Math.max(0, subtotal - discountTotal + shippingCost);
 
   const handleApplyCoupon = async (e: React.FormEvent) => {
@@ -36,6 +41,18 @@ export default function CartPage() {
         <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
           Alışveriş Sepetiniz ({items.length} Kalem)
         </h1>
+        {!cartCfg.enabled && (
+          <p className="mt-2 text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 inline-block">
+            Sepet şu anda geçici olarak siparişe kapatılmıştır.
+          </p>
+        )}
+        {freeShippingThreshold > 0 && subtotal > 0 && (
+          <p className="mt-2 text-xs font-semibold text-emerald-800">
+            {subtotal >= freeShippingThreshold
+              ? "Ücretsiz kargo kazandınız."
+              : `Ücretsiz kargo için ${(freeShippingThreshold - subtotal).toFixed(2)} TL kaldı.`}
+          </p>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -45,7 +62,7 @@ export default function CartPage() {
           </div>
           <h3 className="font-bold text-base text-stone-900">Sepetiniz Boş</h3>
           <p className="text-xs text-stone-500">
-            Dikiş iplikleri, fermuar ve örgü malzemelerimize göz atın.
+            {cartCfg.emptyMessage || "Dikiş iplikleri, fermuar ve örgü malzemelerimize göz atın."}
           </p>
           <Link
             href="/urunler"
@@ -164,7 +181,7 @@ export default function CartPage() {
                 <div className="flex justify-between">
                   <span>Kargo Ücreti</span>
                   <span className="font-semibold text-emerald-700">
-                    {shippingCost === 0 ? "Ücretsiz Kargo" : "59.00 TL"}
+                    {shippingCost === 0 ? "Ücretsiz Kargo" : `${shippingCost.toFixed(2)} TL`}
                   </span>
                 </div>
                 <div className="flex justify-between text-base font-black text-stone-900 pt-2 border-t border-stone-200">
@@ -173,13 +190,19 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <Link
-                href="/odeme"
-                className="w-full py-3.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition"
-              >
-                <span>Ödeme Adımına Geç</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+              {cartCfg.enabled ? (
+                <Link
+                  href="/odeme"
+                  className="w-full py-3.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition"
+                >
+                  <span>Ödeme Adımına Geç</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <div className="w-full py-3.5 bg-stone-200 text-stone-500 font-bold text-xs rounded-xl text-center cursor-not-allowed">
+                  Sepet Şu Anda Siparişe Kapalı
+                </div>
+              )}
             </div>
           </div>
         </div>

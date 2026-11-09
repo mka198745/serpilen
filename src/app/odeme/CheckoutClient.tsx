@@ -3,6 +3,8 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
+import { useSiteSettings } from "@/lib/use-site-settings";
+import { parseCartSettings, shippingCostFor } from "@/lib/site-settings-shared";
 import {
   ShieldCheck,
   CreditCard,
@@ -80,12 +82,14 @@ export function CheckoutClient() {
     };
   }, [items]);
 
-  const shippingCost = subtotal >= 1000 ? 0 : 59;
+  const siteSettings = useSiteSettings();
+  const cartCfg = parseCartSettings(siteSettings);
+  const shippingCost = shippingCostFor(subtotal, cartCfg);
   const grandTotal = Math.max(0, subtotal - discountTotal + shippingCost);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) return;
+    if (items.length === 0 || !cartCfg.enabled) return;
     setIsSubmitting(true);
 
     try {
@@ -407,7 +411,7 @@ export function CheckoutClient() {
                 <div className="flex justify-between">
                   <span>Kargo Ücreti</span>
                   <span className="font-semibold text-emerald-700">
-                    {shippingCost === 0 ? "Ücretsiz Kargo" : "59.00 TL"}
+                    {shippingCost === 0 ? "Ücretsiz Kargo" : `${shippingCost.toFixed(2)} TL`}
                   </span>
                 </div>
                 <div className="flex justify-between text-base font-black text-stone-900 pt-2 border-t border-stone-200">
@@ -416,9 +420,14 @@ export function CheckoutClient() {
                 </div>
               </div>
 
+              {!cartCfg.enabled && (
+                <p className="text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-4 py-2 mb-2 text-center">
+                  Sepet şu anda geçici olarak siparişe kapatılmıştır.
+                </p>
+              )}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !cartCfg.enabled}
                 className="w-full py-3.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <span>{isSubmitting ? "İşleniyor..." : "Siparişi Onayla & Öde"}</span>

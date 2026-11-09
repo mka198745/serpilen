@@ -5,6 +5,7 @@ import {
   PanelTop,
   PanelBottom,
   Database,
+  ShoppingCart,
   Save,
   RefreshCw,
   Archive,
@@ -18,7 +19,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
-type SiteTab = "header" | "footer" | "database";
+type SiteTab = "header" | "footer" | "cart" | "database";
 
 const inputCls =
   "w-full px-3 py-2 border border-stone-300 rounded-xl text-xs focus:outline-none focus:border-amber-700 bg-white";
@@ -113,6 +114,15 @@ const HEADER_KEYS = [
   "site.header.support_phone",
   "site.brand_name",
   "site.brand_tagline",
+];
+
+const CART_KEYS = [
+  "site.cart.enabled",
+  "site.cart.free_shipping_threshold",
+  "site.cart.shipping_fee",
+  "site.cart.notice",
+  "site.cart.empty_message",
+  "site.cart.trust_text",
 ];
 
 const FOOTER_KEYS = [
@@ -247,6 +257,117 @@ function FooterSettingsPanel() {
           </div>
           <div className="flex justify-end">
             <button onClick={() => save(FOOTER_KEYS)} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
+              <Save className="w-4 h-4" />
+              {saving ? "Kaydediliyor…" : "Kaydet"}
+            </button>
+          </div>
+        </div>
+      )}
+    </PanelShell>
+  );
+}
+
+function CartSettingsPanel() {
+  const { form, setForm, loading, saving, feedback, save } = useSiteSettings();
+  const threshold = parseFloat(String(form["site.cart.free_shipping_threshold"] || "0").replace(",", ".")) || 0;
+  const fee = parseFloat(String(form["site.cart.shipping_fee"] || "0").replace(",", ".")) || 0;
+  const cartOn = form["site.cart.enabled"] !== "false";
+  return (
+    <PanelShell icon={ShoppingCart} title="Sepetim Ayarı" desc="Üst header'daki 'Sepetim' düğmesi, sepet çekmecesi ve ücretsiz kargo kurallarını yönetin.">
+      {loading ? (
+        <p className="text-xs text-stone-400">Yükleniyor…</p>
+      ) : (
+        <div className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4 max-w-3xl">
+          <Feedback feedback={feedback} />
+
+          <label className="flex items-start gap-3 p-3 rounded-xl border border-stone-200 bg-stone-50 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-amber-800 mt-0.5"
+              checked={cartOn}
+              onChange={(e) => setForm({ ...form, "site.cart.enabled": e.target.checked ? "true" : "false" })}
+            />
+            <span>
+              <span className="text-xs font-bold text-stone-800 block">Sepet etkin</span>
+              <span className="text-[10px] text-stone-500">Kapatırsanız header'daki “Sepetim” düğmesi gizlenir; sepet çekmecesi, sepet sayfası ve ödeme adımında uyarı gösterilir.</span>
+            </span>
+          </label>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Ücretsiz Kargo Eşiği (TL)</label>
+              <input
+                type="number"
+                min={0}
+                step="1"
+                inputMode="decimal"
+                className={inputCls}
+                value={form["site.cart.free_shipping_threshold"]}
+                onChange={(e) => setForm({ ...form, "site.cart.free_shipping_threshold": e.target.value })}
+                placeholder="1000"
+              />
+              <p className="text-[10px] text-stone-400 mt-1">Bu tutarın üstündeki sepetlerde kargo ücretsiz olur. 0 yazarsanız kural kapatılır.</p>
+            </div>
+            <div>
+              <label className={labelCls}>Kargo Ücreti (TL)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                inputMode="decimal"
+                className={inputCls}
+                value={form["site.cart.shipping_fee"]}
+                onChange={(e) => setForm({ ...form, "site.cart.shipping_fee": e.target.value })}
+                placeholder="59"
+              />
+              <p className="text-[10px] text-stone-400 mt-1">0 yazarsanız kargo her zaman ücretsiz görünür.</p>
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Sepet Bilgi Bandı</label>
+            <input
+              className={inputCls}
+              value={form["site.cart.notice"]}
+              onChange={(e) => setForm({ ...form, "site.cart.notice": e.target.value })}
+              placeholder="14 gün içinde koşulsuz iade • Aynı gün hızlı gönderim"
+            />
+            <p className="text-[10px] text-stone-400 mt-1">Sepet çekmecesinin üstünde görünür; boş bırakırsanız gizlenir.</p>
+          </div>
+
+          <div>
+            <label className={labelCls}>Boş Sepet Mesajı</label>
+            <input
+              className={inputCls}
+              value={form["site.cart.empty_message"]}
+              onChange={(e) => setForm({ ...form, "site.cart.empty_message": e.target.value })}
+              placeholder="Dikiş iplikleri, fermuarlar…"
+            />
+            <p className="text-[10px] text-stone-400 mt-1">Sepet boşken çekmece ve sepet sayfasında gösterilir.</p>
+          </div>
+
+          <div>
+            <label className={labelCls}>Ödeme Altı Güven Mesajı</label>
+            <input
+              className={inputCls}
+              value={form["site.cart.trust_text"]}
+              onChange={(e) => setForm({ ...form, "site.cart.trust_text": e.target.value })}
+              placeholder="256-Bit SSL & 3D Secure Güvenli Ödeme Altyapısı"
+            />
+            <p className="text-[10px] text-stone-400 mt-1">“Siparişi Tamamla” düğmesinin altında görünür; boş bırakırsanız gizlenir.</p>
+          </div>
+
+          {/* Özet kutu */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-[11px] text-amber-950 space-y-1">
+            <p className="font-black uppercase tracking-widest text-[9px] text-amber-800">Önizleme</p>
+            <p>Sepet durumu: <strong>{cartOn ? "Etkin" : "Kapalı (Sepetim düğmesi gizli)"}</strong></p>
+            <p>Kargo: <strong>{fee === 0 ? "Her zaman ücretsiz" : threshold > 0 ? `${threshold.toLocaleString("tr-TR")} TL üzeri ücretsiz, altı ${fee.toFixed(2)} TL` : `${fee.toFixed(2)} TL`}</strong></p>
+            <p>Bilgi bandı: <strong>{form["site.cart.notice"].trim() ? "görünür" : "gizli"}</strong> • Boş sepet mesajı: <strong>{form["site.cart.empty_message"].trim() ? "özel" : "varsayılan"}</strong></p>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-[10px] text-stone-400">Kaydedince vitrine anında yansır (açık sayfa varsa ayar değişikliği yenilendiğinde görülür).</p>
+            <button onClick={() => save(CART_KEYS)} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
               <Save className="w-4 h-4" />
               {saving ? "Kaydediliyor…" : "Kaydet"}
             </button>
@@ -436,5 +557,6 @@ function DatabaseSettingsPanel() {
 export function SiteManagement({ tab }: { tab: SiteTab }) {
   if (tab === "header") return <HeaderSettingsPanel />;
   if (tab === "footer") return <FooterSettingsPanel />;
+  if (tab === "cart") return <CartSettingsPanel />;
   return <DatabaseSettingsPanel />;
 }

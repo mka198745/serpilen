@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
-import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
+import { DEFAULT_SITE_SETTINGS, parseCartSettings } from "@/lib/site-settings-shared";
+import { useSiteSettings } from "@/lib/use-site-settings";
 
 import {
   ShoppingBag,
@@ -31,19 +32,8 @@ import {
 } from "lucide-react";
 
 export function Header() {
-  const [siteSettings, setSiteSettings] = useState<Record<string, string>>(DEFAULT_SITE_SETTINGS);
-  useEffect(() => {
-    const load = () =>
-      fetch("/api/site-settings", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d?.success && d.data) setSiteSettings({ ...DEFAULT_SITE_SETTINGS, ...d.data });
-        })
-        .catch(() => {});
-    load();
-    window.addEventListener("site-settings-updated", load);
-    return () => window.removeEventListener("site-settings-updated", load);
-  }, []);
+  const siteSettings = useSiteSettings();
+  const cartCfg = parseCartSettings(siteSettings);
   const brandName = siteSettings["site.brand_name"] || DEFAULT_SITE_SETTINGS["site.brand_name"];
   const brandParts = brandName.trim().split(/\s+/);
   const brandLast = brandParts.length > 1 ? brandParts[brandParts.length - 1] : "";
@@ -238,7 +228,8 @@ export function Header() {
               )}
             </Link>
 
-            {/* Cart Button */}
+            {/* Cart Button (Sepetim Ayarı ile kapatılabilir) */}
+            {cartCfg.enabled && (
             <button
               onClick={() => setIsCartOpen(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-full font-semibold text-xs border border-amber-200 transition"
@@ -254,6 +245,7 @@ export function Header() {
               </div>
               <span className="hidden sm:inline">Sepetim</span>
             </button>
+            )}
           </div>
         </div>
       </div>

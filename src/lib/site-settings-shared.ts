@@ -22,6 +22,48 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.social.tiktok": "",
   "site.social.x": "",
   "site.social.linkedin": "",
+  // Sepet (cart) — üst header'daki "Sepetim" düğmesi ve sepet çekmecesi
+  "site.cart.enabled": "true",
+  "site.cart.free_shipping_threshold": "1000",
+  "site.cart.shipping_fee": "59",
+  "site.cart.notice": "14 gün içinde koşulsuz iade • Aynı gün hızlı gönderim",
+  "site.cart.empty_message": "Dikiş iplikleri, fermuarlar, düğmeler ve örgü malzemelerimize göz atın.",
+  "site.cart.trust_text": "256-Bit SSL & 3D Secure Güvenli Ödeme Altyapısı",
 };
 
 export const SITE_SETTING_KEYS = Object.keys(DEFAULT_SITE_SETTINGS);
+
+export interface CartSettings {
+  enabled: boolean;
+  /** 0 = ücretsiz kargo kuralı kapalı */
+  freeShippingThreshold: number;
+  /** 0 = kargo her zaman ücretsiz */
+  shippingFee: number;
+  notice: string;
+  emptyMessage: string;
+  trustText: string;
+}
+
+const toAmount = (raw: string | undefined, fallback: number): number => {
+  const n = parseFloat(String(raw ?? "").trim().replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
+/** site.cart.* anahtarlarını tiplenmiş CartSettings'e çevirir (istemci+sunucu). */
+export function parseCartSettings(s: Record<string, string>): CartSettings {
+  return {
+    enabled: (s["site.cart.enabled"] ?? "true") !== "false",
+    freeShippingThreshold: toAmount(s["site.cart.free_shipping_threshold"], 1000),
+    shippingFee: toAmount(s["site.cart.shipping_fee"], 59),
+    notice: (s["site.cart.notice"] ?? "").trim(),
+    emptyMessage: (s["site.cart.empty_message"] ?? "").trim(),
+    trustText: (s["site.cart.trust_text"] ?? "").trim(),
+  };
+}
+
+/** Ara toplama göre kargo ücretini döndürür (eşik aşıldıysa veya ücret 0 ise ücretsiz). */
+export function shippingCostFor(subtotal: number, cfg: CartSettings): number {
+  if (cfg.shippingFee <= 0) return 0;
+  if (cfg.freeShippingThreshold > 0 && subtotal >= cfg.freeShippingThreshold) return 0;
+  return cfg.shippingFee;
+}
