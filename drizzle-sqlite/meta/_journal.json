@@ -8,6 +8,13 @@
       "when": 1794223224421,
       "tag": "0000_harsh_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794231903550,
+      "tag": "0001_blog_seo_scheduling",
+      "breakpoints": true
     }
   ]
 }

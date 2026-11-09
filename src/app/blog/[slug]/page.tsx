@@ -1,4 +1,5 @@
 import React from "react";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/db";
@@ -15,16 +16,41 @@ interface BlogPostPageProps {
   }>;
 }
 
+const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://ipektuhafiye.com";
+
+export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1);
+  if (!post || !post.isPublished || new Date(post.publishedAt).getTime() > Date.now()) {
+    return { title: "İçerik bulunamadı | İpek Tuhafiye" };
+  }
+  const title = post.seoTitle?.trim() || post.title;
+  const description = post.seoDescription?.trim() || post.excerpt || undefined;
+  const keywords = post.seoKeywords
+    ? post.seoKeywords.split(",").map((k) => k.trim()).filter(Boolean)
+    : undefined;
+  return {
+    title,
+    description,
+    keywords,
+    alternates: { canonical: `${BASE}/blog/${post.slug}` },
+    robots: post.seoNoindex ? { index: false, follow: false } : undefined,
+    openGraph: {
+      title,
+      description,
+      type: "article",
+      publishedTime: new Date(post.publishedAt).toISOString(),
+      images: post.imageUrl ? [post.imageUrl] : undefined,
+    },
+  };
+}
+
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
   const { slug } = await params;
 
   const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1);
 
-  if (post && !post.isPublished) {
-    notFound();
-  }
-
-  if (!post) {
+  if (!post || !post.isPublished || new Date(post.publishedAt).getTime() > Date.now()) {
     notFound();
   }
 

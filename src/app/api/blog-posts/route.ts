@@ -18,6 +18,23 @@ function cleanString(v: unknown, max = 5000): string {
   return String(v ?? "").trim().slice(0, max);
 }
 
+/** ISO tarih/saat string'i Date'e çevirir; geçersizse null. */
+function parseDate(v: unknown): Date | null {
+  if (v === undefined || v === null || v === "") return null;
+  const d = new Date(String(v));
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+/** SEO alanlarını gövdeden güvenli şekilde çıkarır. */
+function readSeo(body: Record<string, unknown>) {
+  return {
+    seoTitle: cleanString(body?.seoTitle, 300) || null,
+    seoDescription: cleanString(body?.seoDescription, 500) || null,
+    seoKeywords: cleanString(body?.seoKeywords, 500) || null,
+    seoNoindex: body?.seoNoindex === undefined ? undefined : Boolean(body.seoNoindex),
+  };
+}
+
 /** GET /api/blog-posts — Tüm içerikleri listeler (yönetim paneli; taslaklar dahil). */
 export async function GET() {
   try {
@@ -45,13 +62,25 @@ export async function POST(request: Request) {
   const author = cleanString(body?.author, 120) || "Tuhafiye Uzmanı";
   const imageUrl = cleanString(body?.imageUrl, 1000) || null;
   const isPublished = body?.isPublished === undefined ? true : Boolean(body.isPublished);
+  const seo = readSeo(body);
+  const publishedAt = parseDate(body?.publishedAt);
+  if (body?.publishedAt !== undefined && !publishedAt) {
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçerli bir yayın tarihi/saati gerekli (ISO format)." } }, { status: 422 });
+  }
 
   try {
     const all = await db.select({ slug: blogPosts.slug }).from(blogPosts);
     const slug = ensureUniqueSlug(slugifyTr(title) || "icerik", (s) => all.some((p) => p.slug === s));
     const [{ id }] = await db
       .insert(blogPosts)
-      .values({ title, slug, excerpt, content, category, author, imageUrl, isPublished })
+      .values({
+        title, slug, excerpt, content, category, author, imageUrl, isPublished,
+        seoTitle: seo.seoTitle,
+        seoDescription: seo.seoDescription,
+        seoKeywords: seo.seoKeywords,
+        seoNoindex: seo.seoNoindex ?? false,
+        ...(publishedAt ? { publishedAt } : {}),
+      })
       .returning({ id: blogPosts.id });
     const [created] = await db.select().from(blogPosts).where(eq(blogPosts.id, id));
     return NextResponse.json({ success: true, data: created }, { status: 201 });
@@ -96,6 +125,18 @@ export async function PATCH(request: Request) {
     if (body?.author !== undefined) patch.author = cleanString(body.author, 120) || "Tuhafiye Uzmanı";
     if (body?.imageUrl !== undefined) patch.imageUrl = cleanString(body.imageUrl, 1000) || null;
     if (body?.isPublished !== undefined) patch.isPublished = Boolean(body.isPublished);
+    const seo = readSeo(body);
+    if (body?.seoTitle !== undefined) patch.seoTitle = seo.seoTitle;
+    if (body?.seoDescription !== undefined) patch.seoDescription = seo.seoDescription;
+    if (body?.seoKeywords !== undefined) patch.seoKeywords = seo.seoKeywords;
+    if (body?.seoNoindex !== undefined) patch.seoNoindex = seo.seoNoindex;
+    if (body?.publishedAt !== undefined) {
+      const publishedAt = parseDate(body.publishedAt);
+      if (!publishedAt) {
+        return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçerli bir yayın tarihi/saati gerekli (ISO format)." } }, { status: 422 });
+      }
+      patch.publishedAt = publishedAt;
+    }
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ success: true, data: existing });
     }

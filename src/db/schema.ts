@@ -623,6 +623,10 @@ export const blogPosts = sqliteTable("blog_posts", {
   imageUrl: text("image_url"),
   isPublished: integer("is_published", { mode: "boolean" }).default(true).notNull(),
   publishedAt: integer("published_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  seoTitle: text("seo_title"),
+  seoDescription: text("seo_description"),
+  seoKeywords: text("seo_keywords"),
+  seoNoindex: integer("seo_noindex", { mode: "boolean" }).default(false).notNull(),
 });
 
 // ==========================================

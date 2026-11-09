@@ -19,6 +19,8 @@ import {
   Camera,
   Eye,
   EyeOff,
+  CalendarClock,
+  Search,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -40,6 +42,10 @@ interface BlogPost {
   imageUrl: string | null;
   isPublished: boolean;
   publishedAt: string | Date;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
+  seoNoindex?: boolean;
 }
 
 const inputCls =
@@ -54,6 +60,17 @@ const EMPTY_FORM = {
   excerpt: "",
   content: "",
   isPublished: true,
+  publishedAt: "",
+  seoTitle: "",
+  seoDescription: "",
+  seoKeywords: "",
+  seoNoindex: false,
+};
+
+/** Date -> <input type="datetime-local"> yerel değeri */
+const toLocalInput = (d: Date) => {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
 export function ContentManagement() {
@@ -65,7 +82,7 @@ export function ContentManagement() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null);
-  const [filter, setFilter] = useState<"all" | "published" | "draft">("all");
+  const [filter, setFilter] = useState<"all" | "published" | "scheduled" | "draft">("all");
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const [mediaPanel, setMediaPanel] = useState<null | "image" | "youtube" | "tiktok" | "instagram">(null);
   const [mediaUrl, setMediaUrl] = useState("");
@@ -84,11 +101,24 @@ export function ContentManagement() {
   };
   useEffect(load, []);
 
+  const isScheduledPost = (p: BlogPost) =>
+    p.isPublished && new Date(p.publishedAt).getTime() > Date.now();
+  const liveCount = posts.filter((p) => p.isPublished && !isScheduledPost(p)).length;
+  const scheduledCount = posts.filter(isScheduledPost).length;
+  const draftCount = posts.filter((p) => !p.isPublished).length;
+
   const filtered = useMemo(
     () =>
       posts.filter((p) =>
-        filter === "all" ? true : filter === "published" ? p.isPublished : !p.isPublished
+        filter === "all"
+          ? true
+          : filter === "published"
+            ? p.isPublished && !isScheduledPost(p)
+            : filter === "scheduled"
+              ? isScheduledPost(p)
+              : !p.isPublished
       ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [posts, filter]
   );
 
@@ -104,8 +134,13 @@ export function ContentManagement() {
             excerpt: post.excerpt || "",
             content: post.content,
             isPublished: post.isPublished,
+            publishedAt: toLocalInput(new Date(post.publishedAt)),
+            seoTitle: post.seoTitle || "",
+            seoDescription: post.seoDescription || "",
+            seoKeywords: post.seoKeywords || "",
+            seoNoindex: post.seoNoindex ?? false,
           }
-        : EMPTY_FORM
+        : { ...EMPTY_FORM, publishedAt: toLocalInput(new Date()) }
     );
     setFeedback(null);
     setView("editor");
@@ -208,7 +243,7 @@ export function ContentManagement() {
     setSaving(true);
     setFeedback(null);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         title: form.title.trim(),
         category: form.category,
         author: form.author.trim() || "Tuhafiye Uzmanı",
@@ -216,7 +251,15 @@ export function ContentManagement() {
         excerpt: form.excerpt.trim() || null,
         content: form.content,
         isPublished: form.isPublished,
+        seoTitle: form.seoTitle.trim(),
+        seoDescription: form.seoDescription.trim(),
+        seoKeywords: form.seoKeywords.trim(),
+        seoNoindex: form.seoNoindex,
       };
+      if (form.publishedAt) {
+        const d = new Date(form.publishedAt);
+        if (Number.isFinite(d.getTime())) payload.publishedAt = d.toISOString();
+      }
       const res = editing
         ? await fetch("/api/blog-posts", {
             method: "PATCH",
@@ -244,16 +287,23 @@ export function ContentManagement() {
   };
 
   const togglePublish = async (post: BlogPost) => {
+    const scheduled = post.isPublished && new Date(post.publishedAt).getTime() > Date.now();
+    const bodyPayload = scheduled
+      ? { id: post.id, publishedAt: new Date().toISOString() }
+      : { id: post.id, isPublished: !post.isPublished };
     try {
       const res = await fetch("/api/blog-posts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: post.id, isPublished: !post.isPublished }),
+        body: JSON.stringify(bodyPayload),
       });
       const d = await res.json();
       if (d.success) {
         setPosts((prev) => prev.map((p) => (p.id === post.id ? d.data : p)));
-        setFeedback({ text: d.data.isPublished ? "İçerik yayına alındı." : "İçerik taslağa çekildi.", isError: false });
+        setFeedback({
+          text: scheduled ? "Planlanan içerik hemen yayına alındı." : d.data.isPublished ? "İçerik yayına alındı." : "İçerik taslağa çekildi.",
+          isError: false,
+        });
       } else {
         setFeedback({ text: d?.error?.message || "İşlem başarısız.", isError: true });
       }
@@ -428,6 +478,112 @@ export function ContentManagement() {
               </div>
             )}
           </div>
+          {/* YAYIN PLANLAMA */}
+          <div className="border-t border-stone-100 pt-4">
+            <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 flex items-center gap-1.5">
+                  <CalendarClock className="w-3.5 h-3.5" /> Yayın Planlama
+                </p>
+                <p className="text-[10px] text-stone-400 mt-0.5">İleri bir tarih/saat seçerseniz içerik o zamana kadar vitrinde görünmez, zamanı gelince otomatik yayına alınır.</p>
+              </div>
+              <button type="button" onClick={() => setForm((f) => ({ ...f, publishedAt: toLocalInput(new Date()) }))} className="px-2.5 py-1.5 text-[10px] font-bold rounded-lg border border-stone-200 bg-stone-50 hover:border-amber-500 hover:text-amber-900 text-stone-700 transition" title="Yayın tarihini şimdiye ayarla">
+                Şimdi
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input
+                type="datetime-local"
+                className={`${inputCls} max-w-xs`}
+                value={form.publishedAt}
+                onChange={(e) => setForm({ ...form, publishedAt: e.target.value })}
+              />
+              {form.publishedAt && new Date(form.publishedAt).getTime() > Date.now() && (
+                <span className="text-[11px] font-semibold text-sky-900 bg-sky-50 border border-sky-200 rounded-lg px-3 py-1.5">
+                  Bu içerik {new Date(form.publishedAt).toLocaleString("tr-TR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })} tarihinde otomatik yayına alınacak.
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* SEO AYARLARI */}
+          <div className="border-t border-stone-100 pt-4 space-y-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-800 flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5" /> SEO Ayarları
+              </p>
+              <p className="text-[10px] text-stone-400 mt-0.5">Arama motorlarında nasıl görüneceğini belirleyin. Boş alanlar makale başlığı/özetinden otomatik doldurulur.</p>
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                SEO Başlığı{" "}
+                <span className={`normal-case font-bold ${(form.seoTitle || form.title).length > 60 ? "text-rose-600" : "text-stone-400"}`}>
+                  ({(form.seoTitle || form.title).length}/60)
+                </span>
+              </label>
+              <input
+                className={inputCls}
+                maxLength={70}
+                value={form.seoTitle}
+                onChange={(e) => setForm({ ...form, seoTitle: e.target.value })}
+                placeholder={form.title || "Google arama sonucunda görünecek başlık"}
+              />
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                SEO Açıklaması{" "}
+                <span className={`normal-case font-bold ${(form.seoDescription || form.excerpt).length > 160 ? "text-rose-600" : "text-stone-400"}`}>
+                  ({(form.seoDescription || form.excerpt).length}/160)
+                </span>
+              </label>
+              <textarea
+                className={inputCls}
+                rows={2}
+                maxLength={200}
+                value={form.seoDescription}
+                onChange={(e) => setForm({ ...form, seoDescription: e.target.value })}
+                placeholder={form.excerpt || "Arama sonucunda görünecek 1-2 cümlelik açıklama"}
+              />
+            </div>
+
+            <div>
+              <label className={labelCls}>Anahtar Kelimeler</label>
+              <input
+                className={inputCls}
+                value={form.seoKeywords}
+                onChange={(e) => setForm({ ...form, seoKeywords: e.target.value })}
+                placeholder="fermuar, ykk, dikiş rehberi, tuhafiye"
+              />
+              <p className="text-[10px] text-stone-400 mt-1">Virgülle ayırın (ör. fermuar, ykk, dikiş rehberi).</p>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-amber-800"
+                checked={form.seoNoindex}
+                onChange={(e) => setForm({ ...form, seoNoindex: e.target.checked })}
+              />
+              <span className="text-xs font-semibold text-stone-700">noindex — Arama motorları bu içeriği indekslemesin (görünür ama aramada çıkmaz)</span>
+            </label>
+
+            {/* Google arama sonucu önizlemesi */}
+            <div className="rounded-xl border border-stone-200 bg-white p-3 shadow-xs">
+              <p className="text-[9px] font-black uppercase tracking-widest text-stone-400 mb-1.5">Google Önizleme</p>
+              <p className="text-[11px] text-emerald-800 truncate">ipektuhafiye.com <span className="text-stone-400">›</span> blog <span className="text-stone-400">›</span> {editing?.slug || "yeni-makale"}</p>
+              <p className="text-[17px] leading-snug text-[#1a0dab] truncate">{(form.seoTitle.trim() || form.title.trim() || "Makale başlığı").slice(0, 70)}</p>
+              <p className="text-xs text-stone-600 leading-snug line-clamp-2">
+                {(
+                  form.seoDescription.trim() ||
+                  form.excerpt.trim() ||
+                  form.content.replace(/\[media:[^\]]+\][^\[]*\[\/media\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160)
+                ) || "Açıklama girilmedi — Google içeriğin ilk 160 karakterini kullanır."}
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-center justify-end gap-2">
             <button onClick={() => setView("list")} className="px-4 py-2.5 text-xs font-bold text-stone-600 hover:bg-stone-100 rounded-xl transition">
               Vazgeç
@@ -475,8 +631,9 @@ export function ContentManagement() {
       <div className="flex items-center gap-1.5">
         {([
           { id: "all", label: `Tümü (${posts.length})` },
-          { id: "published", label: `Yayında (${posts.filter((p) => p.isPublished).length})` },
-          { id: "draft", label: `Taslak (${posts.filter((p) => !p.isPublished).length})` },
+          { id: "published", label: `Yayında (${liveCount})` },
+          { id: "scheduled", label: `Planlanan (${scheduledCount})` },
+          { id: "draft", label: `Taslak (${draftCount})` },
         ] as const).map((t) => (
           <button
             key={t.id}
@@ -509,10 +666,10 @@ export function ContentManagement() {
                   <td className="py-3 px-3">
                     <span className="bg-amber-50 text-amber-900 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap">{p.category || "Dikiş Rehberi"}</span>
                   </td>
-                  <td className="py-3 px-3 text-stone-500 whitespace-nowrap">{new Date(p.publishedAt).toLocaleDateString("tr-TR")}</td>
+                  <td className="py-3 px-3 text-stone-500 whitespace-nowrap">{new Date(p.publishedAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
                   <td className="py-3 px-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.isPublished ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-600"}`}>
-                      {p.isPublished ? "Yayında" : "Taslak"}
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${!p.isPublished ? "bg-stone-200 text-stone-600" : isScheduledPost(p) ? "bg-sky-100 text-sky-900" : "bg-emerald-100 text-emerald-800"}`}>
+                      {!p.isPublished ? "Taslak" : isScheduledPost(p) ? "Planlandı" : "Yayında"}
                     </span>
                   </td>
                   <td className="py-3 px-3">
@@ -520,7 +677,7 @@ export function ContentManagement() {
                       <button onClick={() => openEditor(p)} title="Düzenle" className="p-2 rounded-lg border border-stone-200 bg-white hover:border-amber-400 hover:text-amber-800 text-stone-600 transition">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => void togglePublish(p)} title={p.isPublished ? "Taslağa çek" : "Yayına al"} className={`p-2 rounded-lg border transition ${p.isPublished ? "border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}>
+                      <button onClick={() => void togglePublish(p)} title={isScheduledPost(p) ? "Hemen yayınla" : p.isPublished ? "Taslağa çek" : "Yayına al"} className={`p-2 rounded-lg border transition ${p.isPublished ? "border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}>
                         <Power className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => void remove(p)} title="Sil" className="p-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition">

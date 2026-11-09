@@ -255,4 +255,8 @@ export interface BlogPost {
   author: string | null;
   imageUrl: string | null;
   publishedAt: string | Date;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  seoKeywords?: string | null;
+  seoNoindex?: boolean;
 }

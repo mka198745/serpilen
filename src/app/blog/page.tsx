@@ -2,13 +2,14 @@ import React from "react";
 import Link from "next/link";
 import { db } from "@/db";
 import { blogPosts } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, lte } from "drizzle-orm";
 import { BookOpen, Calendar, User, ArrowRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function BlogListPage() {
-  const posts = await db.select().from(blogPosts).where(eq(blogPosts.isPublished, true)).orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id));
+  const now = new Date();
+  const posts = await db.select().from(blogPosts).where(and(eq(blogPosts.isPublished, true), lte(blogPosts.publishedAt, now))).orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id));
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-10 space-y-8">

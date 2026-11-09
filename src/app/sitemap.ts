@@ -52,7 +52,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       });
     }
     for (const post of posts) {
-      if (!post.isPublished) continue;
+      if (!post.isPublished || new Date(post.publishedAt || 0).getTime() > Date.now()) continue;
       entries.push({ url: `${BASE}/blog/${post.slug}`, lastModified: new Date(post.publishedAt || Date.now()), changeFrequency: "monthly", priority: 0.6 });
     }
   } catch (err) {

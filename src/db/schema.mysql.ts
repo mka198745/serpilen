@@ -622,6 +622,10 @@ export const blogPosts = mysqlTable("blog_posts", {
   imageUrl: varchar("image_url", { length: 500 }),
   isPublished: boolean("is_published").default(true).notNull(),
   publishedAt: timestamp("published_at").defaultNow().notNull(),
+  seoTitle: varchar("seo_title", { length: 300 }),
+  seoDescription: text("seo_description"),
+  seoKeywords: varchar("seo_keywords", { length: 500 }),
+  seoNoindex: boolean("seo_noindex").default(false).notNull(),
 });
 
 // ==========================================

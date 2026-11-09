@@ -15,6 +15,13 @@
       "when": 1789585443334,
       "tag": "0001_add_product_video",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1794233000000,
+      "tag": "0002_blog_seo_scheduling",
+      "breakpoints": true
     }
   ]
 }
