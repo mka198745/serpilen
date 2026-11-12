@@ -28,6 +28,7 @@ import {
   Package,
   UserCircle2,
   LogOut,
+  Settings,
 } from "lucide-react";
 
 export function Header() {
@@ -125,6 +126,13 @@ export function Header() {
                     {user.roleLabel}
                   </span>
                 </span>
+                <Link
+                  href="/hesabim"
+                  className="flex items-center gap-1 px-2.5 py-0.5 rounded font-semibold text-amber-200 hover:text-white hover:bg-white/10 border border-white/20 transition"
+                >
+                  <Settings className="w-3 h-3" />
+                  <span>Hesabım</span>
+                </Link>
                 <button
                   onClick={() => void handleLogout()}
                   disabled={loggingOut}
