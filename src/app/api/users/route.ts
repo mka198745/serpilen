@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, auditLogs, adminSessions, authNonces } from "@/db/schema";
-import { desc, eq, count } from "drizzle-orm";
+import { desc, eq, count, sql } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
@@ -56,6 +56,27 @@ export async function GET(request: Request) {
   });
 }
 
+/** Boşta kalan en küçük kullanıcı ID'sini bulur (silinen kayıtların ID'leri yeniden kullanılır). */
+async function allocateUserId(): Promise<number> {
+  const rows = await db.select({ id: users.id }).from(users).orderBy(users.id);
+  let expected = 1;
+  for (const row of rows) {
+    if (row.id > expected) return expected;
+    expected = row.id + 1;
+  }
+  return expected;
+}
+
+/** SQLite sıra sayacını mevcut en yüksek ID'ye çeker (kullanıcı silindikten sonra
+ *  AUTOINCREMENT'un boşa ID atlamasını önler). */
+async function trimSqliteSequence(): Promise<void> {
+  try {
+    await db.run(sql`UPDATE sqlite_sequence SET seq = (SELECT COALESCE(MAX(id), 0) FROM users) WHERE name = 'users'`);
+  } catch {
+    /* sqlite_sequence yoksa sorun değil */
+  }
+}
+
 /** POST /api/users — Yeni personel kaydı. Parola doğrudan üretilir (giriş modülü kapalı olduğundan yedek tutulur). */
 export async function POST(request: Request) {
   const __gate = await requireStaff(request);
@@ -102,12 +123,36 @@ export async function POST(request: Request) {
     );
   }
 
-  const [{ id: __created_id }] = await db.insert(users).values({ name, email, phone, role, passwordHash: hashPassword(password) }).returning({ id: users.id });
-  const [created] = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive }).from(users).where(eq(users.id, __created_id));
+  // Boşta kalan en küçük ID atanır (silinen kayıtların ID'leri boşa düşmez).
+  // Eşzamanlı oluşturmalarda PK çakışırsa bir kez yeniden hesaplanır.
+  let created:
+    | { id: number; name: string; email: string; role: string; phone: string | null; isActive: boolean }
+    | undefined;
+  for (let attempt = 0; attempt < 2 && !created; attempt++) {
+    const newId = await allocateUserId();
+    try {
+      const [{ id: createdId }] = await db
+        .insert(users)
+        .values({ id: newId, name, email, phone, role, passwordHash: hashPassword(password) })
+        .returning({ id: users.id });
+      [created] = await db
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive })
+        .from(users)
+        .where(eq(users.id, createdId));
+    } catch {
+      created = undefined;
+    }
+  }
+  if (!created) {
+    return NextResponse.json(
+      { success: false, error: { code: "CREATE_FAILED", message: "Kullanıcı oluşturulamadı; lütfen tekrar deneyin." } },
+      { status: 500 }
+    );
+  }
 
   await db.insert(auditLogs).values({
-    userId: "1",
-    userName: "Yönetici",
+    userId: String(__gate.user.id),
+    userName: __gate.user.name,
     action: "USER_CREATED",
     entity: "User",
     entityId: String(created.id),
@@ -170,8 +215,8 @@ export async function PATCH(request: Request) {
   const [updated] = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive }).from(users).where(eq(users.id, id));
 
   await db.insert(auditLogs).values({
-    userId: "1",
-    userName: "Yönetici",
+    userId: String(__gate.user.id),
+    userName: __gate.user.name,
     action: "USER_UPDATED",
     entity: "User",
     entityId: String(id),
@@ -226,6 +271,7 @@ export async function DELETE(request: Request) {
   await db.delete(adminSessions).where(eq(adminSessions.userId, id));
   await db.delete(authNonces).where(eq(authNonces.userId, id));
   await db.delete(users).where(eq(users.id, id));
+  await trimSqliteSequence();
 
   await db.insert(auditLogs).values({
     userId: String(gate.user.id),
