@@ -290,8 +290,6 @@ export function PosTerminalClient({
       if (data.success) {
         setReceiptData({
           orderNumber: data.data.order.orderNumber,
-          invoiceNumber: data.data.invoice.invoiceNumber,
-          gibUuid: data.data.invoice.gibUuid,
           date: new Date().toLocaleString("tr-TR"),
           customerName: selectedCustomer?.name || "Perakende Müşteri",
           cashierName: shift?.cashierName || "Kasiyer",
@@ -1295,12 +1293,11 @@ export function PosTerminalClient({
                 <h4 className="font-bold text-sm uppercase">İPEK TUHAFİYE SAN. TİC. LTD.</h4>
                 <p>Moda Cad. No:18 Kadıköy / İstanbul</p>
                 <p>VKN: 4810294821 • Kadıköy V.D.</p>
-                <p className="font-bold mt-1">E-ARŞİV PERAKENDE SATIŞ FİŞİ</p>
+                <p className="font-bold mt-1">PERAKENDE SATIŞ FİŞİ</p>
               </div>
 
               <div className="space-y-0.5 text-[10px]">
                 <p>Fiş No: <strong>{receiptData.orderNumber}</strong></p>
-                <p>Fatura No: <strong>{receiptData.invoiceNumber}</strong></p>
                 <p>Tarih: {receiptData.date}</p>
                 <p>Kasiyer: {receiptData.cashierName}</p>
                 <p>Ödeme: <strong>{receiptData.paymentMethod}</strong></p>
@@ -1326,7 +1323,6 @@ export function PosTerminalClient({
 
               <div className="text-center border-t border-stone-300 pt-2 text-[9px] text-stone-500">
                 <p>Mali değeri yoktur / Bilgi fişidir.</p>
-                <p>GİB UUID: {receiptData.gibUuid}</p>
                 <p>Bizi tercih ettiğiniz için teşekkür ederiz.</p>
               </div>
             </div>

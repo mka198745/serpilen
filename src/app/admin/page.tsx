@@ -14,7 +14,6 @@ import {
   suppliers,
   purchaseOrders,
   coupons,
-  erpSyncLogs,
   posShifts,
 } from "@/db/schema";
 import { desc, sql, count, and, ne, gte, lt, inArray } from "drizzle-orm";
@@ -55,7 +54,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const allSuppliers = await db.select().from(suppliers).orderBy(desc(suppliers.id));
   const allPOs = await db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.id));
   const allCoupons = await db.select().from(coupons);
-  const allErpLogs = await db.select().from(erpSyncLogs).orderBy(desc(erpSyncLogs.id)).limit(30);
   const allShifts = await db.select().from(posShifts).orderBy(desc(posShifts.id)).limit(10);
 
   const enrichedProducts = allProds.map((p) => {
@@ -185,7 +183,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       suppliers={allSuppliers}
       purchaseOrders={allPOs}
       coupons={allCoupons}
-      erpLogs={allErpLogs}
       shifts={allShifts}
       dashboardStats={dashboardStats}
       currentRole={currentRole}

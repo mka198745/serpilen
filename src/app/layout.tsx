@@ -10,7 +10,7 @@ import { AuthModal } from "@/components/layout/AuthModal";
 export const metadata: Metadata = {
   title: "İpek Tuhafiye | Dikiş, Nakış, Fermuar, Düğme & Örgü Malzemeleri",
   description:
-    "Türkiye'nin lider tuhafiye ve tekstil hobi malzemeleri platformu. Gütermann, Coats, YKK ve Prym ürünlerinde perakende satış, anında e-Fatura ve hızlı kargo.",
+    "Türkiye'nin lider tuhafiye ve tekstil hobi malzemeleri platformu. Gütermann, Coats, YKK ve Prym ürünlerinde perakende satış ve hızlı kargo.",
   keywords: [
     "tuhafiye",
     "dikiş ipliği",

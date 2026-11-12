@@ -291,7 +291,6 @@ export const orders = mysqlTable("orders", {
   trackingNumber: varchar("tracking_number", { length: 255 }),
   carrier: varchar("carrier", { length: 255 }).default("Yurtiçi Kargo"),
   posShiftId: int("pos_shift_id"),
-  erpInvoiceNumber: varchar("erp_invoice_number", { length: 255 }),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -588,41 +587,8 @@ export const blogPosts = mysqlTable("blog_posts", {
 });
 
 // ==========================================
-// 11. ERP ENTEGRASYON KAYITLARI & AUDIT LOG (FAZ 10)
+// 11. AUDIT LOG
 // ==========================================
-export const erpSyncLogs = mysqlTable("erp_sync_logs", {
-  id: int("id").autoincrement().primaryKey(),
-  provider: varchar("provider", { length: 255 }).default("LOGO_GO3").notNull(), // LOGO_GO3, MIKRO_FLY, NETSIS, PARASUT, GIB_PORTAL
-  entityType: varchar("entity_type", { length: 255 }).notNull(), // CUSTOMER, INVOICE, PURCHASE_INVOICE, PAYMENT, STOCK, RECEIPT
-  entityId: varchar("entity_id", { length: 255 }).notNull(),
-  action: varchar("action", { length: 255 }).notNull(), // SYNC_SENT, SYNC_SUCCESS, SYNC_ERROR, RETRY
-  status: varchar("status", { length: 255 }).notNull(), // SUCCESS, PENDING, FAILED, RETRYING
-  retryCount: int("retry_count").default(0).notNull(),
-  errorMessage: text("error_message"),
-  payload: text("payload"),
-  response: text("response"),
-  batchId: varchar("batch_id", { length: 255 }),
-  syncedAt: timestamp("synced_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// ERP ASENKRON İŞ KUYRUĞU (Background Job Queue) — FAZ 10
-export const erpSyncJobs = mysqlTable("erp_sync_jobs", {
-  id: int("id").autoincrement().primaryKey(),
-  provider: varchar("provider", { length: 255 }).default("LOGO_GO3").notNull(),
-  entityType: varchar("entity_type", { length: 255 }).notNull(), // CUSTOMER, INVOICE, PAYMENT, STOCK
-  entityId: varchar("entity_id", { length: 255 }).notNull(),
-  payload: text("payload").notNull(),
-  status: varchar("status", { length: 255 }).default("PENDING").notNull(), // PENDING, PROCESSING, COMPLETED, FAILED
-  priority: int("priority").default(10).notNull(),
-  attempts: int("attempts").default(0).notNull(),
-  maxAttempts: int("max_attempts").default(3).notNull(),
-  lastError: text("last_error"),
-  nextRunAt: timestamp("next_run_at").defaultNow().notNull(),
-  completedAt: timestamp("completed_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
 // UYGULAMA AYARLARI — FAZ 8 (sadakat oranı, rezervasyon süresi vb.)
 export const appSettings = mysqlTable("app_settings", {
   key: varchar("key", { length: 255 }).primaryKey(),
@@ -635,7 +601,7 @@ export const auditLogs = mysqlTable("audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   userId: varchar("user_id", { length: 255 }).default("1"),
   userName: varchar("user_name", { length: 255 }).default("Yönetici"),
-  action: varchar("action", { length: 255 }).notNull(), // CREATE_ORDER, ADJUST_STOCK, CLOSE_SHIFT, ERP_SYNC, etc.
+  action: varchar("action", { length: 255 }).notNull(), // CREATE_ORDER, ADJUST_STOCK, CLOSE_SHIFT, etc.
   entity: varchar("entity", { length: 255 }).notNull(), // Product, Inventory, Shift, Order
   entityId: varchar("entity_id", { length: 255 }),
   details: text("details"),

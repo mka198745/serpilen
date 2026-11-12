@@ -17,7 +17,6 @@ import {
   purchaseOrderItems,
   coupons,
   blogPosts,
-  erpSyncLogs,
   auditLogs,
   users,
 } from "./schema";
@@ -437,7 +436,6 @@ export async function seedDatabase() {
     shippingAddress: insertedCustomers[0].address,
     trackingNumber: "YK-88492019401",
     carrier: "Yurtiçi Kargo",
-    erpInvoiceNumber: "GIB2026000001049",
     notes: "Hediye paketi istendi, paketlendi.",
   }).returning({ id: orders.id });
   const [order1] = await db.select().from(orders).where(eq(orders.id, __order1_id));
@@ -622,27 +620,8 @@ export async function seedDatabase() {
     },
   ]);
 
-  // 15. ERP Sync Logs
-  await db.insert(erpSyncLogs).values([
-    {
-      entityType: "INVOICE",
-      entityId: "OR-2026-1049",
-      action: "SYNC_SUCCESS",
-      status: "SUCCESS",
-      payload: JSON.stringify({ invoiceNumber: "GIB2026000001049", total: 698.00, tax: 116.33, customer: "Ayşe Nilgün Kaya" }),
-      response: JSON.stringify({ gibStatus: "ACCEPTED", uuid: "d9e18b82-990a-4a2e-8391-28cf00192831" }),
-    },
-    {
-      entityType: "CUSTOMER",
-      entityId: "2",
-      action: "SYNC_SUCCESS",
-      status: "SUCCESS",
-      payload: JSON.stringify({ code: "CAR-002", title: "Moda Tasarım Tekstil Ltd. Şti.", vkn: "6220491823" }),
-      response: JSON.stringify({ erpCariId: "ERP-M0092" }),
-    },
-  ]);
 
-  // 16. Audit Logs
+  // 15. Audit Logs
   await db.insert(auditLogs).values([
     {
       userId: "1",

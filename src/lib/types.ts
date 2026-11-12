@@ -144,7 +144,6 @@ export interface Order {
   shippingAddress: string | null;
   trackingNumber: string | null;
   carrier: string | null;
-  erpInvoiceNumber: string | null;
   notes: string | null;
   createdAt: string | Date;
   items?: OrderItem[];

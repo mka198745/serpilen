@@ -233,7 +233,7 @@ export default async function HomePage() {
               </div>
               <h3 className="text-xl font-bold">Yönetim Paneli & WMS</h3>
               <p className="text-xs text-emerald-200/90 leading-relaxed">
-                Çoklu depo stok defteri (Stock Ledger), satın alma siparişleri, otomatik GİB e-Fatura ve kural tabanlı AI asistanı.
+                Çoklu depo stok defteri (Stock Ledger), satın alma siparişleri ve kural tabanlı AI asistanı.
               </p>
             </div>
             <div className="pt-6 relative z-10">

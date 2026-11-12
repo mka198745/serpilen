@@ -77,8 +77,8 @@ export function Footer() {
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-white">Güvenli Ödeme & e-Fatura</h4>
-              <p className="text-xs text-stone-400">256-Bit SSL, 3D Secure, anında fatura</p>
+              <h4 className="text-sm font-semibold text-white">Güvenli Ödeme</h4>
+              <p className="text-xs text-stone-400">256-Bit SSL, 3D Secure ödeme altyapısı</p>
             </div>
           </div>
 

@@ -4,17 +4,16 @@
 ---
 
 ### 1. PROJENİN DETAYLI KAPSAMI
-Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrini, B2B toptan satış portalı, web tabanlı POS terminali, barkod motoru, stok hareket defteri (stock ledger), satın alma ve tedarikçi yönetimi, kampanya & sadakat motoru, CRM 360, ERP/ön muhasebe (e-Fatura / e-Arşiv) entegrasyon adaptörü ve kural tabanlı AI asistanını **tek bir merkezi ürün ve stok veritabanı** üzerinde birleştiren kurumsal bir perakende işletim sistemidir.
+Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrini, web tabanlı POS terminali, barkod motoru, stok hareket defteri (stock ledger), satın alma ve tedarikçi yönetimi, kampanya & sadakat motoru, CRM 360 ve kural tabanlı AI asistanını **tek bir merkezi ürün ve stok veritabanı** üzerinde birleştiren kurumsal bir perakende işletim sistemidir.
 
 ### 2. FONKSİYONEL GEREKSİNİMLER
-- **Tekil Ürün Tanımı**: Bir ürün ve varyantları sisteme tek sefer tanımlanır; B2C, POS, B2B, Depo ve ERP aynı kimliği (SKU / Barkod) kullanır.
+- **Tekil Ürün Tanımı**: Bir ürün ve varyantları sisteme tek sefer tanımlanır; B2C, POS ve Depo aynı kimliği (SKU / Barkod) kullanır.
 - **Varyant Desteği**: Renk (hex kodlu), ebat/en (10mm, 20mm, vb.), uzunluk (100m, 500m), numara varyantları.
 - **Hareket Bazlı Stok (Stock Ledger)**: Basit sayı yerine PURCHASE, SALE, RETURN, TRANSFER_IN, TRANSFER_OUT, ADJUSTMENT, COUNT_DIFF, DAMAGE işlem kayıtları.
 - **Çoklu Depo (Multi-Warehouse)**: Merkez Depo, Mağaza Kasa Deposu, Online Depo, Toptan Deposu ve lokasyon/raf kodları (MRK-A-03-12).
 - **Web Tabanlı POS**: Barkod okutma, nakit/kredi kartı/parçalı ödeme, askıya alma, vardiya açılış/kapanış, fiş yazdırma.
 - **B2B Portal**: Cari hesap limitleri, vergi bilgileri, kademeli toptan iskonto, koli/paket minimum sipariş.
 - **Satın Alma**: Tedarikçi karnesi, otomatik sipariş önerisi (Reorder Engine), mal kabul ve stok artırma.
-- **ERP Entegrasyonu**: Adapter pattern ile GİB e-Fatura/e-Arşiv, cari mutabakat ve sync kuyruğu.
 - **AI Asistanı**: Satış analizi, kritik stok uyarısı, sipariş tahmini (Guardrail: Kullanıcı onayı olmadan otomatik işlem yapmaz).
 
 ### 3. FONKSİYONEL OLMAYAN GEREKSİNİMLER
@@ -42,7 +41,7 @@ Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrin
       ┌──────────────┬───────────────┼───────────────┬──────────────┐
       │              │               │               │              │
  ┌────▼────┐   ┌─────▼────┐    ┌─────▼─────┐   ┌─────▼────┐   ┌─────▼────┐
- │ B2C Web │   │ Web POS  │    │ Admin WMS │   │   B2B    │   │ ERP/GİB  │
+ │ B2C Web │   │ Web POS  │    │ Admin WMS │   │   B2B    │  
  │ Vitrini │   │ Terminal │    │  Paneli   │   │  Portal  │   │ Entegr.  │
  └─────────┘   └──────────┘    └───────────┘   └──────────┘   └──────────┘
 ```
@@ -55,7 +54,6 @@ Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrin
       ├── Inventory Engine (Physical, Reserved, Available calculation)
       ├── POS Engine (Shifts, Split Payment, Instant Deduction)
       ├── Pricing & Promotion Engine (Tier prices, coupons, loyalty)
-      ├── ERP Adapter Service (e-Fatura simulation, Cari sync)
       └── AI Analyst Service (Sales & reorder predictive analytics)
                                     │
   [ Data Tier: MySQL 8 + Drizzle ORM (Relational, Foreign Keys, JSON, Indexes) ]
@@ -67,7 +65,7 @@ Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrin
 - State Management: React Hooks, Optimistic UI güncellemeleri, persistent cart state (LocalStorage + Backend Sync).
 
 ### 8. BACKEND ARCHITECTURE
-- RESTful JSON API mimarisi (`/api/products`, `/api/orders`, `/api/pos`, `/api/inventory`, `/api/b2b`, `/api/erp`, `/api/ai`).
+- RESTful JSON API mimarisi (`/api/products`, `/api/orders`, `/api/pos`, `/api/inventory`, `/api/ai`).
 - Controller -> Service -> Repository katman ayrımı.
 - Idempotency & Concurrency: Sipariş ve ödemelerde atomic transactions.
 
@@ -80,7 +78,6 @@ Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrin
 - `B2B`: Cari hesaplar, toptan fiyat listeleri, iskonto.
 - `Purchasing`: Tedarikçiler, satın alma siparişleri, mal kabul.
 - `Promotions & Loyalty`: Kampanyalar, kuponlar, sadakat puanları.
-- `ERP Integration`: Fatura ve cari senkronizasyonu.
 - `AI Assistant`: Satış ve stok tahmin motoru.
 
 ### 10. MYSQL DATABASE MİMARİSİ
@@ -106,7 +103,6 @@ Tüm para alanları `numeric(10,2)` veya `numeric(12,2)` olarak tutulur. Asla fl
 - `coupons`: İndirim kuponları.
 - `loyalty_transactions`: Sadakat puan hareketleri.
 - `blog_posts`: CMS makaleleri.
-- `erp_sync_logs`: ERP entegrasyon kuyruğu ve sonuçları.
 - `audit_logs`: Güvenlik ve denetim kayıtları.
 
 ### 12. ERD TASARIMI
@@ -161,12 +157,11 @@ Mal kabul yapıldığında `inventory` ve `inventory_ledger` otomatik güncellen
 - Koli bazlı alımlarda otomatik kademeli indirim.
 - Cari limit ve açık hesap bakiyesi takibi.
 
-### 19. ERP ENTEGRASYON MİMARİSİ
-- `ERPAdapter` arabirimi:
+### 19. SİPARİŞ & BELGE NUMARASI
+- Siparişler tekil `order_number` değeri ile izlenir; ERP entegrasyonu kaldırıldı.
   - `syncCustomer(customer)`
   - `createInvoice(order)`
   - `syncStockLevels(sku, qty)`
-- Tüm senkronizasyonlar `erp_sync_logs` tablosuna payload ve yanıt ile loglanır. Hata durumunda yeniden deneme (retry) mekanizması bulunur.
 
 ### 20. SEARCH MİMARİSİ
 Ürün adı, SKU, barkod, marka, kategori, renk ve teknik açıklama alanlarında indexlenmiş hızlı arama ve Türkçe karakter desteği (İ/ı, Ş/ş, Ğ/ğ vb.).
@@ -189,13 +184,13 @@ Fiyat güncellemeleri, stok düzeltmeleri, vardiya kapatma ve kullanıcı yetkil
 Statik sayfalar ve kategori ağacı için Next.js ISR (Incremental Static Regeneration), sık sorgulanan ürün katalog verileri için HTTP Cache-Control başlıkları.
 
 ### 26. BACKGROUND WORKER MİMARİSİ
-ERP fatura senkronizasyonu ve otomatik kritik stok reorder kontrolleri asenkron kuyruk yapısında çalışır.
+Otomatik kritik stok reorder kontrolleri ve zamanlanmış raporlar asenkron çalışır.
 
 ### 27. DOCKER MİMARİSİ
 Multi-stage Dockerfile ile Next.js üretim derlemesi ve MySQL 8 container kurulumu (docker-compose).
 
 ### 28. DEV / STAGING / PROD MİMARİSİ
-Environment variables (`DATABASE_URL`, `ERP_API_KEY`, `APP_ENV`) üzerinden ayrılmış, izole veritabanı şemaları.
+Environment variables (`DATABASE_URL`, `APP_ENV`) üzerinden ayrılmış, izole veritabanı şemaları.
 
 ### 29. CI/CD STRATEJİSİ
 GitHub Actions / Pipeline: TypeCheck -> Lint -> Production Build -> Database Migration -> HealthCheck.
@@ -224,7 +219,6 @@ src/
 │   │   ├── pos/
 │   │   ├── inventory/
 │   │   ├── b2b/
-│   │   ├── erp/
 │   │   └── ai/
 │   ├── urunler/
 │   ├── pos/
@@ -245,7 +239,6 @@ src/
 │   ├── index.ts
 │   └── seed.ts
 └── lib/
-    ├── erp-adapter.ts
     ├── inventory-engine.ts
     └── utils.ts
 ```
@@ -268,10 +261,10 @@ TypeScript statik tip denetimi, sipariş/stok entegrasyon senaryoları ve API he
 - **Faz 0**: Mimari Tasarım ve Veritabanı Şeması (Tamamlandı)
 - **Faz 1-3**: Çekirdek Katalog, Varyantlar, Çoklu Depo ve Stok Defteri (Hazır)
 - **Faz 4-7**: B2C E-Ticaret, Web POS, Siparişler ve Mal Kabul (Hazır)
-- **Faz 8-11**: B2B Portal, ERP Senkronizasyonu, AI Yönetim Asistanı (Hazır)
+- **Faz 8-11**: AI Yönetim Asistanı ve site içerik yönetimi (Hazır)
 
 ### 40. MVP İLE İLERİ SÜRÜM AYRIMI
-- MVP: Tek veritabanında çoklu depo, e-ticaret, B2B, POS, kampanya, ERP adaptör simülasyonu.
+- MVP: Tek veritabanında çoklu depo, e-ticaret, POS ve kampanya motoru.
 - İleri Sürüm: Çoklu dil (i18n), gerçek zamanlı WebSocket barkod el terminali eşzamanlaması, fiziksel mali mühür entegrasyonu.
 
 ---
@@ -279,7 +272,6 @@ TypeScript statik tip denetimi, sipariş/stok entegrasyon senaryoları ve API he
 ## ARCHITECTURE DECISIONS
 1. **Tekil Stok Defteri (Immutable Stock Ledger)**: Sadece ürün tablosundaki sayıyı güncellemek yerine her hareketi `inventory_ledger`'a kaydetme kararı alındı; bu sayede kayıp/kaçak, iade ve sayım farkları kurumsal düzeyde denetlenebilir hale geldi.
 2. **Next.js Fullstack Monolith**: Ayrı bir mikroservis kümesi yerine tek Next.js + MySQL çatısı seçildi; bu sayede POS, B2C ve Admin aynı veritabanı modellerini tip güvenliğiyle sıfır gecikmeyle paylaşır.
-3. **ERP Adapter Pattern**: Ön muhasebe sistemleri sık değişebileceğinden, sistem çekirdeği ERP sağlayıcısından soyutlandı.
 
 ---
 

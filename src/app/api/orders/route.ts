@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { orders, orderItems, orderStatusHistory, customers, loyaltyTransactions, posShifts, products } from "@/db/schema";
 import { adjustInventory } from "@/lib/inventory-engine";
-import { erpAdapter } from "@/lib/erp-adapter";
 import { desc, eq } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
@@ -204,20 +203,7 @@ export async function POST(request: Request) {
       if (clash.length === 0) orderNumber = clientOrderNumber;
     }
 
-    // 1. Generate e-Fatura / e-Arşiv via ERP Adapter
-    const erpInvoice = await erpAdapter.createInvoice({
-      orderNumber,
-      customerName: customerName || "Perakende Müşteri",
-      taxNumber: null,
-      total: Number(grandTotal),
-      tax: Number(taxTotal || (Number(grandTotal) * 0.2).toFixed(2)),
-      items: items.map((it: any) => ({
-        name: it.productName,
-        quantity: it.quantity,
-        price: it.unitPrice,
-        total: it.totalPrice,
-      })),
-    });
+    // 1. İç belge numarası olarak orderNumber kullanılır (ERP/fatura entegrasyonu kaldırıldı)
 
     // 2. Insert Order
     const [{ id: __newOrder_id }] = await db.insert(orders).values({
@@ -239,7 +225,6 @@ export async function POST(request: Request) {
         trackingNumber: orderType === "ONLINE_B2C" ? `YK-${Date.now().toString().slice(-8)}` : null,
         carrier: orderType === "ONLINE_B2C" ? "Yurtiçi Kargo" : null,
         posShiftId: posShiftId ? Number(posShiftId) : null,
-        erpInvoiceNumber: erpInvoice.invoiceNumber,
         notes,
       }).returning({ id: orders.id });
     const [newOrder] = await db.select().from(orders).where(eq(orders.id, __newOrder_id));
@@ -321,16 +306,16 @@ export async function POST(request: Request) {
       orderId: newOrder.id,
       fromStatus: null,
       toStatus: newOrder.status,
-      note: `Sipariş oluşturuldu (${orderType}) · Fatura ${erpInvoice.invoiceNumber}`,
+      note: `Sipariş oluşturuldu (${orderType})`,
       changedBy: orderType === "POS" ? "Kasiyer" : "Online Müşteri",
     });
 
     return NextResponse.json({
       success: true,
-      message: "Sipariş ve fatura başarıyla oluşturuldu.",
+      message: "Sipariş başarıyla oluşturuldu.",
       data: {
         order: newOrder,
-        invoice: erpInvoice,
+        documentNumber: newOrder.orderNumber,
       },
     });
   } catch (error: any) {

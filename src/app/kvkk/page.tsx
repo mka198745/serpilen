@@ -9,7 +9,7 @@ export default function KvkkPage() {
           Yasal Bildirimler & Sözleşmeler
         </h1>
         <p className="text-stone-500 text-sm mt-1">
-          6698 sayılı KVKK, 6502 sayılı Tüketicinin Korunması Hakkında Kanun ve e-Fatura mevzuatına uygun şartlarımız.
+          6698 sayılı KVKK, 6502 sayılı Tüketicinin Korunması Hakkında Kanun ve ilgili mevzuata uygun şartlarımız.
         </p>
       </div>
 
@@ -20,7 +20,7 @@ export default function KvkkPage() {
           <h2 className="text-lg font-black text-stone-900">1. KVKK Aydınlatma Metni</h2>
         </div>
         <p className="text-xs text-stone-600 leading-relaxed">
-          İpek Tuhafiye San. ve Tic. Ltd. Şti. olarak veri sorumlusu sıfatıyla, 6698 sayılı Kişisel Verilerin Korunması Kanunu (&ldquo;KVKK&rdquo;) kapsamında; ad, soyad, telefon numarası, teslimat adresi ve e-posta verileriniz yalnızca siparişlerin yerine getirilmesi, GİB e-Fatura / e-Arşiv faturalarının tanzimi, kargo teslimatı ve müşteri ilişkileri yönetimi amacıyla işlenmektedir. Verileriniz üçüncü şahıslara ticari amaçla devredilmez.
+          İpek Tuhafiye San. ve Tic. Ltd. Şti. olarak veri sorumlusu sıfatıyla, 6698 sayılı Kişisel Verilerin Korunması Kanunu (&ldquo;KVKK&rdquo;) kapsamında; ad, soyad, telefon numarası, teslimat adresi ve e-posta verileriniz yalnızca siparişlerin yerine getirilmesi, sipariş belgelerinin düzenlenmesi, kargo teslimatı ve müşteri ilişkileri yönetimi amacıyla işlenmektedir. Verileriniz üçüncü şahıslara ticari amaçla devredilmez.
         </p>
       </section>
 

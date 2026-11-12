@@ -18,7 +18,6 @@ export async function GET() {
         database: "UP",
         inventoryEngine: "UP",
         posEngine: "UP",
-        erpGateway: "UP",
       },
     });
   } catch (err: any) {

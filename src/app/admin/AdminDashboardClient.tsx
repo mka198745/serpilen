@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
-import { ErpIntegrationConsole } from "@/components/admin/ErpIntegrationConsole";
 import { AiAssistantCenter } from "@/components/admin/AiAssistantCenter";
 import {
   LayoutDashboard,
@@ -16,7 +15,6 @@ import {
   ScrollText,
   Truck,
   Tag,
-  FileText,
   Sparkles,
   BookOpen,
   Search,
@@ -92,7 +90,6 @@ interface AdminDashboardClientProps {
   suppliers: any[];
   purchaseOrders: any[];
   coupons: any[];
-  erpLogs: any[];
   shifts: any[];
   dashboardStats?: {
     totalRevenue: number;
@@ -128,7 +125,6 @@ export function AdminDashboardClient({
   suppliers: initialSuppliers,
   purchaseOrders: initialPOs,
   coupons: initialCoupons,
-  erpLogs: initialErpLogs,
   shifts,
   dashboardStats,
 }: AdminDashboardClientProps) {
@@ -142,7 +138,6 @@ export function AdminDashboardClient({
     | "crm"
     | "purchasing"
     | "coupons"
-    | "erp"
     | "ai"
     | "users"
     | "registeredCustomers"
@@ -230,7 +225,6 @@ export function AdminDashboardClient({
   const [customers] = useState(initialCustomers);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
   const [coupons, setCoupons] = useState(initialCoupons);
-  const [erpLogs, setErpLogs] = useState(initialErpLogs);
 
   // Search & Filter
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -1433,8 +1427,6 @@ export function AdminDashboardClient({
     }
   };
 
-  // FAZ 10: ERP entegrasyon aksiyonları ErpIntegrationConsole bileşeni tarafından yönetilir
-
   // FAZ 11: AI analizleri AiAssistantCenter bileşeni tarafından yönetilir
 
   return (
@@ -1609,19 +1601,6 @@ export function AdminDashboardClient({
           </button>
           )}
 
-          {canSee("erp") && (
-          <button
-            onClick={() => setActiveTab("erp")}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
-              activeTab === "erp"
-                ? "bg-amber-700 text-white shadow-sm"
-                : "text-stone-300 hover:bg-stone-800"
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>ERP & e-Fatura Entegrasyon</span>
-          </button>
-          )}
 
           {canSee("ai") && (
           <button
@@ -1984,14 +1963,13 @@ export function AdminDashboardClient({
                       <th className="py-2.5 px-3">Müşteri</th>
                       <th className="py-2.5 px-3">Tutar</th>
                       <th className="py-2.5 px-3">Ödeme</th>
-                      <th className="py-2.5 px-3">Fatura (e-Arşiv)</th>
                       <th className="py-2.5 px-3">Durum</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     {orders.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-stone-400 text-xs">
+                        <td colSpan={6} className="py-8 text-center text-stone-400 text-xs">
                           Henüz sipariş/satış kaydı yok — sistem yeni. İlk satıştan sonra bu liste otomatik dolar.
                         </td>
                       </tr>
@@ -2009,9 +1987,6 @@ export function AdminDashboardClient({
                           {Number(ord.grandTotal).toFixed(2)} TL
                         </td>
                         <td className="py-3 px-3">{ord.paymentMethod}</td>
-                        <td className="py-3 px-3 font-mono text-[11px] text-stone-500">
-                          {ord.erpInvoiceNumber || "-"}
-                        </td>
                         <td className="py-3 px-3">
                           <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
                             {ord.status}
@@ -3019,7 +2994,7 @@ export function AdminDashboardClient({
                         </tr>
                       ))}
                       {reservationsList.length === 0 && (
-                        <tr><td colSpan={7} className="py-8 text-center text-stone-400">Aktif/geçmiş rezervasyon yok.</td></tr>
+                        <tr><td colSpan={6} className="py-8 text-center text-stone-400">Aktif/geçmiş rezervasyon yok.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3594,7 +3569,7 @@ export function AdminDashboardClient({
                         })}
                       {shiftsList.filter((s: any) => s.status === "CLOSED").length === 0 && (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-stone-400">
+                          <td colSpan={6} className="py-8 text-center text-stone-400">
                             Henüz kapatılmış Z Raporu bulunmuyor.
                           </td>
                         </tr>
@@ -3784,7 +3759,6 @@ export function AdminDashboardClient({
                           <tr key={ord.id} className="hover:bg-stone-50/50">
                             <td className="py-3 px-3">
                               <span className="font-mono font-bold text-stone-900 block">{ord.orderNumber}</span>
-                              <span className="text-[10px] text-stone-400">{ord.erpInvoiceNumber}</span>
                             </td>
                             <td className="py-3 px-3">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ord.orderType === "POS" ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}`}>
@@ -4064,7 +4038,7 @@ export function AdminDashboardClient({
                         <td className="py-2.5 px-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.priority === "URGENT" ? "bg-rose-600 text-white" : s.priority === "HIGH" ? "bg-rose-100 text-rose-800" : "bg-stone-100 text-stone-600"}`}>{s.priority}</span></td>
                       </tr>
                     ))}
-                    {suggestions.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-stone-400">Öneri yok — stoklar yeterli.</td></tr>}
+                    {suggestions.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-stone-400">Öneri yok — stoklar yeterli.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -4191,13 +4165,6 @@ export function AdminDashboardClient({
           <MarketingCenter categories={categories} brands={brands} />
         )}
 
-        {/* ============================================================ */}
-        {/* FAZ 10 / TAB: ERP & E-FATURA INTEGRATION CONSOLE */}
-        {/* ============================================================ */}
-        {activeTab === "erp" && (
-          <ErpIntegrationConsole />
-        )}
-
         {activeTab === "ai" && <AiAssistantCenter products={products} />}
 
         {/* ============================================================ */}
@@ -4309,7 +4276,7 @@ export function AdminDashboardClient({
                     ))}
                     {usersList.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-stone-400">
+                        <td colSpan={6} className="py-8 text-center text-stone-400">
                           {usersBusy ? "Yükleniyor…" : "Kayıt yok."}
                         </td>
                       </tr>
@@ -4419,7 +4386,7 @@ export function AdminDashboardClient({
                     ))}
                     {customersList.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-stone-400">
+                        <td colSpan={6} className="py-8 text-center text-stone-400">
                           {customersBusy ? "Yükleniyor…" : "Kayıtlı müşteri hesabı yok."}
                         </td>
                       </tr>
@@ -4585,7 +4552,7 @@ export function AdminDashboardClient({
                 const label = role === "SUPER_ADMIN" ? "Süper Admin" : role === "STORE_MANAGER" ? "Mağaza Müdürü" : role === "WAREHOUSE_KEEPER" ? "Depo Sorumlusu" : "POS Kasiyeri";
                 const desc =
                   role === "SUPER_ADMIN"
-                    ? "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans, stok ve ERP."
+                    ? "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans ve stok."
                     : role === "STORE_MANAGER"
                     ? "Mağaza operasyonu: stok, sipariş, POS, raporlar ve içerik. Kullanıcı yönetimi ve kritik sistem ayarları bu rolde kapalı gelir."
                     : role === "WAREHOUSE_KEEPER"

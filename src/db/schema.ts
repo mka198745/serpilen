@@ -292,7 +292,6 @@ export const orders = sqliteTable("orders", {
   trackingNumber: text("tracking_number"),
   carrier: text("carrier").default("Yurtiçi Kargo"),
   posShiftId: integer("pos_shift_id"),
-  erpInvoiceNumber: text("erp_invoice_number"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
@@ -589,41 +588,8 @@ export const blogPosts = sqliteTable("blog_posts", {
 });
 
 // ==========================================
-// 11. ERP ENTEGRASYON KAYITLARI & AUDIT LOG (FAZ 10)
+// 11. AUDIT LOG
 // ==========================================
-export const erpSyncLogs = sqliteTable("erp_sync_logs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  provider: text("provider").default("LOGO_GO3").notNull(), // LOGO_GO3, MIKRO_FLY, NETSIS, PARASUT, GIB_PORTAL
-  entityType: text("entity_type").notNull(), // CUSTOMER, INVOICE, PURCHASE_INVOICE, PAYMENT, STOCK, RECEIPT
-  entityId: text("entity_id").notNull(),
-  action: text("action").notNull(), // SYNC_SENT, SYNC_SUCCESS, SYNC_ERROR, RETRY
-  status: text("status").notNull(), // SUCCESS, PENDING, FAILED, RETRYING
-  retryCount: integer("retry_count").default(0).notNull(),
-  errorMessage: text("error_message"),
-  payload: text("payload"),
-  response: text("response"),
-  batchId: text("batch_id"),
-  syncedAt: integer("synced_at", { mode: "timestamp" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
-
-// ERP ASENKRON İŞ KUYRUĞU (Background Job Queue) — FAZ 10
-export const erpSyncJobs = sqliteTable("erp_sync_jobs", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  provider: text("provider").default("LOGO_GO3").notNull(),
-  entityType: text("entity_type").notNull(), // CUSTOMER, INVOICE, PAYMENT, STOCK
-  entityId: text("entity_id").notNull(),
-  payload: text("payload").notNull(),
-  status: text("status").default("PENDING").notNull(), // PENDING, PROCESSING, COMPLETED, FAILED
-  priority: integer("priority").default(10).notNull(),
-  attempts: integer("attempts").default(0).notNull(),
-  maxAttempts: integer("max_attempts").default(3).notNull(),
-  lastError: text("last_error"),
-  nextRunAt: integer("next_run_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-  completedAt: integer("completed_at", { mode: "timestamp" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
-
 // UYGULAMA AYARLARI — FAZ 8 (sadakat oranı, rezervasyon süresi vb.)
 export const appSettings = sqliteTable("app_settings", {
   key: text("key").primaryKey(),
@@ -636,7 +602,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: text("user_id").default("1"),
   userName: text("user_name").default("Yönetici"),
-  action: text("action").notNull(), // CREATE_ORDER, ADJUST_STOCK, CLOSE_SHIFT, ERP_SYNC, etc.
+  action: text("action").notNull(), // CREATE_ORDER, ADJUST_STOCK, CLOSE_SHIFT, etc.
   entity: text("entity").notNull(), // Product, Inventory, Shift, Order
   entityId: text("entity_id"),
   details: text("details"),

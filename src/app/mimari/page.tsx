@@ -21,11 +21,11 @@ export default function ArchitecturePage() {
     { num: 2, title: "Fonksiyonel Gereksinimler", desc: "SKU/barkod bazlı tekil ürün, renk/boyut varyantları, hareket bazlı stok defteri (Stock Ledger), çoklu depo ve web POS." },
     { num: 3, title: "Fonksiyonel Olmayan Gereksinimler", desc: "MySQL (InnoDB) transaction bütünlüğü, < 200ms TTFB yanıt süresi, OWASP Top 10 ve PCI-DSS ilkeleri." },
     { num: 4, title: "Kullanıcı Rolleri & RBAC", desc: "SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER, B2C_CUSTOMER granular yetkilendirmesi." },
-    { num: 5, title: "Context Diagramı", desc: "Platform; B2C vitrin, Web POS, Admin Paneli ve ERP Ön Muhasebe servislerinin merkezinde konumlanır." },
-    { num: 6, title: "High-Level Mimari", desc: "Next.js App Router (Client) -> Service Katmanı (Inventory, POS, ERP) -> MySQL 8 & Drizzle ORM." },
+    { num: 5, title: "Context Diagramı", desc: "Platform; B2C vitrin, Web POS ve Admin Panelinin merkezinde konumlanır." },
+    { num: 6, title: "High-Level Mimari", desc: "Next.js App Router (Client) -> Service Katmanı (Inventory, POS, Checkout) -> SQLite & Drizzle ORM." },
     { num: 7, title: "Frontend Architecture", desc: "Server-side rendering, Reusable UI tokens, optimistic cart updates, mobile-first duyarlı tasarım." },
     { num: 8, title: "Backend Architecture", desc: "RESTful JSON API'ler, Transactional Idempotency, Drizzle Kit ORM migration altyapısı." },
-    { num: 9, title: "Modül Sınırları", desc: "Core, Catalog, Inventory, Orders, POS, Purchasing, Loyalty, ERP Adapter, AI Assistant bağımsız domainleri." },
+    { num: 9, title: "Modül Sınırları", desc: "Core, Catalog, Inventory, Orders, POS, Purchasing, Loyalty, AI Assistant bağımsız domainleri." },
     { num: 10, title: "Database Mimarisi", desc: "Tüm para birimleri numeric(10,2) decimal, UTC timestamp, foreign key ve index optimizasyonu." },
     { num: 11, title: "Ana Entity Listesi", desc: "users, customers, categories, brands, products, product_variants, warehouses, inventory, inventory_ledger, orders, pos_shifts." },
     { num: 12, title: "ERD Tasarımı", desc: "Katalog -> Varyant -> Çoklu Depo Stok -> Stok Defteri -> Sipariş Kalemleri ilişkisel ağacı." },
@@ -33,16 +33,16 @@ export default function ArchitecturePage() {
     { num: 14, title: "Order Lifecycle", desc: "PENDING -> PAID -> PREPARING -> SHIPPED -> DELIVERED (veya CANCELLED/REFUNDED)." },
     { num: 15, title: "Payment Lifecycle", desc: "Adapter Pattern ile 3D Secure Kredi Kartı, Nakit Kasa ve Havale." },
     { num: 16, title: "Purchase Lifecycle", desc: "Satın alma siparişi (PO) oluşturulur; mal kabul onaylandığında stoklar otomatik artırılır." },
-    { num: 17, title: "POS Terminal Mimarisi", desc: "Kasiyer vardiya açılışı, barkod tabancası okuma, askıya alma, karma ödeme ve termal e-Arşiv fiş baskısı." },
+    { num: 17, title: "POS Terminal Mimarisi", desc: "Kasiyer vardiya açılışı, barkod tabancası okuma, askıya alma, karma ödeme ve termal satış fişi baskısı." },
     { num: 18, title: "Müşteri CRM Mimarisi", desc: "Sadakat puanları, segmentasyon (VİP/AKTİF/KAYIP RİSKİ), iade geçmişi ve kişiye özel kampanyalar." },
-    { num: 19, title: "ERP & e-Fatura Entegrasyonu", desc: "GİB e-Fatura/e-Arşiv UUID üretimi, Mikro & Logo uyumlu cari ve fatura adaptörü (erp_sync_logs)." },
+    { num: 19, title: "Sipariş & Belge Takibi", desc: "POS ve çevrimiçi siparişler tekil orderNumber iç belge numarasıyla izlenir; durum geçmişi audit_logs üzerinde tutulur." },
     { num: 20, title: "Arama Mimarisi", desc: "Ürün adı, SKU, barkod ve varyant renklerinde tam metin arama ve Türkçe karakter desteği." },
     { num: 21, title: "Bildirim Mimarisi", desc: "Sipariş onayı, kargo takip numarası ve kritik stok uyarıları için tekil olay motoru." },
     { num: 22, title: "Güvenlik Mimarisi", desc: "SQL Injection koruması (parametrik sorgular), XSS filtreleri, güvenli HTTP başlıkları." },
     { num: 23, title: "RBAC Yetki Modeli", desc: "Kasiyer sadece POS ekranına erişebilirken, depo şefi transfer ve sayım yetkisine sahiptir." },
     { num: 24, title: "Audit Log Mimarisi", desc: "Fiyat ve stok güncellemelerinde kullanıcı kimliği, IP ve zaman damgasıyla değiştirilemez kayıt." },
     { num: 25, title: "Cache Stratejisi", desc: "Next.js ISR ve HTTP Cache-Control ile hızlı katalog sunumu." },
-    { num: 26, title: "Background Worker", desc: "Asenkron fatura senkronizasyonu ve otomatik kritik stok reorder kontrolleri." },
+    { num: 26, title: "Background Worker", desc: "Otomatik kritik stok reorder kontrolleri ve zamanlanmış rapor üretimi." },
     { num: 27, title: "Docker Konfigürasyonu", desc: "Multi-stage Dockerfile ve izole MySQL 8 veritabanı konteyner mimarisi." },
     { num: 28, title: "Dev / Staging / Prod Ortamları", desc: "Environment variable ile yönetilen izole konfigürasyon." },
     { num: 29, title: "CI/CD Pipeline", desc: "Type check -> Lint -> Build -> Database Push -> Healthcheck aşamaları." },
@@ -56,7 +56,7 @@ export default function ArchitecturePage() {
     { num: 37, title: "Kod Kalite Standartları", desc: "SOLID, DRY, Domain-Driven Design prensipleri." },
     { num: 38, title: "Test Stratejisi", desc: "TypeScript derleme doğrulaması ve kritik sipariş/stok entegrasyon testleri." },
     { num: 39, title: "Geliştirme Yol Haritası", desc: "FAZ 0'dan FAZ 12'ye kadar aşamalı ve doğrulanabilir teslimat planı." },
-    { num: 40, title: "MVP vs İleri Sürüm", desc: "MVP'de tam çalışan POS, WMS ve ERP; ileri sürümde donanım mali mühür entegrasyonu." },
+    { num: 40, title: "MVP vs İleri Sürüm", desc: "MVP'de tam çalışan POS ve WMS; ileri sürümde gelişmiş analitik ve dış sistem entegrasyonları." },
   ];
 
   return (
@@ -71,7 +71,7 @@ export default function ArchitecturePage() {
           Tuhafiye Perakende Ticaret Platformu Mimarisi
         </h1>
         <p className="text-stone-300 text-sm md:text-base leading-relaxed max-w-3xl">
-          Bu doküman; 40 maddelik mimari vizyonun, veri modellerinin, tekil stok motorunun, sipariş yaşam döngüsünün ve ERP entegrasyon kararlarının tam teknik haritasını sunar.
+          Bu doküman; 40 maddelik mimari vizyonun, veri modellerinin, tekil stok motorunun, sipariş yaşam döngüsünün tam teknik haritasını sunar.
         </p>
 
         <div className="flex flex-wrap gap-3 pt-2">
@@ -162,7 +162,7 @@ export default function ArchitecturePage() {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-amber-400 font-bold">•</span>
-              <span><strong>ERP Adapter Pattern:</strong> Muhasebe altyapısı kolaylıkla Logo, Mikro veya GİB portala uyarlanabilir hale getirildi.</span>
+              <span><strong>Merkezi Sipariş Defteri:</strong> POS ve çevrimiçi satışlar tek bir sipariş kaydı ve stok defterinde toplanır.</span>
             </li>
           </ul>
         </div>
@@ -184,7 +184,7 @@ export default function ArchitecturePage() {
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>GİB e-Fatura/e-Arşiv adaptörü ve AI asistanı devreye alındı.</span>
+              <span>Kural tabanlı AI asistanı devreye alındı.</span>
             </li>
           </ul>
         </div>

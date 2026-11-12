@@ -36,7 +36,6 @@ export const ADMIN_MODULES: AdminModule[] = [
   { key: "purchasing", label: "Satın Alma & Mal Kabul", group: "Operasyon" },
   { key: "reports", label: "Raporlar & Analitik", group: "Operasyon" },
   { key: "coupons", label: "Pazarlama & Kampanya", group: "Operasyon" },
-  { key: "erp", label: "ERP & e-Fatura Entegrasyon", group: "Operasyon" },
   { key: "ai", label: "AI Yönetim Asistanı", group: "Operasyon" },
 
   { key: "users", label: "Kullanıcılar & Roller", group: "Sistem (FAZ 1)" },
@@ -75,7 +74,6 @@ export const DEFAULT_ROLE_MATRIX: RoleMatrix = {
     "purchasing",
     "reports",
     "coupons",
-    "erp",
     "ai",
     "registeredCustomers",
     "content",

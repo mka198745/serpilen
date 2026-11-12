@@ -1,8 +1,8 @@
 # İpek Tuhafiye — Perakende Ticaret Yönetim Platformu
 
 Fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrini, B2B toptan portalı,
-web tabanlı POS terminali, stok hareket defteri, satın alma, kampanya/sadakat motoru,
-ERP (e-Fatura) adaptörü ve AI asistanını **tek bir SQLite veritabanı** üzerinde birleştiren
+web tabanlı POS terminali, stok hareket defteri, satın alma, kampanya/sadakat motoru
+ve AI asistanını **tek bir SQLite veritabanı** üzerinde birleştiren
 Next.js + Drizzle ORM tabanlı perakende işletim sistemi.
 (MySQL'e geçiş için şema ve migration'lar `schema.mysql.ts` + `drizzle/` altında hazırdır; bkz. "MySQL'e Geçiş".)
 
@@ -106,7 +106,7 @@ sürücüsüne çevirin, `DATABASE_URL=mysql://...` ayarlayın, `npm run db:appl
 - `src/db/schema.ts` — 46 tabloluk SQLite şeması (Drizzle)
 - `src/db/schema.mysql.ts` — MySQL şema karşılığı (geçiş için saklı)
 - `src/db/seed.ts` — Örnek veri yükleyici
-- `src/lib/*-engine.ts` — Stok, fiyat, kampanya, ERP ve AI motorları
+- `src/lib/*-engine.ts` — Stok, fiyat, kampanya ve AI motorları
 - `drizzle-sqlite/` — Üretilmiş SQL migration'ları (aktif)
 - `drizzle/` — MySQL migration'ları (geçiş için saklı)
 - `docker-compose.yml` + `Dockerfile` — Tek komutla kurulum (SQLite)

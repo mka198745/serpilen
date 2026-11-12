@@ -202,10 +202,6 @@ export function CheckoutClient() {
             <span className="font-mono font-bold text-stone-900">{completedOrder.order.orderNumber}</span>
           </div>
           <div className="flex justify-between border-b border-stone-100 pb-2">
-            <span className="text-stone-500">e-Arşiv Fatura No:</span>
-            <span className="font-mono font-bold text-emerald-800">{completedOrder.invoice.invoiceNumber}</span>
-          </div>
-          <div className="flex justify-between border-b border-stone-100 pb-2">
             <span className="text-stone-500">Kargo Takip No:</span>
             <span className="font-mono font-bold text-stone-900">{completedOrder.order.trackingNumber} (Yurtiçi Kargo)</span>
           </div>
@@ -285,7 +281,7 @@ export function CheckoutClient() {
               </div>
 
               <div className="text-xs">
-                <label className="block font-bold text-stone-700 mb-1">E-Posta (e-Fatura gönderimi için):</label>
+                <label className="block font-bold text-stone-700 mb-1">E-Posta:</label>
                 <input
                   type="email"
                   required
