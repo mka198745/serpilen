@@ -128,6 +128,7 @@ export function AdminDashboardClient({
     | "erp"
     | "ai"
     | "users"
+    | "registeredCustomers"
     | "roleMatrix"
     | "audit"
     | "reports"
@@ -611,6 +612,8 @@ export function AdminDashboardClient({
   /* --- FAZ 1: Kullanıcılar & Roller + Denetim Kaydı --- */
   const [usersList, setUsersList] = useState<any[]>([]);
   const [usersBusy, setUsersBusy] = useState(false);
+  const [customersList, setCustomersList] = useState<any[]>([]);
+  const [customersBusy, setCustomersBusy] = useState(false);
   const [auditList, setAuditList] = useState<any[]>([]);
   const [auditBusy, setAuditBusy] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -621,13 +624,26 @@ export function AdminDashboardClient({
   const loadUsers = React.useCallback(async () => {
     setUsersBusy(true);
     try {
-      const res = await authFetch("/api/users", { cache: "no-store" });
+      const res = await authFetch("/api/users?type=staff", { cache: "no-store" });
       const data = await res.json();
       if (data?.success) setUsersList(data.data);
     } catch {
       /* sessiz */
     } finally {
       setUsersBusy(false);
+    }
+  }, []);
+
+  const loadCustomers = React.useCallback(async () => {
+    setCustomersBusy(true);
+    try {
+      const res = await authFetch("/api/users?type=customers", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success) setCustomersList(data.data);
+    } catch {
+      /* sessiz */
+    } finally {
+      setCustomersBusy(false);
     }
   }, []);
 
@@ -646,8 +662,9 @@ export function AdminDashboardClient({
 
   React.useEffect(() => {
     if (activeTab === "users") void loadUsers();
+    if (activeTab === "registeredCustomers") void loadCustomers();
     if (activeTab === "audit") void loadAudit();
-  }, [activeTab, loadUsers, loadAudit]);
+  }, [activeTab, loadUsers, loadCustomers, loadAudit]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -685,6 +702,18 @@ export function AdminDashboardClient({
     const data = await res.json();
     if (data?.success) {
       setUsersList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.data } : u)));
+    }
+  };
+
+  const updateCustomer = async (id: number, patch: { isActive?: boolean }) => {
+    const res = await authFetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const data = await res.json();
+    if (data?.success) {
+      setCustomersList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.data } : u)));
     }
   };
 
@@ -1481,6 +1510,18 @@ export function AdminDashboardClient({
           >
             <Users2 className="w-4 h-4" />
             <span>Kullanıcılar & Roller</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("registeredCustomers")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "registeredCustomers"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Kayıtlı Müşteriler</span>
           </button>
 
           <button
@@ -3999,7 +4040,7 @@ export function AdminDashboardClient({
               <div>
                 <h2 className="text-xl font-black text-stone-900">Kullanıcılar & Roller</h2>
                 <p className="text-xs text-stone-500">
-                  Personel kayıtları, rol atamaları ve hesap durumu (FAZ 1 — Temel modülü).
+                  Mağaza personeli (Süper Admin, Mağaza Müdürü, Depo Sorumlusu, POS Kasiyeri) kayıtları, rol atamaları ve hesap durumu. Siteye üye olan müşteriler ayrı sekmededir (Kayıtlı Müşteriler).
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -4037,7 +4078,7 @@ export function AdminDashboardClient({
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                     <tr>
-                      <th className="py-3 px-3">Personel</th>
+                      <th className="py-3 px-3">Personel (Mağaza)</th>
                       <th className="py-3 px-3">E-posta</th>
                       <th className="py-3 px-3">Telefon</th>
                       <th className="py-3 px-3">Rol</th>
@@ -4097,6 +4138,115 @@ export function AdminDashboardClient({
               </div>
             </div>
 
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB: KAYITLI MÜŞTERİLER (siteye üye olan hesaplar) */}
+        {/* ============================================================ */}
+        {activeTab === "registeredCustomers" && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-black text-stone-900">Kayıtlı Müşteriler</h2>
+                <p className="text-xs text-stone-500">
+                  Siteye üye olan müşteri hesapları. Bu hesaplar personel rolü taşımaz; yalnız üye girişi, sipariş takibi ve hesap işlemlerini kullanır. Satış/stok/POS yetkisi yoktur.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void loadCustomers()}
+                  className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${customersBusy ? "animate-spin" : ""}`} />
+                  <span>Yenile</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab("crm")}
+                  className="px-3 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>CRM 360'a Git</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 text-[11px] text-sky-900 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-sky-700" />
+              <span>
+                Bu liste <strong>Kayıtlı Müşteriler</strong> (üye hesapları) içindir ve personel listesinden tamamen ayrıdır.
+                Mağaza Müdürü, Depo Sorumlusu ve POS Kasiyeri gibi mağaza rolleri yalnızca <strong>Kullanıcılar &amp; Roller</strong> sekmesinde yönetilir; buradaki hesaplara rol atanamaz.
+                Satın alma geçmişi ve sadakat puanları için <strong>Müşteri CRM</strong> sekmesine bakın.
+              </span>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
+                    <tr>
+                      <th className="py-3 px-3">Müşteri</th>
+                      <th className="py-3 px-3">E-posta</th>
+                      <th className="py-3 px-3">Telefon</th>
+                      <th className="py-3 px-3">Hesap</th>
+                      <th className="py-3 px-3">Durum</th>
+                      <th className="py-3 px-3">Kayıt</th>
+                      <th className="py-3 px-3">Son Giriş</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {customersList.map((u) => (
+                      <tr key={u.id} className="hover:bg-stone-50/50">
+                        <td className="py-3 px-3">
+                          <span className="font-bold text-stone-900 block">{u.name}</span>
+                          <span className="text-[10px] text-stone-400 font-mono">ID: {u.id}</span>
+                        </td>
+                        <td className="py-3 px-3 text-stone-600">{u.email}</td>
+                        <td className="py-3 px-3 text-stone-500">{u.phone || "—"}</td>
+                        <td className="py-3 px-3">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 uppercase">
+                            Müşteri Üye
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            onClick={() => void updateCustomer(u.id, { isActive: !u.isActive })}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
+                              u.isActive
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-rose-100 text-rose-800"
+                            }`}
+                            title={u.isActive ? "Aktif — üyeliği askıya almak için tıkla" : "Pasif — üyeliği yeniden aktifleştirmek için tıkla"}
+                          >
+                            <Power className="w-3 h-3" />
+                            <span>{u.isActive ? "Aktif" : "Pasif"}</span>
+                          </button>
+                        </td>
+                        <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
+                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                        </td>
+                        <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
+                          {u.lastLoginAt
+                            ? new Date(u.lastLoginAt).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" })
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {customersList.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-stone-400">
+                          {customersBusy ? "Yükleniyor…" : "Kayıtlı müşteri hesabı yok."}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-stone-400">
+              Toplam {customersList.length} kayıtlı müşteri hesabı listeleniyor. Üyeliği pasife alınan müşteri giriş yapamaz; sipariş geçmişi silinmez.
+            </p>
           </div>
         )}
 

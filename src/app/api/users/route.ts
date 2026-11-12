@@ -14,11 +14,15 @@ const ROLE_LABELS: Record<string, string> = {
   STORE_MANAGER: "Mağaza Müdürü",
   WAREHOUSE_KEEPER: "Depo Sorumlusu",
   CASHIER: "POS Kasiyeri",
+  B2C_CUSTOMER: "Müşteri Üye",
 };
 
 export async function GET(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
+
+  const type = (new URL(request.url).searchParams.get("type") || "staff").toLowerCase();
+  const STAFF: readonly string[] = ROLES;
 
   const all = await db
     .select({
@@ -34,9 +38,16 @@ export async function GET(request: Request) {
     .from(users)
     .orderBy(desc(users.id));
 
+  const filtered =
+    type === "all"
+      ? all
+      : type === "customers"
+      ? all.filter((u) => !STAFF.includes((u.role || "").toUpperCase()))
+      : all.filter((u) => STAFF.includes((u.role || "").toUpperCase())); // varsayılan: staff
+
   return NextResponse.json({
     success: true,
-    data: all.map((u) => ({
+    data: filtered.map((u) => ({
       ...u,
       roleLabel: ROLE_LABELS[u.role] || u.role,
       lastLoginAt: u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : null,
@@ -124,9 +135,23 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Kullanıcı bulunamadı." } }, { status: 404 });
   }
 
+  const targetIsStaff = ROLES.includes(String(target.role || "").toUpperCase() as (typeof ROLES)[number]);
   const updates: Record<string, unknown> = {};
-  if (body?.role && ROLES.includes(String(body.role).toUpperCase() as (typeof ROLES)[number])) {
-    updates.role = String(body.role).toUpperCase();
+  if (body?.role) {
+    const wanted = String(body.role).toUpperCase();
+    if (!targetIsStaff) {
+      return NextResponse.json(
+        { success: false, error: { code: "ROLE_FROZEN", message: "Kayıtlı müşteri hesaplarına rol atanamaz. Müşteri kayıtları ayrı sekmede takip edilir." } },
+        { status: 422 }
+      );
+    }
+    if (!ROLES.includes(wanted as (typeof ROLES)[number])) {
+      return NextResponse.json(
+        { success: false, error: { code: "VALIDATION_ERROR", message: `Geçersiz rol. İzinli: ${ROLES.join(", ")}` } },
+        { status: 422 }
+      );
+    }
+    updates.role = wanted;
   }
   if (typeof body?.isActive === "boolean") updates.isActive = body.isActive;
   if (body?.name && String(body.name).trim()) updates.name = String(body.name).trim();
