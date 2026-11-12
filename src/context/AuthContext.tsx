@@ -22,7 +22,7 @@ export interface LoginStage {
 export type StageCallback = (s: LoginStage) => void;
 
 /** Sunucu korumalı (çerez gerektiren) sayfa önekleri */
-export const GUARDED_PREFIXES = ["/admin", "/pos", "/toptan-b2b"];
+export const GUARDED_PREFIXES = ["/admin", "/pos"];
 
 export function isGuardedPath(path: string): boolean {
   return GUARDED_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));

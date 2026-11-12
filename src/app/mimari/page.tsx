@@ -17,24 +17,24 @@ import {
 
 export default function ArchitecturePage() {
   const blueprints = [
-    { num: 1, title: "Projenin Kapsamı", desc: "Fiziki mağaza, web vitrini, toptan B2B ve WMS'i tek bir merkezi ürün/stok kaydı üzerinde birleştiren kurumsal işletim sistemi." },
+    { num: 1, title: "Projenin Kapsamı", desc: "Fiziki mağaza, web vitrini ve WMS'i tek bir merkezi ürün/stok kaydı üzerinde birleştiren kurumsal işletim sistemi." },
     { num: 2, title: "Fonksiyonel Gereksinimler", desc: "SKU/barkod bazlı tekil ürün, renk/boyut varyantları, hareket bazlı stok defteri (Stock Ledger), çoklu depo ve web POS." },
     { num: 3, title: "Fonksiyonel Olmayan Gereksinimler", desc: "MySQL (InnoDB) transaction bütünlüğü, < 200ms TTFB yanıt süresi, OWASP Top 10 ve PCI-DSS ilkeleri." },
-    { num: 4, title: "Kullanıcı Rolleri & RBAC", desc: "SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER, B2B_CUSTOMER, B2C_CUSTOMER granular yetkilendirmesi." },
-    { num: 5, title: "Context Diagramı", desc: "Platform; B2C vitrin, Web POS, Admin Paneli, B2B portal ve ERP Ön Muhasebe servislerinin merkezinde konumlanır." },
+    { num: 4, title: "Kullanıcı Rolleri & RBAC", desc: "SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER, B2C_CUSTOMER granular yetkilendirmesi." },
+    { num: 5, title: "Context Diagramı", desc: "Platform; B2C vitrin, Web POS, Admin Paneli ve ERP Ön Muhasebe servislerinin merkezinde konumlanır." },
     { num: 6, title: "High-Level Mimari", desc: "Next.js App Router (Client) -> Service Katmanı (Inventory, POS, ERP) -> MySQL 8 & Drizzle ORM." },
     { num: 7, title: "Frontend Architecture", desc: "Server-side rendering, Reusable UI tokens, optimistic cart updates, mobile-first duyarlı tasarım." },
     { num: 8, title: "Backend Architecture", desc: "RESTful JSON API'ler, Transactional Idempotency, Drizzle Kit ORM migration altyapısı." },
-    { num: 9, title: "Modül Sınırları", desc: "Core, Catalog, Inventory, Orders, POS, B2B, Purchasing, Loyalty, ERP Adapter, AI Assistant bağımsız domainleri." },
+    { num: 9, title: "Modül Sınırları", desc: "Core, Catalog, Inventory, Orders, POS, Purchasing, Loyalty, ERP Adapter, AI Assistant bağımsız domainleri." },
     { num: 10, title: "Database Mimarisi", desc: "Tüm para birimleri numeric(10,2) decimal, UTC timestamp, foreign key ve index optimizasyonu." },
     { num: 11, title: "Ana Entity Listesi", desc: "users, customers, categories, brands, products, product_variants, warehouses, inventory, inventory_ledger, orders, pos_shifts." },
     { num: 12, title: "ERD Tasarımı", desc: "Katalog -> Varyant -> Çoklu Depo Stok -> Stok Defteri -> Sipariş Kalemleri ilişkisel ağacı." },
     { num: 13, title: "Inventory Transaction", desc: "Kullanılabilir Stok = Fiziksel Stok - Rezerve Stok. Her satış, iade ve sevk inventory_ledger'a işlenir." },
     { num: 14, title: "Order Lifecycle", desc: "PENDING -> PAID -> PREPARING -> SHIPPED -> DELIVERED (veya CANCELLED/REFUNDED)." },
-    { num: 15, title: "Payment Lifecycle", desc: "Adapter Pattern ile 3D Secure Kredi Kartı, Nakit Kasa, Havale ve B2B Açık Hesap Cari Bakiye." },
+    { num: 15, title: "Payment Lifecycle", desc: "Adapter Pattern ile 3D Secure Kredi Kartı, Nakit Kasa ve Havale." },
     { num: 16, title: "Purchase Lifecycle", desc: "Satın alma siparişi (PO) oluşturulur; mal kabul onaylandığında stoklar otomatik artırılır." },
     { num: 17, title: "POS Terminal Mimarisi", desc: "Kasiyer vardiya açılışı, barkod tabancası okuma, askıya alma, karma ödeme ve termal e-Arşiv fiş baskısı." },
-    { num: 18, title: "B2B Toptan Mimarisi", desc: "Vergi dairesi/VKN doğrulaması, kademeli hacim iskontosu (10+, 50+, 100+ koli), cari limit takibi." },
+    { num: 18, title: "Müşteri CRM Mimarisi", desc: "Sadakat puanları, segmentasyon (VİP/AKTİF/KAYIP RİSKİ), iade geçmişi ve kişiye özel kampanyalar." },
     { num: 19, title: "ERP & e-Fatura Entegrasyonu", desc: "GİB e-Fatura/e-Arşiv UUID üretimi, Mikro & Logo uyumlu cari ve fatura adaptörü (erp_sync_logs)." },
     { num: 20, title: "Arama Mimarisi", desc: "Ürün adı, SKU, barkod ve varyant renklerinde tam metin arama ve Türkçe karakter desteği." },
     { num: 21, title: "Bildirim Mimarisi", desc: "Sipariş onayı, kargo takip numarası ve kritik stok uyarıları için tekil olay motoru." },
@@ -56,7 +56,7 @@ export default function ArchitecturePage() {
     { num: 37, title: "Kod Kalite Standartları", desc: "SOLID, DRY, Domain-Driven Design prensipleri." },
     { num: 38, title: "Test Stratejisi", desc: "TypeScript derleme doğrulaması ve kritik sipariş/stok entegrasyon testleri." },
     { num: 39, title: "Geliştirme Yol Haritası", desc: "FAZ 0'dan FAZ 12'ye kadar aşamalı ve doğrulanabilir teslimat planı." },
-    { num: 40, title: "MVP vs İleri Sürüm", desc: "MVP'de tam çalışan POS, WMS, B2B ve ERP; ileri sürümde donanım mali mühür entegrasyonu." },
+    { num: 40, title: "MVP vs İleri Sürüm", desc: "MVP'de tam çalışan POS, WMS ve ERP; ileri sürümde donanım mali mühür entegrasyonu." },
   ];
 
   return (
@@ -68,7 +68,7 @@ export default function ArchitecturePage() {
           <span>FAZ 0 — System Architecture & Technical Blueprint</span>
         </div>
         <h1 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
-          Tuhafiye Perakende & B2B Ticaret Platformu Mimarisi
+          Tuhafiye Perakende Ticaret Platformu Mimarisi
         </h1>
         <p className="text-stone-300 text-sm md:text-base leading-relaxed max-w-3xl">
           Bu doküman; 40 maddelik mimari vizyonun, veri modellerinin, tekil stok motorunun, sipariş yaşam döngüsünün ve ERP entegrasyon kararlarının tam teknik haritasını sunar.
@@ -97,7 +97,7 @@ export default function ArchitecturePage() {
           <h2 className="text-lg font-black text-stone-900">Merkezi Veritabanı İlişkileri (ERD)</h2>
         </div>
         <p className="text-xs text-stone-500">
-          Bir ürün sistemde yalnızca 1 kez tanımlanır; e-ticaret vitrini, POS terminali, çoklu depo ve B2B aynı veritabanı modellerini paylaşır.
+          Bir ürün sistemde yalnızca 1 kez tanımlanır; e-ticaret vitrini, POS terminali ve çoklu depo aynı veritabanı modellerini paylaşır.
         </p>
 
         <div className="p-4 bg-stone-950 text-amber-300 font-mono text-xs rounded-2xl overflow-x-auto leading-relaxed border border-stone-800">
@@ -180,7 +180,7 @@ export default function ArchitecturePage() {
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Web POS, Çoklu Depo, B2B ve e-Ticaret sepeti entegre edildi.</span>
+              <span>Web POS, Çoklu Depo ve e-Ticaret sepeti entegre edildi.</span>
             </li>
             <li className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: "*",
         allow: "/",
         // Filtre/sıralama kombinasyonları ve hesap/ödeme akışları indekslenmesin
-        disallow: ["/urunler?", "/sepet", "/odeme", "/api/", "/admin", "/pos", "/toptan-b2b"],
+        disallow: ["/urunler?", "/sepet", "/odeme", "/api/", "/admin", "/pos"],
       },
     ],
     sitemap: `${BASE}/sitemap.xml`,

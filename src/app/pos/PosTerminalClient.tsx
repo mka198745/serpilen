@@ -503,7 +503,7 @@ export function PosTerminalClient({
   const handleCreateFastCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await authFetch("/api/b2b", {
+      const res = await authFetch("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

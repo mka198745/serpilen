@@ -41,11 +41,6 @@ export function ProductCard({ product }: ProductCardProps) {
             Çok Satan
           </span>
         )}
-        {product.b2bPrice && (
-          <span className="bg-sky-700 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full shadow-xs">
-            B2B Toptan Fiyatlı
-          </span>
-        )}
         {campaignPrice !== null && (
           <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs uppercase">
             Kampanya %{Math.round((1 - campaignPrice / listPrice) * 100)}

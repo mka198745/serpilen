@@ -9,10 +9,10 @@ export const users = sqliteTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
-  role: text("role").notNull().default("CASHIER"), // SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER, B2B_CUSTOMER, B2C_CUSTOMER
+  role: text("role").notNull().default("CASHIER"), // SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER
   phone: text("phone"),
   avatarUrl: text("avatar_url"),
-  customerId: integer("customer_id"), // B2B portal müşterisinin cari karta bağlantısı
+  customerId: integer("customer_id"), // Müşteri cari kartına bağlantısı (varsa)
   // --- Güvenlik / 2FA alanları ---
   totpSecret: text("totp_secret"), // Google Authenticator base32 gizli anahtarı
   totpSecretPrevious: text("totp_secret_previous"), // Rotasyon sırasında eski kod da kabul edilir (kilitlenmeyi önler)
@@ -52,11 +52,11 @@ export const authNonces = sqliteTable("auth_nonces", {
 });
 
 // ==========================================
-// 2. MÜŞTERİLER (B2C & B2B) & CRM
+// 2. MÜŞTERİLER (B2C) & CRM
 // ==========================================
 export const customers = sqliteTable("customers", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  type: text("type").notNull().default("B2C"), // B2C, B2B
+  type: text("type").notNull().default("B2C"), // B2C (tek kanal)
   name: text("name").notNull(),
   email: text("email"),
   phone: text("phone").notNull(),
@@ -66,13 +66,9 @@ export const customers = sqliteTable("customers", {
   creditLimit: numeric("credit_limit").default("0.00"),
   balance: numeric("balance").default("0.00"), // Cari Bakiye
   loyaltyPoints: integer("loyalty_points").default(0).notNull(),
-  segment: text("segment").default("YENİ"), // YENİ, AKTİF, VİP, TOPTANCI, RİSKLİ
-  discountRate: numeric("discount_rate").default("0.00"), // Özel B2B iskontosu
-  // --- FAZ 9: B2B cari & fiyatlandırma ---
-  priceListId: integer("price_list_id"), // atanmış fiyat listesi
-  paymentTermDays: integer("payment_term_days").default(30).notNull(), // vade (gün)
-  minOrderAmount: numeric("min_order_amount").default("0.00"),
-  isBlocked: integer("is_blocked", { mode: "boolean" }).notNull().default(false), // riskli/kapalı cari
+  segment: text("segment").default("YENİ"), // YENİ, AKTİF, VİP, RİSKLİ
+  discountRate: numeric("discount_rate").default("0.00"), // Kişiye özel iskonto
+  isBlocked: integer("is_blocked", { mode: "boolean" }).notNull().default(false), // riskli/engelli hesap
   approvalStatus: text("approval_status").default("APPROVED"), // PENDING, APPROVED, REJECTED
   address: text("address"),
   city: text("city"),
@@ -118,7 +114,6 @@ export const products = sqliteTable("products", {
   unit: text("unit").default("Adet").notNull(), // Adet, Metre, Paket, Kutu, Rulo, Bobin
   buyPrice: numeric("buy_price").notNull().default("0.00"),
   retailPrice: numeric("retail_price").notNull().default("0.00"),
-  b2bPrice: numeric("b2b_price").notNull().default("0.00"),
   minOrderQty: integer("min_order_qty").default(1).notNull(),
   packageQty: integer("package_qty").default(1).notNull(), // Paket içi adet
   vatRate: integer("vat_rate").default(20).notNull(), // KDV %10 veya %20
@@ -156,7 +151,6 @@ export const productVariants = sqliteTable("product_variants", {
   length: text("length"), // e.g., "100m", "500m"
   buyPrice: numeric("buy_price"),
   retailPrice: numeric("retail_price").notNull(),
-  b2bPrice: numeric("b2b_price"),
   imageUrl: text("image_url"),
   isActive: integer("is_active", { mode: "boolean" }).default(true).notNull(),
 });
@@ -167,7 +161,7 @@ export const productVariants = sqliteTable("product_variants", {
 export const warehouses = sqliteTable("warehouses", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
-  code: text("code").notNull().unique(), // MRK, KDK-MAG, ONL-DEP, TOPTAN
+  code: text("code").notNull().unique(), // MRK, KDK-MAG, ONL-DEP
   type: text("type").notNull().default("STORE"), // CENTRAL, STORE, ONLINE, WHOLESALE
   address: text("address"),
   isActive: integer("is_active", { mode: "boolean" }).default(true).notNull(),
@@ -276,19 +270,19 @@ export const inventoryLedger = sqliteTable("inventory_ledger", {
 });
 
 // ==========================================
-// 6. SİPARİŞLER (E-TİCARET, B2B, POS)
+// 6. SİPARİŞLER (E-TİCARET, POS)
 // ==========================================
 export const orders = sqliteTable("orders", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   orderNumber: text("order_number").notNull().unique(), // OR-2026-001, POS-2026-042
-  orderType: text("order_type").notNull().default("ONLINE_B2C"), // ONLINE_B2C, B2B, POS
+  orderType: text("order_type").notNull().default("ONLINE_B2C"), // ONLINE_B2C, POS
   customerId: integer("customer_id"),
   customerName: text("customer_name").notNull(),
   customerEmail: text("customer_email"),
   customerPhone: text("customer_phone"),
   status: text("status").notNull().default("PAID"), // PENDING, PAID, PREPARING, READY_FOR_SHIPMENT, SHIPPED, DELIVERED, CANCELLED, REFUNDED
   paymentStatus: text("payment_status").notNull().default("PAID"), // PENDING, PAID, PARTIAL, REFUNDED
-  paymentMethod: text("payment_method").notNull().default("CREDIT_CARD"), // CREDIT_CARD, CASH, EFT_HAVALE, B2B_CREDIT, SPLIT
+  paymentMethod: text("payment_method").notNull().default("CREDIT_CARD"), // CREDIT_CARD, CASH, EFT_HAVALE, SPLIT
   subtotal: numeric("subtotal").notNull().default("0.00"),
   discountTotal: numeric("discount_total").notNull().default("0.00"),
   taxTotal: numeric("tax_total").notNull().default("0.00"),
@@ -479,41 +473,6 @@ export const goodsReceiptItems = sqliteTable("goods_receipt_items", {
 });
 
 // ==========================================
-// 8.5 B2B: FİYAT LİSTELERİ, KADEMELİ FİYAT & CARİ HESAP (FAZ 9)
-// ==========================================
-export const priceLists = sqliteTable("price_lists", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  code: text("code").notNull().unique(), // RETAIL, DEALER, WHOLESALE, VIP
-  name: text("name").notNull(),
-  description: text("description"),
-  // Liste geneli varsayılan iskonto (ürün bazlı override yoksa uygulanır)
-  defaultDiscountRate: numeric("default_discount_rate").default("0.00").notNull(),
-  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
-  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
-
-// Ürün bazlı özel fiyat (liste × ürün)
-export const priceListItems = sqliteTable("price_list_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  priceListId: integer("price_list_id").notNull(),
-  productId: integer("product_id").notNull(),
-  variantId: integer("variant_id"),
-  unitPrice: numeric("unit_price").notNull(),
-  minQty: integer("min_qty").default(1).notNull(),
-});
-
-// Kademeli (hacim) fiyat baremleri: 1-9 / 10-49 / 50-99 / 100+
-export const priceTiers = sqliteTable("price_tiers", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  priceListId: integer("price_list_id").notNull(),
-  productId: integer("product_id"), // null = liste geneli barem
-  minQty: integer("min_qty").notNull(),
-  maxQty: integer("max_qty"), // null = üst sınırsız
-  discountRate: numeric("discount_rate"), // yüzde iskonto
-  unitPrice: numeric("unit_price"), // ya da sabit birim fiyat
-});
-
 // CARİ HESAP HAREKETLERİ (borç/alacak defteri)
 export const accountTransactions = sqliteTable("account_transactions", {
   id: integer("id").primaryKey({ autoIncrement: true }),

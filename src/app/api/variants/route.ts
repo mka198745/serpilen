@@ -48,7 +48,6 @@ export async function POST(request: Request) {
     length?: string;
     buyPrice?: string;
     retailPrice?: string;
-    b2bPrice?: string;
     imageUrl?: string;
     initialStock?: number;
     warehouseId?: number;
@@ -81,7 +80,6 @@ export async function POST(request: Request) {
         length: body.length?.trim() || null,
         buyPrice: body.buyPrice ? String(body.buyPrice) : prod.buyPrice,
         retailPrice,
-        b2bPrice: body.b2bPrice ? String(body.b2bPrice) : prod.b2bPrice,
         imageUrl: body.imageUrl || prod.imageUrl,
       }).returning({ id: productVariants.id });
     const [created] = await db.select().from(productVariants).where(eq(productVariants.id, __created_id));
@@ -113,7 +111,6 @@ export async function PATCH(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     id?: number;
     retailPrice?: string;
-    b2bPrice?: string;
     buyPrice?: string;
     colorName?: string;
     colorHex?: string;
@@ -130,7 +127,6 @@ export async function PATCH(request: Request) {
 
   const updates: Record<string, unknown> = {};
   if (body.retailPrice !== undefined) updates.retailPrice = String(body.retailPrice);
-  if (body.b2bPrice !== undefined) updates.b2bPrice = String(body.b2bPrice);
   if (body.buyPrice !== undefined) updates.buyPrice = String(body.buyPrice);
   if (body.colorName !== undefined) updates.colorName = body.colorName;
   if (body.colorHex !== undefined) updates.colorHex = body.colorHex;

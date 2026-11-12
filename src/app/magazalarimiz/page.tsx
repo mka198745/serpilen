@@ -61,10 +61,10 @@ export default function StoresPage() {
             <span className="bg-sky-100 text-sky-900 text-xs font-bold px-2.5 py-0.5 rounded-full">
               Merkez Depo & Lojistik Üssü
             </span>
-            <span className="text-sky-700 text-xs font-bold">B2B & E-Ticaret Sevk</span>
+            <span className="text-sky-700 text-xs font-bold">E-Ticaret Sevk</span>
           </div>
 
-          <h3 className="text-xl font-black text-stone-900">İkitelli Lojistik & Toptan Depo</h3>
+          <h3 className="text-xl font-black text-stone-900">İkitelli Lojistik & Sevk Deposu</h3>
 
           <div className="space-y-2 text-xs text-stone-600">
             <p className="flex items-start gap-2">
@@ -81,14 +81,6 @@ export default function StoresPage() {
             </p>
           </div>
 
-          <div className="pt-2">
-            <Link
-              href="/toptan-b2b"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-900 rounded-lg text-xs font-bold transition"
-            >
-              <span>Toptan Cari Sevk Portalı →</span>
-            </Link>
-          </div>
         </div>
       </div>
     </div>

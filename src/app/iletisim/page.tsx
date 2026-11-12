@@ -18,7 +18,7 @@ export default function ContactPage() {
           İletişim & Destek Masası
         </h1>
         <p className="text-stone-500 text-sm mt-1">
-          Dikiş malzemesi danışmanlığı, toptan alım talepleri veya siparişleriniz için bize ulaşın.
+          Dikiş malzemesi danışmanlığı veya siparişleriniz için bize ulaşın.
         </p>
       </div>
 
@@ -87,7 +87,6 @@ export default function ContactPage() {
                 <label className="block font-bold text-stone-700 mb-1">Konu:</label>
                 <select className="w-full px-3 py-2 border border-stone-300 rounded-xl">
                   <option>Sipariş Takibi & Kargo</option>
-                  <option>B2B Toptan Fiyat Talebi</option>
                   <option>Ürün Teknik Bilgisi / İplik Seçimi</option>
                   <option>İade veya Değişim Talebi</option>
                 </select>

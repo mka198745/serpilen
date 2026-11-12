@@ -28,7 +28,6 @@ export interface ProductVariant {
   length: string | null;
   buyPrice: string | null;
   retailPrice: string;
-  b2bPrice: string | null;
   imageUrl: string | null;
   isActive: boolean;
   stockQty?: number;
@@ -47,7 +46,6 @@ export interface Product {
   unit: string;
   buyPrice: string;
   retailPrice: string;
-  b2bPrice: string;
   minOrderQty: number;
   packageQty: number;
   vatRate: number;
@@ -130,7 +128,7 @@ export interface OrderItem {
 export interface Order {
   id: number;
   orderNumber: string;
-  orderType: "ONLINE_B2C" | "B2B" | "POS";
+  orderType: "ONLINE_B2C" | "POS";
   customerId: number | null;
   customerName: string;
   customerEmail: string | null;

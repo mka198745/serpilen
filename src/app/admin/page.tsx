@@ -145,7 +145,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const channelRevenue = {
     pos: Number(channelMap.get("POS")?.revenue ?? 0),
     online: Number(channelMap.get("ONLINE_B2C")?.revenue ?? 0),
-    b2b: Number(channelMap.get("B2B")?.revenue ?? 0),
   };
   const dashboardStats = {
     totalRevenue,
@@ -153,7 +152,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     salesCount,
     posCount: Number(channelMap.get("POS")?.c ?? 0),
     onlineCount: Number(channelMap.get("ONLINE_B2C")?.c ?? 0),
-    b2bCount: Number(channelMap.get("B2B")?.c ?? 0),
     channelRevenue,
     avgBasket: salesCount > 0 ? totalRevenue / salesCount : 0,
     grossProfit: totalRevenue - Number(costRow?.cost ?? 0),

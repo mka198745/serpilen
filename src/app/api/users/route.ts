@@ -7,14 +7,13 @@ import { desc, eq } from "drizzle-orm";
 import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
-const ROLES = ["SUPER_ADMIN", "STORE_MANAGER", "WAREHOUSE_KEEPER", "CASHIER", "B2B_MANAGER"] as const;
+const ROLES = ["SUPER_ADMIN", "STORE_MANAGER", "WAREHOUSE_KEEPER", "CASHIER"] as const;
 
 const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: "Süper Admin",
   STORE_MANAGER: "Mağaza Müdürü",
   WAREHOUSE_KEEPER: "Depo Sorumlusu",
   CASHIER: "POS Kasiyeri",
-  B2B_MANAGER: "B2B Satış Temsilcisi",
 };
 
 export async function GET(request: Request) {

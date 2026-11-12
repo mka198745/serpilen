@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   Truck,
   MonitorCheck,
-  Building2,
   SlidersHorizontal,
   BookOpen,
   Star,
@@ -203,7 +202,7 @@ export default async function HomePage() {
 
       {/* 4. Multi-Channel Unified Management Callout */}
       <section className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* POS Card */}
           <div className="bg-gradient-to-br from-amber-900 to-amber-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
             <div className="space-y-3 relative z-10">
@@ -221,28 +220,6 @@ export default async function HomePage() {
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-amber-950 font-bold text-xs rounded-xl shadow-md hover:bg-amber-100 transition"
               >
                 <span>POS Kasa Ekranını Aç</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-
-          {/* B2B Card */}
-          <div className="bg-gradient-to-br from-sky-900 to-sky-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-            <div className="space-y-3 relative z-10">
-              <div className="w-10 h-10 rounded-xl bg-sky-800 flex items-center justify-center text-sky-200">
-                <Building2 className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold">B2B Toptan Satış Portalı</h3>
-              <p className="text-xs text-sky-200/90 leading-relaxed">
-                Tekstil atölyeleri ve perakendeciler için koli/paket kademeli fiyat listeleri, 30 gün açık cari limit ve toptan sevk.
-              </p>
-            </div>
-            <div className="pt-6 relative z-10">
-              <Link
-                href="/toptan-b2b"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-sky-950 font-bold text-xs rounded-xl shadow-md hover:bg-sky-100 transition"
-              >
-                <span>Toptan Fiyatları Gör</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>

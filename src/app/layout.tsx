@@ -10,7 +10,7 @@ import { AuthModal } from "@/components/layout/AuthModal";
 export const metadata: Metadata = {
   title: "İpek Tuhafiye | Dikiş, Nakış, Fermuar, Düğme & Örgü Malzemeleri",
   description:
-    "Türkiye'nin lider tuhafiye ve tekstil hobi malzemeleri platformu. Gütermann, Coats, YKK ve Prym ürünlerinde toptan ve perakende satış, anında e-Fatura ve hızlı kargo.",
+    "Türkiye'nin lider tuhafiye ve tekstil hobi malzemeleri platformu. Gütermann, Coats, YKK ve Prym ürünlerinde perakende satış, anında e-Fatura ve hızlı kargo.",
   keywords: [
     "tuhafiye",
     "dikiş ipliği",
@@ -21,13 +21,12 @@ export const metadata: Metadata = {
     "alize örgü ipi",
     "terzi makası",
     "bez tela",
-    "b2b toptan tuhafiye",
     "pos kasa",
   ],
   authors: [{ name: "İpek Tuhafiye San. ve Tic. Ltd. Şti." }],
   openGraph: {
-    title: "İpek Tuhafiye | Perakende, Toptan & POS Dijital Platformu",
-    description: "Fiziki mağaza, online e-ticaret, B2B toptan satış ve çoklu depo stok entegrasyonu.",
+    title: "İpek Tuhafiye | Perakende & POS Dijital Platformu",
+    description: "Fiziki mağaza, online e-ticaret ve çoklu depo stok entegrasyonu.",
     locale: "tr_TR",
     type: "website",
   },

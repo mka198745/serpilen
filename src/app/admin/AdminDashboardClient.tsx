@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
-import { B2BCenter } from "@/components/admin/B2BCenter";
 import { ErpIntegrationConsole } from "@/components/admin/ErpIntegrationConsole";
 import { AiAssistantCenter } from "@/components/admin/AiAssistantCenter";
 import {
@@ -30,7 +29,6 @@ import {
   ChevronRight,
   TrendingUp,
   CreditCard,
-  Building2,
   Check,
   X,
   ShieldCheck,
@@ -88,8 +86,7 @@ interface AdminDashboardClientProps {
     salesCount: number;
     posCount: number;
     onlineCount: number;
-    b2bCount: number;
-    channelRevenue: { pos: number; online: number; b2b: number };
+    channelRevenue: { pos: number; online: number };
     avgBasket: number;
     grossProfit: number;
     monthRevenue: number;
@@ -134,7 +131,6 @@ export function AdminDashboardClient({
     | "roleMatrix"
     | "audit"
     | "reports"
-    | "b2b"
     | "siteHeader"
     | "siteFooter"
     | "siteCart"
@@ -200,7 +196,6 @@ export function AdminDashboardClient({
     size: "",
     length: "",
     retailPrice: "",
-    b2bPrice: "",
     buyPrice: "",
     sku: "",
     barcode: "",
@@ -214,7 +209,7 @@ export function AdminDashboardClient({
   const [inventoryList, setInventoryList] = useState(initialInventory);
   const [ledger, setLedger] = useState(initialLedger);
   const [orders, setOrders] = useState(initialOrders);
-  const [customers, setCustomers] = useState(initialCustomers);
+  const [customers] = useState(initialCustomers);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
   const [coupons, setCoupons] = useState(initialCoupons);
   const [erpLogs, setErpLogs] = useState(initialErpLogs);
@@ -569,7 +564,6 @@ export function AdminDashboardClient({
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
-  const [isAddB2BOpen, setIsAddB2BOpen] = useState(false);
   const [isAddCouponOpen, setIsAddCouponOpen] = useState(false);
 
   // Form states
@@ -582,7 +576,6 @@ export function AdminDashboardClient({
     unit: "Adet",
     buyPrice: "30.00",
     retailPrice: "55.00",
-    b2bPrice: "40.00",
     initialStock: "50",
     warehouseId: "1",
     shortDescription: "",
@@ -605,17 +598,6 @@ export function AdminDashboardClient({
     quantityDelta: 5,
     reason: "SAYIM",
     note: "Haftalık raf sayım mutabakatı",
-  });
-
-  const [newB2B, setNewB2B] = useState({
-    name: "",
-    companyName: "",
-    phone: "",
-    email: "",
-    taxOffice: "Kadıköy V.D.",
-    taxNumber: "",
-    creditLimit: "100000.00",
-    discountRate: "10.00",
   });
 
   const [newCoupon, setNewCoupon] = useState({
@@ -722,7 +704,6 @@ export function AdminDashboardClient({
         id: editingProduct.id,
         name: editingProduct.name,
         retailPrice: editingProduct.retailPrice,
-        b2bPrice: editingProduct.b2bPrice,
         buyPrice: editingProduct.buyPrice,
         campaignPrice: editingProduct.campaignPrice || null,
         categoryId: editingProduct.categoryId,
@@ -878,7 +859,6 @@ export function AdminDashboardClient({
         size: "",
         length: "",
         retailPrice: "",
-        b2bPrice: "",
         buyPrice: "",
         sku: "",
         barcode: "",
@@ -1157,14 +1137,12 @@ export function AdminDashboardClient({
   const clientChannel = {
     pos: orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
     online: orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
-    b2b: orders.filter((o) => o.orderType === "B2B" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
   };
   const totalRevenue = dashboardStats?.totalRevenue ?? clientRevenue;
   const salesCount = dashboardStats?.salesCount ?? orders.filter((o) => o.status !== "CANCELLED").length;
   const totalOrders = dashboardStats?.totalOrders ?? orders.length;
   const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").length;
   const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").length;
-  const b2bCount = dashboardStats?.b2bCount ?? orders.filter((o) => o.orderType === "B2B" && o.status !== "CANCELLED").length;
   const criticalStockCount = dashboardStats?.criticalStockCount ?? inventoryList.filter((i) => i.isCritical).length;
   const channelRevenue = dashboardStats?.channelRevenue ?? clientChannel;
   const estimatedGrossProfit =
@@ -1307,27 +1285,6 @@ export function AdminDashboardClient({
     }
   };
 
-  const handleAddB2B = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await authFetch("/api/b2b", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newB2B),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert("B2B Cari Kartı Başarıyla Açıldı.");
-        setIsAddB2BOpen(false);
-        const cRes = await authFetch("/api/b2b");
-        const cData = await cRes.json();
-        if (cData.success) setCustomers((prev) => [...prev, data.data]);
-      }
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
   // FAZ 10: ERP entegrasyon aksiyonları ErpIntegrationConsole bileşeni tarafından yönetilir
 
   // FAZ 11: AI analizleri AiAssistantCenter bileşeni tarafından yönetilir
@@ -1445,19 +1402,7 @@ export function AdminDashboardClient({
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Müşteri CRM & B2B</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("b2b")}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
-              activeTab === "b2b"
-                ? "bg-amber-700 text-white shadow-sm"
-                : "text-stone-300 hover:bg-stone-800"
-            }`}
-          >
-            <Building2 className="w-4 h-4" />
-            <span>B2B Cari & Fiyat Listesi</span>
+            <span>Müşteri CRM</span>
           </button>
 
           <button
@@ -1696,7 +1641,7 @@ export function AdminDashboardClient({
                   Yönetim Paneli & Performans Göstergeleri
                 </h2>
                 <p className="text-xs text-stone-500">
-                  Fiziki mağaza, e-ticaret vitrini ve B2B toptan satış verilerinin anlık özeti.
+                  Fiziki mağaza ve e-ticaret vitrini verilerinin anlık özeti.
                 </p>
               </div>
 
@@ -1736,7 +1681,7 @@ export function AdminDashboardClient({
                 <span className="text-xs font-bold text-stone-500 uppercase">Toplam Sipariş / Satış</span>
                 <div className="text-2xl font-black text-stone-900">{totalOrders} İşlem</div>
                 <div className="text-[11px] text-stone-500">
-                  {posCount} POS • {onlineCount} Vitrin • {b2bCount} B2B <span className="text-stone-400">(iptaller hariç satış: {salesCount})</span>
+                  {posCount} POS • {onlineCount} Vitrin <span className="text-stone-400">(iptaller hariç satış: {salesCount})</span>
                 </div>
               </div>
 
@@ -1788,22 +1733,13 @@ export function AdminDashboardClient({
             </div>
 
             {/* Sales Channel Breakdown Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
                 <span className="text-xs font-bold text-amber-900 uppercase">Fiziki Mağaza Web POS</span>
                 <div className="text-xl font-black text-amber-950 mt-1">{posCount} Satış</div>
                 <div className="text-sm font-bold text-amber-800">{channelRevenue.pos.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
                 <p className="text-xs text-amber-800 mt-1">
                   {storeName} • Anında Kasa Fişi & Stok Düşümü
-                </p>
-              </div>
-
-              <div className="bg-sky-50 p-4 rounded-2xl border border-sky-200">
-                <span className="text-xs font-bold text-sky-900 uppercase">B2B Toptan Sevk</span>
-                <div className="text-xl font-black text-sky-950 mt-1">{b2bCount} Sipariş</div>
-                <div className="text-sm font-bold text-sky-800">{channelRevenue.b2b.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
-                <p className="text-xs text-sky-800 mt-1">
-                  Cari Açık Hesap & Toptan İskontolu Siparişler
                 </p>
               </div>
 
@@ -1890,7 +1826,7 @@ export function AdminDashboardClient({
                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-800">FAZ 2 — Katalog</span>
                 <h2 className="text-xl font-black text-stone-900">Ürün, Kategori, Marka & Varyant</h2>
                 <p className="text-xs text-stone-500">
-                  Merkezi katalog: vitrin, POS ve B2B aynı ürün/SKU/barkod kaydını kullanır.
+                  Merkezi katalog: vitrin ve POS aynı ürün/SKU/barkod kaydını kullanır.
                 </p>
               </div>
               {catalogSubTab === "products" && (
@@ -2000,7 +1936,6 @@ export function AdminDashboardClient({
                               <td className="py-3 px-3">{prod.categoryName}</td>
                               <td className="py-3 px-3">
                                 <div className="font-bold">{Number(prod.retailPrice).toFixed(2)} TL</div>
-                                <div className="text-[10px] text-sky-800">B2B {Number(prod.b2bPrice).toFixed(2)} TL</div>
                                 <div className="text-[10px] text-stone-400">Maliyet {Number(prod.buyPrice).toFixed(2)} TL</div>
                               </td>
                               <td className="py-3 px-3">
@@ -2225,7 +2160,6 @@ export function AdminDashboardClient({
                   <input placeholder="Ölçü (20 mm / 50 cm)" value={newVariant.size} onChange={(e) => setNewVariant({ ...newVariant, size: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
                   <input placeholder="Uzunluk (100m)" value={newVariant.length} onChange={(e) => setNewVariant({ ...newVariant, length: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
                   <input placeholder="Perakende fiyat" value={newVariant.retailPrice} onChange={(e) => setNewVariant({ ...newVariant, retailPrice: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
-                  <input placeholder="B2B fiyat" value={newVariant.b2bPrice} onChange={(e) => setNewVariant({ ...newVariant, b2bPrice: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
                   <input placeholder="Başlangıç stok" value={newVariant.initialStock} onChange={(e) => setNewVariant({ ...newVariant, initialStock: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
                   <button type="submit" className="md:col-span-4 py-2.5 bg-amber-800 text-white font-bold rounded-xl">Varyantı Oluştur (SKU otomatik)</button>
                 </form>
@@ -2501,7 +2435,7 @@ export function AdminDashboardClient({
                         <option value="CENTRAL">Merkez Depo (CENTRAL)</option>
                         <option value="STORE">Mağaza Deposu (STORE)</option>
                         <option value="ONLINE">E-Ticaret Deposu (ONLINE)</option>
-                        <option value="WHOLESALE">Toptan / B2B Deposu (WHOLESALE)</option>
+                        <option value="WHOLESALE">Toptan Deposu (WHOLESALE)</option>
                       </select>
                     </div>
                     <div className="md:col-span-5">
@@ -2969,7 +2903,7 @@ export function AdminDashboardClient({
                   {reportData.sales.byChannel.map((ch: any) => (
                     <div key={ch.channel} className="space-y-1">
                       <div className="flex justify-between text-xs font-semibold">
-                        <span>{ch.channel === "POS" ? "Fiziki Mağaza (POS)" : ch.channel === "B2B" ? "B2B Toptan" : "Online B2C"}</span>
+                        <span>{ch.channel === "POS" ? "Fiziki Mağaza (POS)" : "Online B2C"}</span>
                         <span>{ch.revenue.toFixed(2)} TL · %{ch.share}</span>
                       </div>
                       <div className="h-2 bg-stone-100 rounded-full overflow-hidden">
@@ -3643,7 +3577,7 @@ export function AdminDashboardClient({
                               <span className="text-[10px] text-stone-400">{ord.erpInvoiceNumber}</span>
                             </td>
                             <td className="py-3 px-3">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ord.orderType === "B2B" ? "bg-sky-100 text-sky-800" : ord.orderType === "POS" ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}`}>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${ord.orderType === "POS" ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}`}>
                                 {ord.orderType}
                               </span>
                             </td>
@@ -3795,25 +3729,17 @@ export function AdminDashboardClient({
         )}
 
         {/* ============================================================ */}
-        {/* TAB 6: CRM & B2B WHOLESALE CLIENTS */}
+        {/* TAB 6: CRM */}
         {/* ============================================================ */}
         {activeTab === "crm" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-black text-stone-900">Müşteri CRM 360 & B2B Cari Yönetimi</h2>
+                <h2 className="text-xl font-black text-stone-900">Müşteri CRM 360</h2>
                 <p className="text-xs text-stone-500">
-                  Perakende sadakat puanları, toptan cari kredi limitleri ve vergi mükellefleri.
+                  Perakende sadakat puanları, segmentasyon ve satın alma geçmişi tek ekranda.
                 </p>
               </div>
-
-              <button
-                onClick={() => setIsAddB2BOpen(true)}
-                className="px-3 py-2 bg-sky-800 hover:bg-sky-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Yeni B2B Cari Aç</span>
-              </button>
             </div>
 
             <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
@@ -3824,9 +3750,6 @@ export function AdminDashboardClient({
                       <th className="py-3 px-3">Müşteri / Şirket</th>
                       <th className="py-3 px-3">Tip</th>
                       <th className="py-3 px-3">İletişim</th>
-                      <th className="py-3 px-3">Vergi Dairesi / No</th>
-                      <th className="py-3 px-3">Cari Bakiye</th>
-                      <th className="py-3 px-3">Kredi Limiti</th>
                       <th className="py-3 px-3">Sadakat Puanı</th>
                       <th className="py-3 px-3">Segment</th>
                     </tr>
@@ -3841,26 +3764,13 @@ export function AdminDashboardClient({
                           )}
                         </td>
                         <td className="py-3 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              c.type === "B2B" ? "bg-sky-100 text-sky-800" : "bg-amber-100 text-amber-900"
-                            }`}
-                          >
-                            {c.type}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900">
+                            Perakende
                           </span>
                         </td>
                         <td className="py-3 px-3 text-stone-600">
                           <div>{c.phone}</div>
                           <div className="text-[10px] text-stone-400">{c.email}</div>
-                        </td>
-                        <td className="py-3 px-3 font-mono text-stone-600">
-                          {c.taxNumber ? `${c.taxOffice} / ${c.taxNumber}` : "-"}
-                        </td>
-                        <td className="py-3 px-3 font-bold text-stone-900">
-                          {Number(c.balance || 0).toFixed(2)} TL
-                        </td>
-                        <td className="py-3 px-3 text-stone-500">
-                          {Number(c.creditLimit || 0).toFixed(2)} TL
                         </td>
                         <td className="py-3 px-3 font-bold text-amber-800">
                           {c.loyaltyPoints} Puan
@@ -4066,7 +3976,6 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* TAB 8: COUPONS & PROMOTIONS */}
         {/* ============================================================ */}
-        {activeTab === "b2b" && <B2BCenter />}
 
         {activeTab === "coupons" && (
           <MarketingCenter categories={categories} brands={brands} />
@@ -4155,7 +4064,6 @@ export function AdminDashboardClient({
                             <option value="STORE_MANAGER">Mağaza Müdürü</option>
                             <option value="WAREHOUSE_KEEPER">Depo Sorumlusu</option>
                             <option value="CASHIER">POS Kasiyeri</option>
-                            <option value="B2B_MANAGER">B2B Satış Temsilcisi</option>
                           </select>
                         </td>
                         <td className="py-3 px-3">
@@ -4223,21 +4131,19 @@ export function AdminDashboardClient({
                       <th className="py-2 px-3">Kod</th>
                       <th className="py-2 px-3 text-center">Yönetim & WMS</th>
                       <th className="py-2 px-3 text-center">Web POS</th>
-                      <th className="py-2 px-3 text-center">B2B Toptan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     {[
-                      ["SUPER_ADMIN", "Süper Admin", true, true, true],
-                      ["STORE_MANAGER", "Mağaza Müdürü", true, true, true],
-                      ["WAREHOUSE_KEEPER", "Depo Sorumlusu", true, false, false],
-                      ["CASHIER", "POS Kasiyeri", false, true, false],
-                      ["B2B_MANAGER", "B2B Temsilcisi", false, false, true],
-                    ].map(([key, label, adm, pos, b2b]) => (
+                      ["SUPER_ADMIN", "Süper Admin", true, true],
+                      ["STORE_MANAGER", "Mağaza Müdürü", true, true],
+                      ["WAREHOUSE_KEEPER", "Depo Sorumlusu", true, false],
+                      ["CASHIER", "POS Kasiyeri", false, true],
+                    ].map(([key, label, adm, pos]) => (
                       <tr key={String(key)}>
                         <td className="py-2 px-3 font-bold text-stone-800">{String(label)}</td>
                         <td className="py-2 px-3 font-mono text-[10px] text-stone-500">{String(key)}</td>
-                        {[adm, pos, b2b].map((granted, i) => (
+                        {[adm, pos].map((granted, i) => (
                           <td key={i} className="py-2 px-3 text-center">
                             {granted ? (
                               <Check className="w-4 h-4 text-emerald-600 inline" />
@@ -4258,11 +4164,10 @@ export function AdminDashboardClient({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
-                ["Süper Admin", "SUPER_ADMIN", "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans, stok, ERP ve B2B."],
+                ["Süper Admin", "SUPER_ADMIN", "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans, stok ve ERP."],
                 ["Mağaza Müdürü", "STORE_MANAGER", "Mağaza operasyonu: POS, stok, sipariş ve raporlar. Kullanıcı yönetimi ve kritik ayarlar hariç."],
                 ["Depo Sorumlusu", "WAREHOUSE_KEEPER", "Depo/WMS: stok hareketleri, sayım, transfer, mal kabul. POS ve finansal ekranlara erişemez."],
                 ["POS Kasiyeri", "CASHIER", "Yalnızca Web POS: satış, iade, vardiya aç/kapat. Yönetim ve rapor ekranlarına erişemez."],
-                ["B2B Temsilcisi", "B2B_MANAGER", "B2B toptan portalı: cari hesaplar, siparişler, kredili satış ve iskonto yönetimi."],
               ].map(([label, code, desc]) => (
                 <div key={String(code)} className="bg-white rounded-2xl border border-stone-200 p-4 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
@@ -4371,7 +4276,7 @@ export function AdminDashboardClient({
             </div>
             <form onSubmit={handleSaveProductEdit} className="space-y-3 text-xs">
               <input required value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold mb-1">Alış</label>
                   <input value={editingProduct.buyPrice} onChange={(e) => setEditingProduct({ ...editingProduct, buyPrice: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
@@ -4379,10 +4284,6 @@ export function AdminDashboardClient({
                 <div>
                   <label className="block font-bold mb-1">Perakende</label>
                   <input required value={editingProduct.retailPrice} onChange={(e) => setEditingProduct({ ...editingProduct, retailPrice: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">B2B</label>
-                  <input value={editingProduct.b2bPrice} onChange={(e) => setEditingProduct({ ...editingProduct, b2bPrice: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -4597,7 +4498,7 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Alış Fiyatı (TL):</label>
                   <input
@@ -4616,16 +4517,6 @@ export function AdminDashboardClient({
                     required
                     value={newProd.retailPrice}
                     onChange={(e) => setNewProd({ ...newProd, retailPrice: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">B2B Fiyatı (TL):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={newProd.b2bPrice}
-                    onChange={(e) => setNewProd({ ...newProd, b2bPrice: e.target.value })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   />
                 </div>
@@ -4830,121 +4721,6 @@ export function AdminDashboardClient({
                 className="w-full py-3 bg-stone-900 hover:bg-black text-white font-bold rounded-xl text-xs transition"
               >
                 Stok Defterine Düzeltme İşle
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* MODAL 4: ADD B2B CLIENT */}
-      {/* ============================================================ */}
-      {isAddB2BOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
-              <h3 className="font-black text-base text-stone-900">Yeni B2B Toptan Müşteri Kartı</h3>
-              <button onClick={() => setIsAddB2BOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddB2B} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Yetkili Adı Soyadı:</label>
-                <input
-                  type="text"
-                  required
-                  value={newB2B.name}
-                  onChange={(e) => setNewB2B({ ...newB2B, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Firma Ticari Unvanı:</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Örn: Anadolu Konfeksiyon San. Ltd. Şti."
-                  value={newB2B.companyName}
-                  onChange={(e) => setNewB2B({ ...newB2B, companyName: e.target.value })}
-                  className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">Telefon:</label>
-                  <input
-                    type="text"
-                    required
-                    value={newB2B.phone}
-                    onChange={(e) => setNewB2B({ ...newB2B, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">E-Posta:</label>
-                  <input
-                    type="email"
-                    value={newB2B.email}
-                    onChange={(e) => setNewB2B({ ...newB2B, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">Vergi Dairesi:</label>
-                  <input
-                    type="text"
-                    value={newB2B.taxOffice}
-                    onChange={(e) => setNewB2B({ ...newB2B, taxOffice: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">VKN (10 Haneli):</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={10}
-                    placeholder="9990001122"
-                    value={newB2B.taxNumber}
-                    onChange={(e) => setNewB2B({ ...newB2B, taxNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">Cari Kredi Limiti (TL):</label>
-                  <input
-                    type="number"
-                    value={newB2B.creditLimit}
-                    onChange={(e) => setNewB2B({ ...newB2B, creditLimit: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">Toptan İskonto (%):</label>
-                  <input
-                    type="number"
-                    value={newB2B.discountRate}
-                    onChange={(e) => setNewB2B({ ...newB2B, discountRate: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 bg-sky-800 hover:bg-sky-900 text-white font-bold rounded-xl text-xs transition"
-              >
-                B2B Cari Hesabı Aç & Onayla
               </button>
             </form>
           </div>
@@ -5178,7 +4954,6 @@ export function AdminDashboardClient({
                     <option value="STORE_MANAGER">Mağaza Müdürü</option>
                     <option value="WAREHOUSE_KEEPER">Depo Sorumlusu</option>
                     <option value="CASHIER">POS Kasiyeri</option>
-                    <option value="B2B_MANAGER">B2B Satış Temsilcisi</option>
                   </select>
                 </div>
               </div>

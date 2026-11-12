@@ -8,16 +8,14 @@ import { and, eq, gt, isNull, lt } from "drizzle-orm";
 export const SESSION_COOKIE = "ipek_session";
 export const SESSION_TTL_SECONDS = 7 * 24 * 3600; // 7 gün
 
-/** Mağaza içi yetkili roller (POS / B2B / Admin sekmelerini görebilir). */
-export const STAFF_ROLES = ["SUPER_ADMIN", "STORE_MANAGER", "WAREHOUSE_KEEPER", "CASHIER", "B2B_MANAGER"] as const;
+/** Mağaza içi yetkili roller (POS / Admin sekmelerini görebilir). */
+export const STAFF_ROLES = ["SUPER_ADMIN", "STORE_MANAGER", "WAREHOUSE_KEEPER", "CASHIER"] as const;
 
 export const ROLE_LABELS_TR: Record<string, string> = {
   SUPER_ADMIN: "Süper Admin",
   STORE_MANAGER: "Mağaza Müdürü",
   WAREHOUSE_KEEPER: "Depo Sorumlusu",
   CASHIER: "POS Kasiyeri",
-  B2B_MANAGER: "B2B Satış Temsilcisi",
-  B2B_CUSTOMER: "B2B Müşteri",
   B2C_CUSTOMER: "Üye",
 };
 

@@ -58,7 +58,7 @@ export async function GET(request: Request) {
     const discounts = validOrders.reduce((s, o) => s + Number(o.discountTotal), 0);
     const shipping = validOrders.reduce((s, o) => s + Number(o.shippingTotal), 0);
 
-    const byChannel = (["ONLINE_B2C", "POS", "B2B"] as const).map((ch) => {
+    const byChannel = (["ONLINE_B2C", "POS"] as const).map((ch) => {
       const list = validOrders.filter((o) => o.orderType === ch);
       const rev = list.reduce((s, o) => s + Number(o.grandTotal), 0);
       return { channel: ch, count: list.length, revenue: Number(rev.toFixed(2)), share: revenue ? Number(((rev / revenue) * 100).toFixed(1)) : 0 };

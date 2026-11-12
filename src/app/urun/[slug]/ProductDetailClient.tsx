@@ -201,16 +201,6 @@ export function ProductDetailClient({
               </p>
             </div>
 
-            {product.b2bPrice && (
-              <div className="text-right">
-                <span className="text-xs font-bold text-sky-800 bg-sky-100 px-2 py-0.5 rounded-md block mb-1">
-                  B2B Toptan: {Number(product.b2bPrice).toFixed(2)} TL
-                </span>
-                <Link href="/toptan-b2b" className="text-[11px] text-sky-700 hover:underline">
-                  Toptan Cari Fırsatları →
-                </Link>
-              </div>
-            )}
           </div>
 
           {/* Variants Selector */}

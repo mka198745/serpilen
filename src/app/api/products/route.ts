@@ -91,7 +91,6 @@ export async function GET(request: Request) {
         unit: products.unit,
         buyPrice: products.buyPrice,
         retailPrice: products.retailPrice,
-        b2bPrice: products.b2bPrice,
         minOrderQty: products.minOrderQty,
         packageQty: products.packageQty,
         vatRate: products.vatRate,
@@ -205,7 +204,6 @@ export async function POST(request: Request) {
       unit = "Adet",
       buyPrice = "0.00",
       retailPrice,
-      b2bPrice,
       shortDescription,
       description,
       imageUrl,
@@ -229,7 +227,6 @@ export async function POST(request: Request) {
         unit,
         buyPrice: String(buyPrice),
         retailPrice: String(retailPrice),
-        b2bPrice: String(b2bPrice || retailPrice),
         shortDescription,
         description,
         imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
@@ -284,7 +281,6 @@ export async function PATCH(request: Request) {
     if (body.unit !== undefined) updates.unit = String(body.unit);
     if (body.buyPrice !== undefined) updates.buyPrice = String(body.buyPrice);
     if (body.retailPrice !== undefined) updates.retailPrice = String(body.retailPrice);
-    if (body.b2bPrice !== undefined) updates.b2bPrice = String(body.b2bPrice);
     if (body.campaignPrice !== undefined) updates.campaignPrice = body.campaignPrice ? String(body.campaignPrice) : null;
     if (body.shortDescription !== undefined) updates.shortDescription = body.shortDescription;
     if (body.description !== undefined) updates.description = body.description;

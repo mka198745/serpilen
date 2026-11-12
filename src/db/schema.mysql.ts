@@ -8,10 +8,10 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
-  role: varchar("role", { length: 255 }).notNull().default("CASHIER"), // SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER, B2B_CUSTOMER, B2C_CUSTOMER
+  role: varchar("role", { length: 255 }).notNull().default("CASHIER"), // SUPER_ADMIN, STORE_MANAGER, WAREHOUSE_KEEPER, CASHIER
   phone: varchar("phone", { length: 255 }),
   avatarUrl: varchar("avatar_url", { length: 500 }),
-  customerId: int("customer_id"), // B2B portal müşterisinin cari karta bağlantısı
+  customerId: int("customer_id"), // Müşteri cari kartına bağlantısı (varsa)
   // --- Güvenlik / 2FA alanları ---
   totpSecret: varchar("totp_secret", { length: 255 }), // Google Authenticator base32 gizli anahtarı
   totpSecretPrevious: varchar("totp_secret_previous", { length: 255 }), // Rotasyon sırasında eski kod da kabul edilir (kilitlenmeyi önler)
@@ -51,11 +51,11 @@ export const authNonces = mysqlTable("auth_nonces", {
 });
 
 // ==========================================
-// 2. MÜŞTERİLER (B2C & B2B) & CRM
+// 2. MÜŞTERİLER (B2C) & CRM
 // ==========================================
 export const customers = mysqlTable("customers", {
   id: int("id").autoincrement().primaryKey(),
-  type: varchar("type", { length: 255 }).notNull().default("B2C"), // B2C, B2B
+  type: varchar("type", { length: 255 }).notNull().default("B2C"), // B2C (tek kanal)
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 255 }).notNull(),
@@ -65,13 +65,9 @@ export const customers = mysqlTable("customers", {
   creditLimit: decimal("credit_limit", { precision: 12, scale: 2 }).default("0.00"),
   balance: decimal("balance", { precision: 12, scale: 2 }).default("0.00"), // Cari Bakiye
   loyaltyPoints: int("loyalty_points").default(0).notNull(),
-  segment: varchar("segment", { length: 255 }).default("YENİ"), // YENİ, AKTİF, VİP, TOPTANCI, RİSKLİ
-  discountRate: decimal("discount_rate", { precision: 5, scale: 2 }).default("0.00"), // Özel B2B iskontosu
-  // --- FAZ 9: B2B cari & fiyatlandırma ---
-  priceListId: int("price_list_id"), // atanmış fiyat listesi
-  paymentTermDays: int("payment_term_days").default(30).notNull(), // vade (gün)
-  minOrderAmount: decimal("min_order_amount", { precision: 10, scale: 2 }).default("0.00"),
-  isBlocked: boolean("is_blocked").notNull().default(false), // riskli/kapalı cari
+  segment: varchar("segment", { length: 255 }).default("YENİ"), // YENİ, AKTİF, VİP, RİSKLİ
+  discountRate: decimal("discount_rate", { precision: 5, scale: 2 }).default("0.00"), // Kişiye özel iskonto
+  isBlocked: boolean("is_blocked").notNull().default(false), // riskli/engelli hesap
   approvalStatus: varchar("approval_status", { length: 255 }).default("APPROVED"), // PENDING, APPROVED, REJECTED
   address: text("address"),
   city: varchar("city", { length: 255 }),
@@ -117,7 +113,6 @@ export const products = mysqlTable("products", {
   unit: varchar("unit", { length: 255 }).default("Adet").notNull(), // Adet, Metre, Paket, Kutu, Rulo, Bobin
   buyPrice: decimal("buy_price", { precision: 10, scale: 2 }).notNull().default("0.00"),
   retailPrice: decimal("retail_price", { precision: 10, scale: 2 }).notNull().default("0.00"),
-  b2bPrice: decimal("b2b_price", { precision: 10, scale: 2 }).notNull().default("0.00"),
   minOrderQty: int("min_order_qty").default(1).notNull(),
   packageQty: int("package_qty").default(1).notNull(), // Paket içi adet
   vatRate: int("vat_rate").default(20).notNull(), // KDV %10 veya %20
@@ -155,7 +150,6 @@ export const productVariants = mysqlTable("product_variants", {
   length: varchar("length", { length: 255 }), // e.g., "100m", "500m"
   buyPrice: decimal("buy_price", { precision: 10, scale: 2 }),
   retailPrice: decimal("retail_price", { precision: 10, scale: 2 }).notNull(),
-  b2bPrice: decimal("b2b_price", { precision: 10, scale: 2 }),
   imageUrl: varchar("image_url", { length: 500 }),
   isActive: boolean("is_active").default(true).notNull(),
 });
@@ -166,7 +160,7 @@ export const productVariants = mysqlTable("product_variants", {
 export const warehouses = mysqlTable("warehouses", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
-  code: varchar("code", { length: 255 }).notNull().unique(), // MRK, KDK-MAG, ONL-DEP, TOPTAN
+  code: varchar("code", { length: 255 }).notNull().unique(), // MRK, KDK-MAG, ONL-DEP
   type: varchar("type", { length: 255 }).notNull().default("STORE"), // CENTRAL, STORE, ONLINE, WHOLESALE
   address: text("address"),
   isActive: boolean("is_active").default(true).notNull(),
@@ -275,19 +269,19 @@ export const inventoryLedger = mysqlTable("inventory_ledger", {
 });
 
 // ==========================================
-// 6. SİPARİŞLER (E-TİCARET, B2B, POS)
+// 6. SİPARİŞLER (E-TİCARET, POS)
 // ==========================================
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
   orderNumber: varchar("order_number", { length: 255 }).notNull().unique(), // OR-2026-001, POS-2026-042
-  orderType: varchar("order_type", { length: 255 }).notNull().default("ONLINE_B2C"), // ONLINE_B2C, B2B, POS
+  orderType: varchar("order_type", { length: 255 }).notNull().default("ONLINE_B2C"), // ONLINE_B2C, POS
   customerId: int("customer_id"),
   customerName: varchar("customer_name", { length: 255 }).notNull(),
   customerEmail: varchar("customer_email", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 255 }),
   status: varchar("status", { length: 255 }).notNull().default("PAID"), // PENDING, PAID, PREPARING, READY_FOR_SHIPMENT, SHIPPED, DELIVERED, CANCELLED, REFUNDED
   paymentStatus: varchar("payment_status", { length: 255 }).notNull().default("PAID"), // PENDING, PAID, PARTIAL, REFUNDED
-  paymentMethod: varchar("payment_method", { length: 255 }).notNull().default("CREDIT_CARD"), // CREDIT_CARD, CASH, EFT_HAVALE, B2B_CREDIT, SPLIT
+  paymentMethod: varchar("payment_method", { length: 255 }).notNull().default("CREDIT_CARD"), // CREDIT_CARD, CASH, EFT_HAVALE, SPLIT
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0.00"),
   discountTotal: decimal("discount_total", { precision: 10, scale: 2 }).notNull().default("0.00"),
   taxTotal: decimal("tax_total", { precision: 10, scale: 2 }).notNull().default("0.00"),
@@ -478,41 +472,6 @@ export const goodsReceiptItems = mysqlTable("goods_receipt_items", {
 });
 
 // ==========================================
-// 8.5 B2B: FİYAT LİSTELERİ, KADEMELİ FİYAT & CARİ HESAP (FAZ 9)
-// ==========================================
-export const priceLists = mysqlTable("price_lists", {
-  id: int("id").autoincrement().primaryKey(),
-  code: varchar("code", { length: 255 }).notNull().unique(), // RETAIL, DEALER, WHOLESALE, VIP
-  name: varchar("name", { length: 255 }).notNull(),
-  description: text("description"),
-  // Liste geneli varsayılan iskonto (ürün bazlı override yoksa uygulanır)
-  defaultDiscountRate: decimal("default_discount_rate", { precision: 5, scale: 2 }).default("0.00").notNull(),
-  isDefault: boolean("is_default").notNull().default(false),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Ürün bazlı özel fiyat (liste × ürün)
-export const priceListItems = mysqlTable("price_list_items", {
-  id: int("id").autoincrement().primaryKey(),
-  priceListId: int("price_list_id").notNull(),
-  productId: int("product_id").notNull(),
-  variantId: int("variant_id"),
-  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
-  minQty: int("min_qty").default(1).notNull(),
-});
-
-// Kademeli (hacim) fiyat baremleri: 1-9 / 10-49 / 50-99 / 100+
-export const priceTiers = mysqlTable("price_tiers", {
-  id: int("id").autoincrement().primaryKey(),
-  priceListId: int("price_list_id").notNull(),
-  productId: int("product_id"), // null = liste geneli barem
-  minQty: int("min_qty").notNull(),
-  maxQty: int("max_qty"), // null = üst sınırsız
-  discountRate: decimal("discount_rate", { precision: 5, scale: 2 }), // yüzde iskonto
-  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }), // ya da sabit birim fiyat
-});
-
 // CARİ HESAP HAREKETLERİ (borç/alacak defteri)
 export const accountTransactions = mysqlTable("account_transactions", {
   id: int("id").autoincrement().primaryKey(),

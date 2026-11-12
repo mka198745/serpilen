@@ -44,7 +44,7 @@ export default function AboutPage() {
           </div>
           <h3 className="font-bold text-base text-stone-900">Tekil Dijital Entegrasyon</h3>
           <p className="text-xs text-stone-500 leading-relaxed">
-            Fiziki mağaza kasamız (Web POS), online vitrinimiz ve B2B toptan ambarımız tek bir veritabanında çalışır; stoklarımız daima %100 günceldir.
+            Fiziki mağaza kasamız (Web POS), online vitrinimiz ve sevkiyatımız tek bir veritabanında çalışır; stoklarımız daima %100 günceldir.
           </p>
         </div>
       </div>

@@ -22,7 +22,6 @@ import {
   warehouses,
   suppliers,
   orderReturns,
-  accountTransactions,
   promotions,
 } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
@@ -87,7 +86,6 @@ export async function analyzeSales(): Promise<SalesInsight> {
   const channelDefs = [
     { key: "POS", label: "Fiziki Mağaza (POS)" },
     { key: "ONLINE_B2C", label: "Online E-Ticaret (B2C)" },
-    { key: "B2B", label: "B2B Toptan Sevk" },
   ];
   const channelBreakdown = channelDefs.map((c) => {
     const list = valid.filter((o) => o.orderType === c.key);
@@ -135,7 +133,6 @@ export async function analyzeSales(): Promise<SalesInsight> {
 
   const avgBasket = valid.length ? revenue / valid.length : 0;
   const posShare = channelBreakdown[0].share;
-  const b2bShare = channelBreakdown[2].share;
 
   // AI içgörüleri (kural tabanlı)
   const insights: string[] = [];
@@ -143,7 +140,6 @@ export async function analyzeSales(): Promise<SalesInsight> {
   else if (change < -10) insights.push(`Son 14 günde ciro **%${Math.abs(change)} düştü** — kampanya yoğunlaştırma ve e-posta pazarlaması önerilir.`);
   else insights.push(`Ciro son dönemde **dengeli (%${change} değişim)** seyrediyor.`);
 
-  if (b2bShare >= 40) insights.push(`B2B toptan kanal ciroların **%${b2bShare}**'ini üretiyor. Cari limit artışı ve vadeli kampanyalar bu kanalı daha da büyütebilir.`);
   if (posShare >= 40) insights.push(`Fiziki mağaza POS satışları **%${posShare}** ağırlıkta. Kasa çapraz satış (Ürün öneri ekranı) sepet ortalamasını yükseltir.`);
   if (avgBasket > 0 && avgBasket < 500) insights.push(`Ortalama sepet **${fmt(avgBasket)} TL**. Sepet tamamlayıcı ürünleri (iplik + iğne + makas setleri) önerilere eklenerek 600 TL üzerine çıkartılabilir.`);
   if (bestEntry) insights.push(`En güçlü ciro günü **${bestEntry[0]} (${fmt(Number(bestEntry[1]))} TL)**. Bu günün haftalık tekrarını (ör. Cumartesi) kampanya günü yapmak mümkün.`);
@@ -404,9 +400,7 @@ export async function analyzeCustomers(): Promise<CustomerInsight> {
     risk = Math.min(100, risk);
 
     const segment =
-      c.type === "B2B"
-        ? "TOPTANCI"
-        : spend >= 5000 || (c.segment || "").toUpperCase().includes("VIP")
+      spend >= 5000 || (c.segment || "").toUpperCase().includes("VIP")
         ? "VIP"
         : spend >= 1000
         ? "SADIK"
@@ -443,7 +437,6 @@ export async function analyzeCustomers(): Promise<CustomerInsight> {
 
   const segmentColors: Record<string, string> = {
     VIP: "#7c3aed",
-    TOPTANCI: "#0369a1",
     SADIK: "#059669",
     AKTİF: "#d97706",
     "YENİ": "#0891b2",
@@ -548,7 +541,7 @@ export async function generateProductContent(productId: number, opts?: { tone?: 
     `• ${brand?.name || "Güvenilir üretici"} onaylı %100 orijinal ürün`,
     `• 30 yılı aşkın tuhafiye sektör tecrübesi`,
     `• Aynı gün kargo ve 14 gün koşulsuz iade hakkı`,
-    `• Toptan ve perakende satış avantajları`,
+    `• Perakende müşterilerimize özel avantajlar`,
     "",
     `📦 Paket İçeriği: 1 ${unit}`,
     `💰 Fiyat: ${price} TL (KDV dahil)`,

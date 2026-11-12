@@ -34,7 +34,7 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const orderType = searchParams.get("type"); // ONLINE_B2C, B2B, POS
+    const orderType = searchParams.get("type"); // ONLINE_B2C, POS
     const customerId = searchParams.get("customerId");
     const orderNumber = searchParams.get("orderNumber"); // müşteri sipariş takibi
     const phone = searchParams.get("phone");
@@ -90,12 +90,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const {
-      orderType = "ONLINE_B2C", // ONLINE_B2C, B2B, POS
+      orderType = "ONLINE_B2C", // ONLINE_B2C, POS
       customerId = null,
       customerName,
       customerEmail = null,
       customerPhone = null,
-      paymentMethod = "CREDIT_CARD", // CREDIT_CARD, CASH, B2B_CREDIT, SPLIT
+      paymentMethod = "CREDIT_CARD", // CREDIT_CARD, CASH, SPLIT
       items = [], // Array of { productId, variantId, productName, variantName, sku, barcode, unitPrice, quantity, taxRate, totalPrice }
       subtotal,
       discountTotal: discountTotalIn = 0,
@@ -123,17 +123,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Sepette ürün bulunamadı" }, { status: 400 });
     }
 
-    // --- FAZ 9: B2B cari limit / vade / minimum sipariş kontrolü ---
-    let b2bCredit: Awaited<ReturnType<typeof import("@/lib/pricing-engine").checkCredit>> | null = null;
-    if (orderType === "B2B" && customerId && paymentMethod === "B2B_CREDIT") {
-      const { checkCredit } = await import("@/lib/pricing-engine");
-      b2bCredit = await checkCredit(Number(customerId), Number(grandTotalIn) || 0);
-      if (!b2bCredit.allowed) {
-        return NextResponse.json(
-          { success: false, error: b2bCredit.reason, code: b2bCredit.code, credit: b2bCredit },
-          { status: 409 }
-        );
-      }
+    // B2B satış kanalı sistemden kaldırıldı — eski istemcilerin kanal spoof etmesi engellenir.
+    if (orderType === "B2B" || paymentMethod === "B2B_CREDIT") {
+      return NextResponse.json(
+        { success: false, error: "B2B satış kanalı sistemden kaldırıldı." },
+        { status: 422 }
+      );
     }
 
     // --- FAZ 8: Otomatik kampanya motoru (sunucu otoritesi) ---
@@ -200,8 +195,6 @@ export async function POST(request: Request) {
     const generatedOrderNumber =
       orderType === "POS"
         ? `POS-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
-        : orderType === "B2B"
-        ? `B2B-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
         : `OR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
 
     // İstemcinin gösterdiği sipariş numarası geçerli ve çakışmıyorsa AYNI NUMARA İLE kaydedilir
@@ -321,24 +314,6 @@ export async function POST(request: Request) {
         });
         await db.update(customers).set({ loyaltyPoints: newBalance }).where(eq(customers.id, cust.id));
       }
-    }
-
-    // 5.5 FAZ 9: B2B cari hesap borç kaydı + vade
-    if (orderType === "B2B" && customerId && b2bCredit) {
-      const { accountTransactions } = await import("@/db/schema");
-      const dueDate = new Date(Date.now() + (b2bCredit.paymentTermDays || 30) * 86400000);
-      await db.update(customers).set({ balance: String(b2bCredit.newBalance) }).where(eq(customers.id, Number(customerId)));
-      await db.insert(accountTransactions).values({
-        customerId: Number(customerId),
-        type: "DEBIT",
-        amount: String(Number(grandTotal).toFixed(2)),
-        balanceAfter: String(b2bCredit.newBalance),
-        referenceType: "ORDER",
-        referenceId: orderNumber,
-        description: `Toptan satış · ${orderNumber} (${b2bCredit.paymentTermDays} gün vade)`,
-        dueDate,
-        createdBy: "B2B Portal",
-      });
     }
 
     // 6. Durum geçmişi (audit trail)

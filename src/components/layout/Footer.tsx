@@ -179,7 +179,6 @@ export function Footer() {
           <ul className="space-y-2 text-xs text-stone-400">
             <li><Link href="/hakkimizda" className="hover:text-amber-400 transition">Hakkımızda</Link></li>
             <li><Link href="/magazalarimiz" className="hover:text-amber-400 transition">Mağazalarımız & Kasa</Link></li>
-            <li><Link href="/toptan-b2b" className="hover:text-amber-400 transition">B2B Toptan Satış Başvurusu</Link></li>
             <li><Link href="/pos" className="hover:text-amber-400 transition">Mağaza Web POS Terminali</Link></li>
             <li><Link href="/admin" className="hover:text-amber-400 transition">Yönetim & WMS Paneli</Link></li>
             <li><Link href="/blog" className="hover:text-amber-400 transition">Dikiş & Malzeme Rehberi</Link></li>

@@ -265,7 +265,7 @@ export function ErpIntegrationConsole() {
             <div>
               <Building2 className="w-5 h-5 text-emerald-800 mb-1 group-hover:scale-110 transition-transform" />
               <h4 className="font-bold text-xs text-stone-900">Tüm Carileri Aktar</h4>
-              <p className="text-[10px] text-stone-500 mt-0.5">B2C ve B2B müşteri kartlarını ERP'ye eşitler.</p>
+              <p className="text-[10px] text-stone-500 mt-0.5">B2C müşteri kartlarını ERP'ye eşitler.</p>
             </div>
             <span className="text-[10px] text-emerald-800 font-bold mt-2">Çalıştır →</span>
           </button>

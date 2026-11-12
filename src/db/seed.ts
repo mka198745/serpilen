@@ -75,12 +75,6 @@ export async function seedDatabase() {
       type: "ONLINE",
       address: "Merkez Lojistik Binası Kat 2, İstanbul",
     },
-    {
-      name: "B2B Toptan Deposu",
-      code: "TOPTAN",
-      type: "WHOLESALE",
-      address: "Zeytinburnu Tekstilciler Çarşısı No: 104, İstanbul",
-    },
   ]).returning({ id: warehouses.id });
   const insertedWarehouses = await db.select().from(warehouses).where(inArray(warehouses.id, __insertedWarehouses_ids.map((r) => r.id))).orderBy(asc(warehouses.id));
 
@@ -139,7 +133,6 @@ export async function seedDatabase() {
     unit: "Adet",
     buyPrice: "32.50",
     retailPrice: "58.00",
-    b2bPrice: "42.00",
     minOrderQty: 1,
     packageQty: 10,
     hasVariants: true,
@@ -149,10 +142,10 @@ export async function seedDatabase() {
   const [p1] = await db.select().from(products).where(eq(products.id, __p1_id));
 
   const __p1Variants_ids = await db.insert(productVariants).values([
-    { productId: p1.id, sku: "GUT-100-SIYAH", barcode: "8690011223351", colorName: "Siyah (No: 000)", colorHex: "#111827", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
-    { productId: p1.id, sku: "GUT-100-BEYAZ", barcode: "8690011223368", colorName: "Optik Beyaz (No: 800)", colorHex: "#F9FAFB", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
-    { productId: p1.id, sku: "GUT-100-KIRMIZI", barcode: "8690011223375", colorName: "Bayrak Kırmızısı (No: 364)", colorHex: "#DC2626", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
-    { productId: p1.id, sku: "GUT-100-LACIVERT", barcode: "8690011223382", colorName: "Gece Laciverti (No: 339)", colorHex: "#1E3A8A", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50", b2bPrice: "42.00" },
+    { productId: p1.id, sku: "GUT-100-SIYAH", barcode: "8690011223351", colorName: "Siyah (No: 000)", colorHex: "#111827", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50" },
+    { productId: p1.id, sku: "GUT-100-BEYAZ", barcode: "8690011223368", colorName: "Optik Beyaz (No: 800)", colorHex: "#F9FAFB", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50" },
+    { productId: p1.id, sku: "GUT-100-KIRMIZI", barcode: "8690011223375", colorName: "Bayrak Kırmızısı (No: 364)", colorHex: "#DC2626", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50" },
+    { productId: p1.id, sku: "GUT-100-LACIVERT", barcode: "8690011223382", colorName: "Gece Laciverti (No: 339)", colorHex: "#1E3A8A", size: "100m", length: "100m", retailPrice: "58.00", buyPrice: "32.50" },
   ]).returning({ id: productVariants.id });
   const p1Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p1Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
@@ -169,7 +162,6 @@ export async function seedDatabase() {
     unit: "Adet",
     buyPrice: "45.00",
     retailPrice: "85.00",
-    b2bPrice: "60.00",
     minOrderQty: 1,
     packageQty: 5,
     hasVariants: true,
@@ -179,9 +171,9 @@ export async function seedDatabase() {
   const [p2] = await db.select().from(products).where(eq(products.id, __p2_id));
 
   const __p2Variants_ids = await db.insert(productVariants).values([
-    { productId: p2.id, sku: "YKK-MET-50CM-ANT", barcode: "8690022334462", colorName: "Antik Pirinç / Siyah Şerit", colorHex: "#374151", size: "50 cm", length: "50 cm", retailPrice: "85.00", buyPrice: "45.00", b2bPrice: "60.00" },
-    { productId: p2.id, sku: "YKK-MET-70CM-ANT", barcode: "8690022334479", colorName: "Antik Pirinç / Siyah Şerit", colorHex: "#374151", size: "70 cm", length: "70 cm", retailPrice: "98.00", buyPrice: "52.00", b2bPrice: "70.00" },
-    { productId: p2.id, sku: "YKK-MET-50CM-GUM", barcode: "8690022334486", colorName: "Parlak Gümüş / Lacivert Şerit", colorHex: "#1E293B", size: "50 cm", length: "50 cm", retailPrice: "85.00", buyPrice: "45.00", b2bPrice: "60.00" },
+    { productId: p2.id, sku: "YKK-MET-50CM-ANT", barcode: "8690022334462", colorName: "Antik Pirinç / Siyah Şerit", colorHex: "#374151", size: "50 cm", length: "50 cm", retailPrice: "85.00", buyPrice: "45.00" },
+    { productId: p2.id, sku: "YKK-MET-70CM-ANT", barcode: "8690022334479", colorName: "Antik Pirinç / Siyah Şerit", colorHex: "#374151", size: "70 cm", length: "70 cm", retailPrice: "98.00", buyPrice: "52.00" },
+    { productId: p2.id, sku: "YKK-MET-50CM-GUM", barcode: "8690022334486", colorName: "Parlak Gümüş / Lacivert Şerit", colorHex: "#1E293B", size: "50 cm", length: "50 cm", retailPrice: "85.00", buyPrice: "45.00" },
   ]).returning({ id: productVariants.id });
   const p2Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p2Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
@@ -198,7 +190,6 @@ export async function seedDatabase() {
     unit: "Rulo",
     buyPrice: "50.00",
     retailPrice: "95.00",
-    b2bPrice: "68.00",
     minOrderQty: 1,
     packageQty: 1,
     hasVariants: true,
@@ -208,9 +199,9 @@ export async function seedDatabase() {
   const [p3] = await db.select().from(products).where(eq(products.id, __p3_id));
 
   const __p3Variants_ids = await db.insert(productVariants).values([
-    { productId: p3.id, sku: "SAT-10MM-BORDO", barcode: "8690033445573", colorName: "Gül Kurusu / Bordo", colorHex: "#881337", size: "10 mm x 25 m", length: "25m", retailPrice: "75.00", buyPrice: "38.00", b2bPrice: "52.00" },
-    { productId: p3.id, sku: "SAT-20MM-ALTIN", barcode: "8690033445580", colorName: "Şampanya / Altın", colorHex: "#D97706", size: "20 mm x 25 m", length: "25m", retailPrice: "95.00", buyPrice: "50.00", b2bPrice: "68.00" },
-    { productId: p3.id, sku: "SAT-40MM-ZUMRUT", barcode: "8690033445597", colorName: "Zümrüt Yeşili", colorHex: "#065F46", size: "40 mm x 25 m", length: "25m", retailPrice: "135.00", buyPrice: "70.00", b2bPrice: "95.00" },
+    { productId: p3.id, sku: "SAT-10MM-BORDO", barcode: "8690033445573", colorName: "Gül Kurusu / Bordo", colorHex: "#881337", size: "10 mm x 25 m", length: "25m", retailPrice: "75.00", buyPrice: "38.00" },
+    { productId: p3.id, sku: "SAT-20MM-ALTIN", barcode: "8690033445580", colorName: "Şampanya / Altın", colorHex: "#D97706", size: "20 mm x 25 m", length: "25m", retailPrice: "95.00", buyPrice: "50.00" },
+    { productId: p3.id, sku: "SAT-40MM-ZUMRUT", barcode: "8690033445597", colorName: "Zümrüt Yeşili", colorHex: "#065F46", size: "40 mm x 25 m", length: "25m", retailPrice: "135.00", buyPrice: "70.00" },
   ]).returning({ id: productVariants.id });
   const p3Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p3Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
@@ -227,7 +218,6 @@ export async function seedDatabase() {
     unit: "Adet",
     buyPrice: "340.00",
     retailPrice: "590.00",
-    b2bPrice: "440.00",
     minOrderQty: 1,
     packageQty: 1,
     hasVariants: false,
@@ -249,7 +239,6 @@ export async function seedDatabase() {
     unit: "Adet",
     buyPrice: "45.00",
     retailPrice: "78.00",
-    b2bPrice: "56.00",
     minOrderQty: 1,
     packageQty: 5,
     hasVariants: true,
@@ -259,9 +248,9 @@ export async function seedDatabase() {
   const [p5] = await db.select().from(products).where(eq(products.id, __p5_id));
 
   const __p5Variants_ids = await db.insert(productVariants).values([
-    { productId: p5.id, sku: "ALZ-PUF-PUDRA", barcode: "8690055667795", colorName: "Pudra Pembe (No: 161)", colorHex: "#FDA4AF", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00", b2bPrice: "56.00" },
-    { productId: p5.id, sku: "ALZ-PUF-BEBE-MAVI", barcode: "8690055667801", colorName: "Bebe Mavisi (No: 183)", colorHex: "#93C5FD", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00", b2bPrice: "56.00" },
-    { productId: p5.id, sku: "ALZ-PUF-KREM", barcode: "8690055667818", colorName: "Doğal Krem (No: 62)", colorHex: "#FEF3C7", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00", b2bPrice: "56.00" },
+    { productId: p5.id, sku: "ALZ-PUF-PUDRA", barcode: "8690055667795", colorName: "Pudra Pembe (No: 161)", colorHex: "#FDA4AF", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00" },
+    { productId: p5.id, sku: "ALZ-PUF-BEBE-MAVI", barcode: "8690055667801", colorName: "Bebe Mavisi (No: 183)", colorHex: "#93C5FD", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00" },
+    { productId: p5.id, sku: "ALZ-PUF-KREM", barcode: "8690055667818", colorName: "Doğal Krem (No: 62)", colorHex: "#FEF3C7", size: "100g / 9.2m", length: "9.2m", retailPrice: "78.00", buyPrice: "45.00" },
   ]).returning({ id: productVariants.id });
   const p5Variants = await db.select().from(productVariants).where(inArray(productVariants.id, __p5Variants_ids.map((r) => r.id))).orderBy(asc(productVariants.id));
 
@@ -278,7 +267,6 @@ export async function seedDatabase() {
     unit: "Paket",
     buyPrice: "65.00",
     retailPrice: "125.00",
-    b2bPrice: "85.00",
     minOrderQty: 1,
     packageQty: 50,
     hasVariants: false,
@@ -300,7 +288,6 @@ export async function seedDatabase() {
     unit: "Metre",
     buyPrice: "28.00",
     retailPrice: "52.00",
-    b2bPrice: "36.00",
     minOrderQty: 1,
     packageQty: 50,
     hasVariants: false,
@@ -404,7 +391,7 @@ export async function seedDatabase() {
     },
   ]);
 
-  // 9. Customers (B2C and B2B)
+  // 9. Customers (B2C)
   const __insertedCustomers_ids = await db.insert(customers).values([
     {
       type: "B2C",
@@ -416,23 +403,6 @@ export async function seedDatabase() {
       city: "İstanbul",
       address: "Caferağa Mah. Moda Cad. No: 44 D: 6, Kadıköy / İstanbul",
       notes: "Sık sık örgü ve nakış ipi alır, atölye eğitmeni.",
-    },
-    {
-      type: "B2B",
-      name: "Moda Tasarım Tekstil Ltd. Şti.",
-      email: "siparis@modatasarim.com.tr",
-      phone: "0212 555 77 88",
-      companyName: "Moda Tasarım Konfeksiyon San. ve Tic. Ltd. Şti.",
-      taxOffice: "Marmara Kurumlar",
-      taxNumber: "6220491823",
-      creditLimit: "150000.00",
-      balance: "18450.00",
-      loyaltyPoints: 1200,
-      segment: "TOPTANCI",
-      discountRate: "12.00",
-      city: "İstanbul",
-      address: "Bomonti Silahşör Cad. No: 12 Kat: 3, Şişli / İstanbul",
-      notes: "Aylık 200m üzeri bez tela ve fermuar çekişi var. 30 gün açık cari hesap.",
     },
     {
       type: "B2C",
@@ -511,58 +481,6 @@ export async function seedDatabase() {
       quantity: 1,
       taxRate: 20,
       totalPrice: "58.00",
-    },
-  ]);
-
-  // Order 2: B2B Wholesale Order
-  const [{ id: __order2_id }] = await db.insert(orders).values({
-    orderNumber: "B2B-2026-0312",
-    orderType: "B2B",
-    customerId: insertedCustomers[1].id,
-    customerName: insertedCustomers[1].companyName || insertedCustomers[1].name,
-    customerEmail: insertedCustomers[1].email,
-    customerPhone: insertedCustomers[1].phone,
-    status: "PREPARING",
-    paymentStatus: "PAID",
-    paymentMethod: "B2B_CREDIT",
-    subtotal: "4200.00",
-    discountTotal: "420.00",
-    taxTotal: "630.00",
-    shippingTotal: "0.00",
-    grandTotal: "4410.00",
-    shippingAddress: insertedCustomers[1].address,
-    carrier: "Ambar / Özel Sevk",
-    erpInvoiceNumber: "GIB2026000001050",
-    notes: "30 Gün Vade, sevk irsaliyesi ile koli teslim.",
-  }).returning({ id: orders.id });
-  const [order2] = await db.select().from(orders).where(eq(orders.id, __order2_id));
-
-  await db.insert(orderItems).values([
-    {
-      orderId: order2.id,
-      productId: p7.id,
-      variantId: null,
-      productName: p7.name,
-      variantName: "Standart 100cm Rulo",
-      sku: p7.sku,
-      barcode: p7.barcode,
-      unitPrice: "36.00",
-      quantity: 100,
-      taxRate: 20,
-      totalPrice: "3600.00",
-    },
-    {
-      orderId: order2.id,
-      productId: p2.id,
-      variantId: p2Variants[0].id,
-      productName: p2.name,
-      variantName: "Antik Pirinç 50cm",
-      sku: p2Variants[0].sku,
-      barcode: p2Variants[0].barcode,
-      unitPrice: "60.00",
-      quantity: 10,
-      taxRate: 20,
-      totalPrice: "600.00",
     },
   ]);
 
@@ -666,16 +584,6 @@ export async function seedDatabase() {
       maxDiscount: "50.00",
       usageLimit: 200,
       usedCount: 18,
-      isActive: true,
-    },
-    {
-      code: "TOPTAN15",
-      discountType: "PERCENT",
-      discountValue: "15.00",
-      minCartAmount: "2000.00",
-      maxDiscount: "500.00",
-      usageLimit: 50,
-      usedCount: 7,
       isActive: true,
     },
   ]);

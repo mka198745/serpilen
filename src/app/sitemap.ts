@@ -14,7 +14,6 @@ const STATIC_PAGES = [
   { url: "/magazalarimiz", priority: 0.5, changeFrequency: "monthly" as const },
   { url: "/iletisim", priority: 0.5, changeFrequency: "monthly" as const },
   { url: "/siparis-takip", priority: 0.4, changeFrequency: "monthly" as const },
-  { url: "/toptan-b2b", priority: 0.6, changeFrequency: "weekly" as const },
   { url: "/kvkk", priority: 0.2, changeFrequency: "yearly" as const },
 ];
 

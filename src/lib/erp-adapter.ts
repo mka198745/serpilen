@@ -170,7 +170,7 @@ export class ErpAccountingService implements IAccountingProvider {
   }
 
   /**
-   * Cari Kart Senkronizasyonu (Müşteri & B2B Bayi)
+   * Cari Kart Senkronizasyonu (Müşteri)
    */
   async syncCustomer(payload: ErpCustomerSyncPayload) {
     const providerMeta = this.getProvider();

@@ -14,7 +14,6 @@ import {
   Heart,
   Search,
   MonitorCheck,
-  Building2,
   SlidersHorizontal,
   Scissors,
   Layers,
@@ -95,14 +94,6 @@ export function Header() {
                 >
                   <MonitorCheck className="w-3 h-3" />
                   <span>Web POS Terminali</span>
-                </Link>
-                <Link
-                  href="/toptan-b2b"
-                  onClick={(e) => { if (cookieless) { e.preventDefault(); void openGuarded("/toptan-b2b", false); } }}
-                  className="bg-sky-900 hover:bg-sky-800 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 transition"
-                >
-                  <Building2 className="w-3 h-3" />
-                  <span>B2B Toptan Portalı</span>
                 </Link>
                 <Link
                   href="/admin"

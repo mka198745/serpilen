@@ -15,6 +15,13 @@
       "when": 1794231903550,
       "tag": "0001_blog_seo_scheduling",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794506797117,
+      "tag": "0002_remove_b2b",
+      "breakpoints": true
     }
   ]
 }
