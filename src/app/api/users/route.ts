@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { db } from "@/db";
-import { users, auditLogs } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { users, auditLogs, adminSessions, authNonces } from "@/db/schema";
+import { desc, eq, count } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
@@ -174,4 +174,62 @@ export async function PATCH(request: Request) {
   });
 
   return NextResponse.json({ success: true, data: { ...updated, roleLabel: ROLE_LABELS[updated.role] || updated.role } });
+}
+
+/** DELETE /api/users?id=123 — Kullanıcıyı siler. Yalnız Süper Admin.
+ *  Kendi hesabınızı ve son Süper Admin'i silemezsiniz.
+ *  Bağlı oturumlar (admin_sessions) ve giriş nonce'ları da temizlenir. */
+export async function DELETE(request: Request) {
+  const gate = await requireStaff(request);
+  if (!gate.ok) return gate.response;
+  if (gate.user.role !== "SUPER_ADMIN") {
+    return NextResponse.json(
+      { success: false, error: { code: "FORBIDDEN", message: "Kullanıcı silme işlemi yalnız Süper Admin yetkisindedir." } },
+      { status: 403 }
+    );
+  }
+
+  const id = Number(new URL(request.url).searchParams.get("id"));
+  if (!Number.isFinite(id) || id <= 0) {
+    return NextResponse.json(
+      { success: false, error: { code: "VALIDATION_ERROR", message: "Geçerli bir kullanıcı ID zorunludur (?id=)." } },
+      { status: 422 }
+    );
+  }
+
+  const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  if (!target) {
+    return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Kullanıcı bulunamadı." } }, { status: 404 });
+  }
+  if (target.id === gate.user.id) {
+    return NextResponse.json(
+      { success: false, error: { code: "SELF_DELETE", message: "Kendi hesabınızı silemezsiniz." } },
+      { status: 422 }
+    );
+  }
+  if (target.role === "SUPER_ADMIN") {
+    const [{ c }] = await db.select({ c: count(users.id) }).from(users).where(eq(users.role, "SUPER_ADMIN"));
+    if (Number(c) <= 1) {
+      return NextResponse.json(
+        { success: false, error: { code: "LAST_SUPER_ADMIN", message: "Son Süper Admin hesabı silinemez." } },
+        { status: 422 }
+      );
+    }
+  }
+
+  // Önce bağlı kimlik kayıtlarını, sonra kullanıcıyı sil (kullanıcı kalırsa tutarlı)
+  await db.delete(adminSessions).where(eq(adminSessions.userId, id));
+  await db.delete(authNonces).where(eq(authNonces.userId, id));
+  await db.delete(users).where(eq(users.id, id));
+
+  await db.insert(auditLogs).values({
+    userId: String(gate.user.id),
+    userName: gate.user.name,
+    action: "USER_DELETED",
+    entity: "User",
+    entityId: String(id),
+    details: `Kullanıcı silindi: ${target.name} (${target.email}, ${target.role})`,
+  });
+
+  return NextResponse.json({ success: true, data: { id } });
 }

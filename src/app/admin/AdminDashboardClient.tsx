@@ -816,6 +816,18 @@ export function AdminDashboardClient({
     }
   };
 
+  const deleteUser = async (id: number, name: string, email: string) => {
+    if (!window.confirm(`"${name}" (${email}) kullanıcısı silinsin mi? Bu işlem geri alınamaz.`)) return;
+    const res = await authFetch(`/api/users?id=${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success) {
+      setUsersList((prev) => prev.filter((u) => u.id !== id));
+      setUserFeedback({ text: `"${name}" kullanıcısı silindi.`, isError: false });
+    } else {
+      setUserFeedback({ text: data?.error?.message || "Kullanıcı silinemedi.", isError: true });
+    }
+  };
+
   const refreshProducts = async () => {
     const pRes = await authFetch("/api/products");
     const pData = await pRes.json();
@@ -4233,6 +4245,7 @@ export function AdminDashboardClient({
                       <th className="py-3 px-3">Rol</th>
                       <th className="py-3 px-3">Durum</th>
                       <th className="py-3 px-3">Kayıt</th>
+                      <th className="py-3 px-3 text-right">İşlemler</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
@@ -4273,11 +4286,22 @@ export function AdminDashboardClient({
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
                           {new Date(u.createdAt).toLocaleDateString("tr-TR")}
                         </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            onClick={() => void deleteUser(u.id, u.name, u.email)}
+                            disabled={!isSuper}
+                            title={isSuper ? "Kullanıcıyı sil" : "Kullanıcı silme yalnız Süper Admin yetkisindedir"}
+                            className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                            aria-label={`${u.name} kullanıcısını sil`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                     {usersList.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="py-8 text-center text-stone-400">
+                        <td colSpan={7} className="py-8 text-center text-stone-400">
                           {usersBusy ? "Yükleniyor…" : "Kayıt yok."}
                         </td>
                       </tr>
@@ -4286,6 +4310,10 @@ export function AdminDashboardClient({
                 </table>
               </div>
             </div>
+
+            <p className="text-[10px] text-stone-400">
+              Kırmızı çöp düğmesi kullanıcıyı kalıcı olarak siler (bağlı oturumlar da temizlenir). Kendi hesabınızı ve son Süper Admin hesabını silemezsiniz; silme yalnız Süper Admin yetkisindedir ve denetim kaydına işlenir.
+            </p>
 
           </div>
         )}
