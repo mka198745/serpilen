@@ -183,9 +183,10 @@ export function AuthModal() {
             <div className="p-4 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 leading-relaxed">
               <p className="font-bold mb-1">Giriş yaptınız: {user.name} ({user.roleLabel})</p>
               <p>
-                Tarayıcınız çerezleri engellediği için korumalı sayfaya{" "}
-                <strong>güvenli geçiş</strong> ile girilecek: tek kullanımlık bir bağlantı
-                oturuma çevrilir, şifreniz tekrar istenmez.
+                Tarayıcınız oturum çerezini bu sitede saklamıyor.{" "}
+                <strong>Güvenli geçiş</strong> ile tek kullanımlık bir bağlantı
+                oluşturulur; sayfa bu bağlantıyla sunucu oturumu üzerinden açılır. Şifreniz
+                tekrar istenmez.
               </p>
             </div>
             <button

@@ -3,16 +3,22 @@ import { db } from "@/db";
 import { products, productVariants, customers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getStaffUserFromKt } from "@/lib/auth";
+import { StripQueryParam } from "@/components/layout/StripQueryParam";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
 import { B2BPortalClient } from "./B2BPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function B2BPage() {
+export default async function B2BPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (AUTH_ENABLED) {
     const sessionUser = await getSessionUser();
-    if (!sessionUser?.isStaff) redirect("/?giris=1&next=/toptan-b2b");
+    let staff = !!sessionUser?.isStaff;
+    if (!staff) {
+      const { kt } = await searchParams;
+      staff = !!(await getStaffUserFromKt(kt));
+    }
+    if (!staff) redirect("/?giris=1&next=/toptan-b2b");
   }
   const allProds = await db.select().from(products);
   const allVariants = await db.select().from(productVariants);
@@ -23,5 +29,10 @@ export default async function B2BPage() {
     variants: allVariants.filter((v) => v.productId === p.id),
   }));
 
-  return <B2BPortalClient products={catalog} b2bCustomers={b2bCustomers} />;
+  return (
+    <>
+      <StripQueryParam name="kt" />
+      <B2BPortalClient products={catalog} b2bCustomers={b2bCustomers} />
+    </>
+  );
 }

@@ -52,7 +52,8 @@ interface AuthContextType {
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   /**
    * Korumalı sayfaya git: çerez varsa düz gezinme, çerezsizse önce handoff
-   * jetonu alınıp /api/auth/claim üzerinden geçilir (çerez yazılır).
+   * jetonu alınıp /api/auth/claim → hedefe ?kt= jetonuyla geçilir
+   * (sunucu sayfası jetonu türetmeden doğrular, client ise adres çubuğunu temizler).
    */
   openGuarded: (next: string, newTab?: boolean) => Promise<void>;
 }

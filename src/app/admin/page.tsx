@@ -19,16 +19,22 @@ import {
 } from "@/db/schema";
 import { desc, sql, count, and, ne, gte, lt, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getStaffUserFromKt } from "@/lib/auth";
+import { StripQueryParam } from "@/components/layout/StripQueryParam";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
 import { AdminDashboardClient } from "./AdminDashboardClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (AUTH_ENABLED) {
     const sessionUser = await getSessionUser();
-    if (!sessionUser?.isStaff) redirect("/?giris=1&next=/admin");
+    let staff = !!sessionUser?.isStaff;
+    if (!staff) {
+      const { kt } = await searchParams;
+      staff = !!(await getStaffUserFromKt(kt));
+    }
+    if (!staff) redirect("/?giris=1&next=/admin");
   }
   const allProds = await db.select().from(products).orderBy(desc(products.id));
   const allVars = await db.select().from(productVariants);
@@ -161,6 +167,8 @@ export default async function AdminPage() {
   };
 
   return (
+    <>
+      <StripQueryParam name="kt" />
     <AdminDashboardClient
       products={enrichedProducts}
       categories={allCats}
@@ -177,5 +185,6 @@ export default async function AdminPage() {
       shifts={allShifts}
       dashboardStats={dashboardStats}
     />
+    </>
   );
 }

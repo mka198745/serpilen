@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     if (!c) continue;
     const user = await getUserByToken(c);
     if (user) {
-      const nonce = mintHandoffNonce(c);
+      const nonce = await mintHandoffNonce(user.id);
       authLog("handoff", "OK", user.email);
       return NextResponse.json({ success: true, data: { nonce } });
     }

@@ -3,16 +3,22 @@ import { db } from "@/db";
 import { products, productVariants, categories, posShifts, customers } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, getStaffUserFromKt } from "@/lib/auth";
+import { StripQueryParam } from "@/components/layout/StripQueryParam";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
 import { PosTerminalClient } from "./PosTerminalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function PosPage() {
+export default async function PosPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (AUTH_ENABLED) {
     const sessionUser = await getSessionUser();
-    if (!sessionUser?.isStaff) redirect("/?giris=1&next=/pos");
+    let staff = !!sessionUser?.isStaff;
+    if (!staff) {
+      const { kt } = await searchParams;
+      staff = !!(await getStaffUserFromKt(kt));
+    }
+    if (!staff) redirect("/?giris=1&next=/pos");
   }
   const allProds = await db.select().from(products);
   const allVariants = await db.select().from(productVariants);
@@ -35,11 +41,14 @@ export default async function PosPage() {
   }));
 
   return (
+    <>
+      <StripQueryParam name="kt" />
     <PosTerminalClient
       initialProducts={catalog}
       categories={allCats}
       customers={allCustomers}
       initialShift={openShift}
     />
+    </>
   );
 }

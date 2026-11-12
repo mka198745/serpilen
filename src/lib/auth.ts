@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { users, adminSessions } from "@/db/schema";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { users, adminSessions, authNonces } from "@/db/schema";
+import { and, eq, gt, isNull, lt } from "drizzle-orm";
 
 export const SESSION_COOKIE = "ipek_session";
 export const SESSION_TTL_SECONDS = 7 * 24 * 3600; // 7 gün
@@ -225,32 +225,80 @@ export function publicBaseUrl(request: Request): string {
 }
 
 /**
- * Güvenli geçiş (handoff) jetonları: kısa ömürlü (120 sn), sınırlı kullanımlı
- * (en fazla 5), bellekte saklanır. Jetonun kendisi oturum token'ı DEĞİLDİR;
- * yalnızca claim anında tek oturuma çözülür.
+ * Güvenli geçiş (handoff) jetonları: 120 saniye ömürlü, veritabanında saklanır
+ * (auth_nonces, scope='HANDOFF'). Jetonun kendisi oturum token'ı DEĞİLDİR;
+ * yalnız kullanıcı kimliğine çözülür, claim anında YENİ bir oturum üretilir.
+ * DB tabanlı olduğu için standalone sunucudaki tüm SSR/route chunk'ları ve
+ * yeniden başlatmalar jetonu görür (bellek-içi Map parçalama yapmaz).
  */
 const HANDOFF_TTL_MS = 120_000;
-const HANDOFF_MAX_USES = 5;
-const handoffNonces = new Map<string, { token: string; expiresAt: number; uses: number }>();
 
-export function mintHandoffNonce(token: string): string {
+export async function mintHandoffNonce(userId: number): Promise<string> {
   const nonce = crypto.randomBytes(24).toString("base64url");
-  handoffNonces.set(nonce, { token, expiresAt: Date.now() + HANDOFF_TTL_MS, uses: 0 });
-  if (handoffNonces.size > 500) {
-    const now = Date.now();
-    for (const [k, v] of handoffNonces) if (v.expiresAt < now) handoffNonces.delete(k);
-  }
+  await db.delete(authNonces).where(and(eq(authNonces.scope, "HANDOFF"), lt(authNonces.expiresAt, new Date())));
+  await db.insert(authNonces).values({
+    tokenHash: hashToken(nonce),
+    userId,
+    scope: "HANDOFF",
+    expiresAt: new Date(Date.now() + HANDOFF_TTL_MS),
+  });
   return nonce;
 }
 
-export function consumeHandoffNonce(nonce: string | null): string | null {
+async function lookupHandoffNonce(
+  nonce: string | null | undefined,
+  opts: { consume: boolean }
+): Promise<number | null> {
   if (!nonce) return null;
-  const rec = handoffNonces.get(nonce);
-  if (!rec) return null;
-  if (rec.expiresAt < Date.now() || rec.uses >= HANDOFF_MAX_USES) {
-    handoffNonces.delete(nonce);
-    return null;
+  const [row] = await db
+    .select()
+    .from(authNonces)
+    .where(and(eq(authNonces.tokenHash, hashToken(nonce)), eq(authNonces.scope, "HANDOFF")))
+    .limit(1);
+  if (!row) return null;
+  if (row.expiresAt.getTime() < Date.now()) return null;
+  if (opts.consume) {
+    await db.update(authNonces).set({ usedAt: new Date() }).where(eq(authNonces.id, row.id));
   }
-  rec.uses += 1;
-  return rec.token;
+  return row.userId;
+}
+
+/** Jetonu tüketerek kullanıcı kimliğini döner (claim ucu). */
+export async function consumeHandoffNonce(nonce: string | null): Promise<number | null> {
+  return lookupHandoffNonce(nonce, { consume: true });
+}
+
+/**
+ * Jetonu TÜKETMEDEN doğrular — korumalı sayfaların ?kt= yedek girişi içindir.
+ * (Sayfa yenilemesinde jetonun tekrar çalışması için kullanım sayacı tüketilmez;
+ * 120 saniyelik ömür ve 192 bit rastgelelik ile sınırlıdır.)
+ */
+export async function peekHandoffNonce(nonce: string | null | undefined): Promise<number | null> {
+  return lookupHandoffNonce(nonce, { consume: false });
+}
+
+/** id aramasıyla kullanıcıyı döner (çerez/token gerektirmez). */
+async function getStaffUserById(userId: number): Promise<SessionUser | null> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user || user.isActive === false) return null;
+  if (!isStaffRole(user.role)) return null;
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    roleLabel: ROLE_LABELS_TR[user.role] || user.role,
+    isStaff: true,
+  };
+}
+
+/**
+ * ?kt=<handoff jetonu> ile korumalı sayfa girişi: çerez çalışmayan (üçüncü-taraf
+ * çerezleri engellenmiş) tarayıcılarda sunucu sayfasının oturumu görmesi için.
+ * Jeton 120 saniye geçerli, kısa ömürlüdür; ham oturum token'ı DEĞİLDİR.
+ */
+export async function getStaffUserFromKt(kt: string | string[] | undefined): Promise<SessionUser | null> {
+  const nonce = Array.isArray(kt) ? kt[0] : kt;
+  const userId = await peekHandoffNonce(nonce);
+  return userId ? getStaffUserById(userId) : null;
 }
