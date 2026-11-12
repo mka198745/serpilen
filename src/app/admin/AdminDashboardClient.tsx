@@ -4022,25 +4022,27 @@ export function AdminDashboardClient({
                   <h3 className="font-bold text-sm text-stone-900">Otomatik Yeniden Sipariş Önerileri</h3>
                   <p className="text-[11px] text-stone-500">Satış hızı × termin süresi + güvenlik stoğu formülüyle hesaplanır.</p>
                 </div>
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr><th className="py-2.5 px-3">Ürün</th><th className="py-2.5 px-3">Depo</th><th className="py-2.5 px-3">Mevcut</th><th className="py-2.5 px-3">Aylık Satış</th><th className="py-2.5 px-3">Önerilen</th><th className="py-2.5 px-3">Tahmini Maliyet</th><th className="py-2.5 px-3">Öncelik</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {suggestions.map((s: any, i: number) => (
-                      <tr key={`${s.productId}-${s.warehouseId}-${i}`}>
-                        <td className="py-2.5 px-3"><span className="font-semibold block truncate max-w-[220px]">{s.productName}</span><span className="text-[10px] text-stone-400 font-mono">{s.sku}</span></td>
-                        <td className="py-2.5 px-3">{s.warehouseName}</td>
-                        <td className="py-2.5 px-3 font-bold">{s.available}</td>
-                        <td className="py-2.5 px-3">{s.monthlySales}/ay</td>
-                        <td className="py-2.5 px-3 font-black text-amber-800">{s.suggestedQty} ad</td>
-                        <td className="py-2.5 px-3">{s.estimatedCost.toFixed(2)} TL</td>
-                        <td className="py-2.5 px-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.priority === "URGENT" ? "bg-rose-600 text-white" : s.priority === "HIGH" ? "bg-rose-100 text-rose-800" : "bg-stone-100 text-stone-600"}`}>{s.priority}</span></td>
-                      </tr>
-                    ))}
-                    {suggestions.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-stone-400">Öneri yok — stoklar yeterli.</td></tr>}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[920px] text-xs text-left">
+                    <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
+                      <tr><th className="py-2.5 px-3 whitespace-nowrap">Ürün</th><th className="py-2.5 px-3 whitespace-nowrap">Depo</th><th className="py-2.5 px-3 whitespace-nowrap">Mevcut</th><th className="py-2.5 px-3 whitespace-nowrap">Aylık Satış</th><th className="py-2.5 px-3 whitespace-nowrap">Önerilen</th><th className="py-2.5 px-3 whitespace-nowrap">Tahmini Maliyet</th><th className="py-2.5 px-3 whitespace-nowrap">Öncelik</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {suggestions.map((s: any, i: number) => (
+                        <tr key={`${s.productId}-${s.warehouseId}-${i}`}>
+                          <td className="py-2.5 px-3 min-w-[220px]"><span className="font-semibold block leading-snug">{s.productName}</span><span className="text-[10px] text-stone-400 font-mono">{s.sku}</span></td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">{s.warehouseName}</td>
+                          <td className="py-2.5 px-3 font-bold">{s.available}</td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">{s.monthlySales}/ay</td>
+                          <td className="py-2.5 px-3 font-black text-amber-800 whitespace-nowrap">{s.suggestedQty} ad</td>
+                          <td className="py-2.5 px-3 whitespace-nowrap">{s.estimatedCost.toFixed(2)} TL</td>
+                          <td className="py-2.5 px-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.priority === "URGENT" ? "bg-rose-600 text-white" : s.priority === "HIGH" ? "bg-rose-100 text-rose-800" : "bg-stone-100 text-stone-600"}`}>{s.priority}</span></td>
+                        </tr>
+                      ))}
+                      {suggestions.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-stone-400">Öneri yok — stoklar yeterli.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
