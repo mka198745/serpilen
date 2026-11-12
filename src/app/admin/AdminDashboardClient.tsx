@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
 import { AiAssistantCenter } from "@/components/admin/AiAssistantCenter";
+import { IntelligenceCenter } from "@/components/admin/intelligence/IntelligenceCenter";
 import {
   LayoutDashboard,
   Package,
@@ -16,6 +17,7 @@ import {
   Truck,
   Tag,
   Sparkles,
+  Brain,
   BookOpen,
   Search,
   Plus,
@@ -139,6 +141,7 @@ export function AdminDashboardClient({
     | "purchasing"
     | "coupons"
     | "ai"
+    | "intelligence"
     | "users"
     | "registeredCustomers"
     | "roleMatrix"
@@ -1572,6 +1575,20 @@ export function AdminDashboardClient({
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
             <span>AI Yönetim Asistanı</span>
+          </button>
+          )}
+
+          {canSee("intelligence") && (
+          <button
+            onClick={() => setActiveTab("intelligence")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "intelligence"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Brain className="w-4 h-4 text-violet-400" />
+            <span>Intelligence Center</span>
           </button>
           )}
 
@@ -4083,6 +4100,7 @@ export function AdminDashboardClient({
         )}
 
         {activeTab === "ai" && <AiAssistantCenter products={products} />}
+        {activeTab === "intelligence" && <IntelligenceCenter />}
 
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: KULLANICILAR & ROLLER */}

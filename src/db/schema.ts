@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, index } from "drizzle-orm/sqlite-core";
 
 // ==========================================
 // 1. KULLANICILAR & ROLLER
@@ -608,4 +608,123 @@ export const auditLogs = sqliteTable("audit_logs", {
   details: text("details"),
   ipAddress: text("ip_address").default("127.0.0.1"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+});
+
+// ==========================================
+// 12. COMMERCE INTELLIGENCE ENGINE — FAZ 1 (TEMEL ZEKÂ)
+// ==========================================
+// Tahmin sonuçları: her "analyze" çalıştırmasında üretilen nokta tahminleri.
+export const forecastResults = sqliteTable("forecast_results", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  scope: text("scope").notNull(), // STORE, CATEGORY, PRODUCT
+  scopeId: integer("scope_id"), // CATEGORY/PRODUCT ise id, STORE ise null
+  scopeLabel: text("scope_label").notNull(),
+  granularity: text("granularity").notNull().default("DAILY"), // DAILY, WEEKLY, MONTHLY
+  horizonDays: integer("horizon_days").notNull(), // 7,14,30,60,90
+  forecastDate: text("forecast_date").notNull(), // YYYY-MM-DD
+  quantity: numeric("quantity").notNull().default("0"),
+  revenue: numeric("revenue").notNull().default("0"),
+  model: text("model").notNull(), // SMA, WMA, SES, HOLT, HOLT_WINTERS, LINEAR_REGRESSION, SEASONAL_NAIVE, CROSTON, SBA
+  sampleSize: integer("sample_size").notNull().default(0),
+  ciLower: numeric("ci_lower").notNull().default("0"), // %95 alt sınır (student-t yaklaşım, sigma*sqrt(h))
+  ciUpper: numeric("ci_upper").notNull().default("0"),
+  modelWape: numeric("model_wape"), // backtest WAPE (%)
+  dataQuality: text("data_quality").notNull().default("OK"), // OK, LOW_DATA, INSUFFICIENT_DATA
+  modelVersion: text("model_version").notNull().default("intelligence@1.0.0"),
+  evaluatedAt: integer("evaluated_at", { mode: "timestamp" }), // gerçekleşenle kıyaslandıysa
+  generatedAt: integer("generated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("forecast_results_scope_idx").on(t.scope, t.scopeId, t.horizonDays),
+  index("forecast_results_generated_idx").on(t.generatedAt),
+]);
+
+// Tahmin doğruluğu: backtesting + gerçekleşen vs kayıtlı tahmin karşılaştırması
+export const forecastAccuracy = sqliteTable("forecast_accuracy", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  scope: text("scope").notNull(), // STORE, PRODUCT
+  scopeId: integer("scope_id"),
+  scopeLabel: text("scope_label").notNull(),
+  model: text("model").notNull(),
+  horizonDays: integer("horizon_days").notNull(),
+  mae: numeric("mae").notNull(),
+  rmse: numeric("rmse").notNull(),
+  mape: numeric("mape"), // actual=0 olanlarda null
+  wape: numeric("wape"), // payda 0 ise null
+  mase: numeric("mase"), // naive MAE=0 ise null
+  bias: numeric("bias").notNull().default("0"), // ortalama (tahmin - gerçekleşen)
+  sampleSize: integer("sample_size").notNull().default(0),
+  evaluatedAt: integer("evaluated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("forecast_accuracy_scope_idx").on(t.scope, t.scopeId),
+  index("forecast_accuracy_evaluated_idx").on(t.evaluatedAt),
+]);
+
+// Anomali olayları: dedup'lı — aynı olay her çalıştırmada yeni kayıt ÜRETMEZ.
+export const anomalyEvents = sqliteTable("anomaly_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  anomalyKey: text("anomaly_key").notNull().unique(), // metric|entityId|bucket (gün)
+  metric: text("metric").notNull(), // DAILY_REVENUE, DAILY_ORDER_COUNT, AVG_BASKET, PRODUCT_DAILY_QTY, CANCEL_RATE, RETURN_RATE
+  entityType: text("entity_type").notNull(), // STORE, PRODUCT
+  entityId: text("entity_id").notNull().default("STORE"),
+  entityLabel: text("entity_label").notNull(),
+  observedValue: numeric("observed_value").notNull(),
+  expectedValue: numeric("expected_value").notNull(),
+  deviation: numeric("deviation").notNull(), // yüzde sapma
+  detectionMethod: text("detection_method").notNull(), // MODIFIED_Z, Z_SCORE, IQR, EWMA, CUSUM, ROLLING
+  severity: text("severity").notNull(), // LOW, MEDIUM, HIGH, CRITICAL
+  confidence: text("confidence").notNull().default("OK"), // OK, LOW_DATA_CONFIDENCE
+  possibleCauses: text("possible_causes"), // JSON dizi — OLASI açıklamalar, kesin neden DEĞİL
+  status: text("status").notNull().default("OPEN"), // OPEN, ACKNOWLEDGED, RESOLVED
+  firstSeenAt: integer("first_seen_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  lastSeenAt: integer("last_seen_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  occurrences: integer("occurrences").notNull().default(1),
+}, (t) => [
+  index("anomaly_events_status_idx").on(t.status),
+  index("anomaly_events_metric_idx").on(t.metric),
+]);
+
+// RFM skorları: dönemsel hesaplama; her analizde ilgili dönem için üzerine yazılır.
+export const rfmScores = sqliteTable("rfm_scores", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(),
+  periodDays: integer("period_days").notNull().default(365),
+  recencyDays: integer("recency_days").notNull(),
+  frequency: integer("frequency").notNull(),
+  monetary: numeric("monetary").notNull().default("0"),
+  rScore: integer("r_score").notNull(),
+  fScore: integer("f_score").notNull(),
+  mScore: integer("m_score").notNull(),
+  segment: text("segment").notNull(), // Champions, Loyal Customers, ... Lost
+  calculatedAt: integer("calculated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("rfm_scores_customer_idx").on(t.customerId, t.periodDays),
+  index("rfm_scores_segment_idx").on(t.segment),
+]);
+
+// ABC-XYZ sınıflandırması: ürün başına TEK satır (unique productId).
+export const abcXyzClassifications = sqliteTable("abc_xyz_classifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().unique(),
+  abcClass: text("abc_class").notNull(), // A, B, C, N/A
+  xyzClass: text("xyz_class").notNull(), // X, Y, Z, N/A
+  composite: text("composite").notNull(), // AX..CZ veya N/A
+  annualQty: integer("annual_qty").notNull().default(0),
+  annualValue: numeric("annual_value").notNull().default("0"),
+  avgDailyDemand: numeric("avg_daily_demand").notNull().default("0"),
+  demandCv: numeric("demand_cv"), // standart sapma/ortalama (aylık kovalar)
+  inventoryValue: numeric("inventory_value").notNull().default("0"),
+  turnover: numeric("turnover"), // yıllık COGS / ortalama stok değeri
+  daysOfCover: numeric("days_of_cover"), // kullanılabilir stok / günlük talep
+  risk: text("risk").notNull().default("NONE"), // STOCKOUT, OVERSTOCK, DEAD_STOCK, NONE
+  calculatedAt: integer("calculated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("abc_xyz_composite_idx").on(t.composite),
+]);
+
+// Intelligence motoru ayarları: eşikler (admin tarafından yönetilir)
+export const intelligenceSettings = sqliteTable("intelligence_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });

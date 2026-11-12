@@ -31,6 +31,7 @@ export async function GET(request: Request) {
       { id: "purchasing_advisor", label: "AI Satın Alma Danışmanı", description: "Tedarikçi eşleştirmesi ve maliyet hesaplı sipariş taslağı." },
       { id: "crm_assistant", label: "AI CRM & Churn Asistanı", description: "Segmentasyon, kayıp riski skoru ve LTV analizi." },
       { id: "content_generator", label: "AI Ürün İçerik & SEO Asistanı", description: "SEO başlık, meta, uzun açıklama ve etiket üretimi." },
+      { id: "commerce_intelligence", label: "Commerce Intelligence", description: "Tahmin, kârlılık, ABC-XYZ, anomali, RFM ve cohort analizleri (FAZ 1)." },
       { id: "chat", label: "AI Sohbet Asistanı", description: "Doğal dil ile serbest soru-cevap." },
     ],
     guardrails: GUARDRAILS,
@@ -41,6 +42,9 @@ export async function GET(request: Request) {
       "VIP müşterilerim kimler?",
       "Bu ay ne kadar ciro yaparız?",
       "Kampanya önerisi ver",
+      "En kârlı ürünler",
+      "Anomali taraması",
+      "ABC-XYZ analizi",
     ],
   });
 }

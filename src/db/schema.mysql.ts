@@ -1,4 +1,4 @@
-import { mysqlTable, text, int, decimal, timestamp, boolean, varchar } from "drizzle-orm/mysql-core";
+import { mysqlTable, text, int, decimal, timestamp, boolean, varchar, index } from "drizzle-orm/mysql-core";
 
 // ==========================================
 // 1. KULLANICILAR & ROLLER
@@ -607,4 +607,117 @@ export const auditLogs = mysqlTable("audit_logs", {
   details: text("details"),
   ipAddress: varchar("ip_address", { length: 255 }).default("127.0.0.1"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ==========================================
+// 12. COMMERCE INTELLIGENCE ENGINE — FAZ 1 (TEMEL ZEKÂ)
+// ==========================================
+export const forecastResults = mysqlTable("forecast_results", {
+  id: int("id").autoincrement().primaryKey(),
+  scope: varchar("scope", { length: 32 }).notNull(),
+  scopeId: int("scope_id"),
+  scopeLabel: varchar("scope_label", { length: 255 }).notNull(),
+  granularity: varchar("granularity", { length: 16 }).notNull().default("DAILY"),
+  horizonDays: int("horizon_days").notNull(),
+  forecastDate: varchar("forecast_date", { length: 10 }).notNull(),
+  quantity: decimal("quantity", { precision: 14, scale: 2 }).notNull().default("0"),
+  revenue: decimal("revenue", { precision: 14, scale: 2 }).notNull().default("0"),
+  model: varchar("model", { length: 32 }).notNull(),
+  sampleSize: int("sample_size").notNull().default(0),
+  ciLower: decimal("ci_lower", { precision: 14, scale: 2 }).notNull().default("0"),
+  ciUpper: decimal("ci_upper", { precision: 14, scale: 2 }).notNull().default("0"),
+  modelWape: decimal("model_wape", { precision: 8, scale: 2 }),
+  dataQuality: varchar("data_quality", { length: 32 }).notNull().default("OK"),
+  modelVersion: varchar("model_version", { length: 64 }).notNull().default("intelligence@1.0.0"),
+  evaluatedAt: timestamp("evaluated_at"),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+}, (t) => [
+  index("forecast_results_scope_idx").on(t.scope, t.scopeId, t.horizonDays),
+  index("forecast_results_generated_idx").on(t.generatedAt),
+]);
+
+export const forecastAccuracy = mysqlTable("forecast_accuracy", {
+  id: int("id").autoincrement().primaryKey(),
+  scope: varchar("scope", { length: 32 }).notNull(),
+  scopeId: int("scope_id"),
+  scopeLabel: varchar("scope_label", { length: 255 }).notNull(),
+  model: varchar("model", { length: 32 }).notNull(),
+  horizonDays: int("horizon_days").notNull(),
+  mae: decimal("mae", { precision: 14, scale: 4 }).notNull(),
+  rmse: decimal("rmse", { precision: 14, scale: 4 }).notNull(),
+  mape: decimal("mape", { precision: 10, scale: 4 }),
+  wape: decimal("wape", { precision: 10, scale: 4 }),
+  mase: decimal("mase", { precision: 10, scale: 4 }),
+  bias: decimal("bias", { precision: 14, scale: 4 }).notNull().default("0"),
+  sampleSize: int("sample_size").notNull().default(0),
+  evaluatedAt: timestamp("evaluated_at").defaultNow().notNull(),
+}, (t) => [
+  index("forecast_accuracy_scope_idx").on(t.scope, t.scopeId),
+  index("forecast_accuracy_evaluated_idx").on(t.evaluatedAt),
+]);
+
+export const anomalyEvents = mysqlTable("anomaly_events", {
+  id: int("id").autoincrement().primaryKey(),
+  anomalyKey: varchar("anomaly_key", { length: 255 }).notNull().unique(),
+  metric: varchar("metric", { length: 64 }).notNull(),
+  entityType: varchar("entity_type", { length: 32 }).notNull(),
+  entityId: varchar("entity_id", { length: 64 }).notNull().default("STORE"),
+  entityLabel: varchar("entity_label", { length: 255 }).notNull(),
+  observedValue: decimal("observed_value", { precision: 16, scale: 4 }).notNull(),
+  expectedValue: decimal("expected_value", { precision: 16, scale: 4 }).notNull(),
+  deviation: decimal("deviation", { precision: 10, scale: 4 }).notNull(),
+  detectionMethod: varchar("detection_method", { length: 32 }).notNull(),
+  severity: varchar("severity", { length: 16 }).notNull(),
+  confidence: varchar("confidence", { length: 32 }).notNull().default("OK"),
+  possibleCauses: text("possible_causes"),
+  status: varchar("status", { length: 16 }).notNull().default("OPEN"),
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  occurrences: int("occurrences").notNull().default(1),
+}, (t) => [
+  index("anomaly_events_status_idx").on(t.status),
+  index("anomaly_events_metric_idx").on(t.metric),
+]);
+
+export const rfmScores = mysqlTable("rfm_scores", {
+  id: int("id").autoincrement().primaryKey(),
+  customerId: int("customer_id").notNull(),
+  periodDays: int("period_days").notNull().default(365),
+  recencyDays: int("recency_days").notNull(),
+  frequency: int("frequency").notNull(),
+  monetary: decimal("monetary", { precision: 16, scale: 2 }).notNull().default("0"),
+  rScore: int("r_score").notNull(),
+  fScore: int("f_score").notNull(),
+  mScore: int("m_score").notNull(),
+  segment: varchar("segment", { length: 64 }).notNull(),
+  calculatedAt: timestamp("calculated_at").defaultNow().notNull(),
+}, (t) => [
+  index("rfm_scores_customer_idx").on(t.customerId, t.periodDays),
+  index("rfm_scores_segment_idx").on(t.segment),
+]);
+
+export const abcXyzClassifications = mysqlTable("abc_xyz_classifications", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("product_id").notNull().unique(),
+  abcClass: varchar("abc_class", { length: 8 }).notNull(),
+  xyzClass: varchar("xyz_class", { length: 8 }).notNull(),
+  composite: varchar("composite", { length: 8 }).notNull(),
+  annualQty: int("annual_qty").notNull().default(0),
+  annualValue: decimal("annual_value", { precision: 16, scale: 2 }).notNull().default("0"),
+  avgDailyDemand: decimal("avg_daily_demand", { precision: 12, scale: 4 }).notNull().default("0"),
+  demandCv: decimal("demand_cv", { precision: 12, scale: 4 }),
+  inventoryValue: decimal("inventory_value", { precision: 16, scale: 2 }).notNull().default("0"),
+  turnover: decimal("turnover", { precision: 12, scale: 2 }),
+  daysOfCover: decimal("days_of_cover", { precision: 12, scale: 1 }),
+  risk: varchar("risk", { length: 16 }).notNull().default("NONE"),
+  calculatedAt: timestamp("calculated_at").defaultNow().notNull(),
+}, (t) => [
+  index("abc_xyz_composite_idx").on(t.composite),
+]);
+
+export const intelligenceSettings = mysqlTable("intelligence_settings", {
+  key: varchar("key", { length: 128 }).primaryKey(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

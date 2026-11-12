@@ -579,8 +579,126 @@ export interface ChatResponse {
 
 export async function chat(message: string): Promise<ChatResponse> {
   const q = (message || "").toLowerCase().trim();
+  // Türkçe aksak yazımı toleranslı eşleşme: sorgu ve anahtarlar aynı indirgemeden geçirilir
+  const foldTr = (t: string) =>
+    t
+      .replace(/[âàä]/g, "a")
+      .replace(/[îï]/g, "i")
+      .replace(/[ûü]/g, "u")
+      .replace(/[ş]/g, "s")
+      .replace(/[ğ]/g, "g")
+      .replace(/[ı]/g, "i")
+      .replace(/[ö]/g, "o")
+      .replace(/[ç]/g, "c");
+  const qf = foldTr(q);
+  const wants = (...keys: string[]) => keys.some((k) => q.includes(k) || qf.includes(foldTr(k)));
 
-  const wants = (...keys: string[]) => keys.some((k) => q.includes(k));
+  // --- Commerce Intelligence (FAZ 1) — doğal dil sohbet genişletmesi ---
+  if (wants("anomali", "olağan dışı", "anormal", "sıra dışı")) {
+    const { loadSalesBundle } = await import("@/lib/intelligence/repositories");
+    const { getAnomalies } = await import("@/lib/intelligence/service");
+    const bundle = await loadSalesBundle();
+    const a = await getAnomalies(bundle);
+    const open = a.anomalies.filter((x) => x.status === "OPEN");
+    const top = open.slice(0, 3);
+    return {
+      intent: "intelligence_anomaly",
+      answer: open.length
+        ? `${open.length} açık anomali tespit ettim (${a.summary.critical} kritik):\n\n${top
+            .map((t) => `• ${t.entityLabel} — ${t.metric} ${t.direction === "UP" ? "↑" : "↓"} %${Math.abs(t.deviationPct).toFixed(0)} (${t.severity})`)
+            .join("\n")}\n\nDetaylar: AI → Intelligence Center → Anomaly Center. Nedenler olası açıklamalardır, kesin tanı değildir.`
+        : "Açık anomali yok. Satış, sepet ve ürün adetlerinde kendi geçmişinize göre olağan dışı sapma bulamadım.",
+      suggestions: ["ABC-XYZ analizi", "En kârlı ürünler", "Tahmin doğruluğu", "Satış analizi"],
+      data: { open: a.summary.open, critical: a.summary.critical },
+    };
+  }
+
+  if (wants("kârlılık", "karlılık", "kar marj", "kâr marj", "net marj", "en kârlı", "en karlı", "para kazandır")) {
+    const { loadSalesBundle } = await import("@/lib/intelligence/repositories");
+    const { computeProfitability } = await import("@/lib/intelligence/profitability/profit-engine");
+    const bundle = await loadSalesBundle();
+    const r = computeProfitability(bundle, 10);
+    const top = r.detections.topContributors.slice(0, 5);
+    const total = r.levels.product.reduce((s, p) => s + p.contributionProfit, 0);
+    return {
+      intent: "intelligence_profit",
+      answer: `Katkı kârına göre en kârlı 5 ürün:\n\n${top
+        .map((t) => `• ${t.label} — ${fmt(t.contributionProfit)} TL (%${t.contributionMargin ?? "n/a"} marj, ${t.status})`)
+        .join("\n")}\n\nToplam ürün katkı kârı: ${fmt(total)} TL.\n⚠️ Komisyon/kargo/paket/reklam şemada yok → sonuçlar değişken maliyetsizdir (PARTIAL). Maliyeti eksik ürünler uydurma marj göstermez.`,
+      suggestions: ["Negatif marjlı ürünler", "ABC-XYZ analizi", "Tahmin doğruluğu", "Satış analizi"],
+      data: { top: top.map((t) => ({ label: t.label, contributionProfit: t.contributionProfit })) },
+    };
+  }
+
+  if (wants("abc xyz", "abc-xyz", "abc analizi", "xyz analizi", "abc/xyz")) {
+    const { loadSalesBundle } = await import("@/lib/intelligence/repositories");
+    const { computeAbcXyz } = await import("@/lib/intelligence/inventory/abc-xyz");
+    const bundle = await loadSalesBundle();
+    const r = computeAbcXyz(bundle, {});
+    const ax = r.rows.filter((x) => x.composite === "AX").length;
+    const cz = r.rows.filter((x) => x.composite === "CZ").length;
+    const stockout = r.rows.filter((x) => x.risk === "STOCKOUT").length;
+    return {
+      intent: "intelligence_abcxyz",
+      answer: `ABC-XYZ özeti (${r.rows.length} ürün):\n\n• AX (yüksek değer, düzenli): ${ax} ürün — sıkı reorder\n• CZ (düşük değer, düzensiz): ${cz} ürün — alım sınırlandırma\n• Stok-out riski: ${stockout} ürün\n\nAyrıntılı matris ve aksiyon kartları: AI → Intelligence Center → ABC-XYZ.`,
+      suggestions: ["En kârlı ürünler", "Ölü stoklar", "Satın alma önerisi", "Anomali taraması"],
+      data: { ax, cz, stockout },
+    };
+  }
+
+  if (wants("rfm", "champions", "sadık müşteri", "sadakat segment", "müşteri segment")) {
+    const { loadSalesBundle } = await import("@/lib/intelligence/repositories");
+    const { computeRfm } = await import("@/lib/intelligence/customers/rfm-engine");
+    const { getIntelligenceSettings } = await import("@/lib/intelligence/service");
+    const bundle = await loadSalesBundle();
+    const settings = await getIntelligenceSettings();
+    const r = computeRfm(bundle, Number(settings["rfm.period_days"]) || 365);
+    const top = r.segments.slice(0, 5);
+    return {
+      intent: "intelligence_rfm",
+      answer: `RFM segment dağılımı (${r.customerCount} müşteri, son ${r.periodDays} gün):\n\n${top
+        .map((t) => `• ${t.segment}: ${t.count} müşteri — ${fmt(t.monetary)} TL`)
+        .join("\n")}\n${r.sampleWarning ? `\n⚠️ ${r.sampleWarning}` : ""}\nTekrar alışveriş oranı: %${r.kpis.repeatPurchaseRate ?? "n/a"}.`,
+      suggestions: ["Churn riskli müşteriler", "Kohort analizi", "Müşteri analizi", "VIP müşteriler"],
+      data: { segments: r.segments, customerCount: r.customerCount },
+    };
+  }
+
+  if (wants("kohort", "cohort", "retention", "elde tutma")) {
+    const { loadSalesBundle } = await import("@/lib/intelligence/repositories");
+    const { computeCohorts } = await import("@/lib/intelligence/customers/cohort-engine");
+    const bundle = await loadSalesBundle();
+    const r = computeCohorts(bundle);
+    const latest = r.cohorts.slice(-3);
+    return {
+      intent: "intelligence_cohort",
+      answer: latest.length
+        ? `Son cohort'lar (ilk alışveriş ayına göre):\n\n${latest
+            .map((c) => `• ${c.cohort}: ${c.size} müşteri — ay 1 retention %${c.retention[1] ?? "n/a"}, ay 3 %${c.retention[3] ?? "n/a"}`)
+            .join("\n")}\n\nDetaylı ısı haritası: AI → Intelligence Center → Cohort.`
+        : "Yeterli müşteri geçmişi yok — cohort matrisi oluşturamadım.",
+      suggestions: ["RFM segmentleri", "Müşteri analizi", "Churn riskli müşteriler", "VIP müşteriler"],
+      data: { cohorts: latest },
+    };
+  }
+
+  if (wants("tahmin doğruluğu", "wape", "mape", "backtest", "model karşılaştır")) {
+    const { loadSalesBundle } = await import("@/lib/intelligence/repositories");
+    const { getAccuracy } = await import("@/lib/intelligence/service");
+    const bundle = await loadSalesBundle();
+    const r = await getAccuracy(bundle);
+    const eligible = r.models.filter((m) => m.eligible && m.wape != null).slice(0, 4);
+    return {
+      intent: "intelligence_accuracy",
+      answer: eligible.length
+        ? `Walk-forward backtest (mağaza geneli, örneklem ${r.storeSampleSize} gün):\n\n${eligible
+            .map((m) => `• ${m.label}: WAPE %${m.wape}, RMSE ${m.rmse}`)
+            .join("\n")}\n\nEn iyi model: **${r.bestModel?.label ?? "n/a"}** (WAPE %${r.bestModel?.wape ?? "n/a"}).\n${r.dataQuality === "INSUFFICIENT_DATA" ? "⚠️ Örneklem yetersiz — sonuçları ihtiyatla kullanın." : ""}`
+        : `Backtest için yeterli uygun model/örneklem yok (${r.dataQuality}). Daha fazla satış geçmişi gerekir.`,
+      suggestions: ["7 gün tahmin", "Anomali taraması", "En kârlı ürünler", "Satış analizi"],
+      data: { bestModel: r.bestModel, dataQuality: r.dataQuality },
+    };
+  }
 
   if (wants("satış", "ciro", "hasılat", "kâr", "kar", "gelir")) {
     const s = await analyzeSales();
