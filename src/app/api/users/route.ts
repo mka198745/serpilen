@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import crypto from "node:crypto";
 import { db } from "@/db";
 import { users, auditLogs, adminSessions, authNonces } from "@/db/schema";
 import { desc, eq, count } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
+import { hashPassword } from "@/lib/password";
 export const dynamic = "force-dynamic";
 
 const ROLES = ["SUPER_ADMIN", "STORE_MANAGER", "WAREHOUSE_KEEPER", "CASHIER"] as const;
@@ -66,16 +66,24 @@ export async function POST(request: Request) {
     email?: string;
     phone?: string;
     role?: string;
+    password?: string;
   };
 
   const name = String(body?.name || "").trim();
   const email = String(body?.email || "").trim().toLowerCase();
   const phone = body?.phone ? String(body.phone).trim() : null;
   const role = String(body?.role || "CASHIER").toUpperCase();
+  const password = String(body?.password || "");
 
   if (!name || !email || !email.includes("@")) {
     return NextResponse.json(
       { success: false, error: { code: "VALIDATION_ERROR", message: "Ad Soyad ve geçerli e-posta zorunludur." } },
+      { status: 422 }
+    );
+  }
+  if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    return NextResponse.json(
+      { success: false, error: { code: "VALIDATION_ERROR", message: "Şifre en az 8 karakter, en az bir harf ve bir rakam içermelidir." } },
       { status: 422 }
     );
   }
@@ -94,10 +102,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Giriş modülü devre dışı; parola alanı schema gereği dolu tutulur (scrypt özet).
-  const placeholderHash = `scrypt$${crypto.scryptSync(crypto.randomUUID(), "ipek-tuhafiye", 64).toString("hex")}`;
-
-  const [{ id: __created_id }] = await db.insert(users).values({ name, email, phone, role, passwordHash: placeholderHash }).returning({ id: users.id });
+  const [{ id: __created_id }] = await db.insert(users).values({ name, email, phone, role, passwordHash: hashPassword(password) }).returning({ id: users.id });
   const [created] = await db.select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive }).from(users).where(eq(users.id, __created_id));
 
   await db.insert(auditLogs).values({

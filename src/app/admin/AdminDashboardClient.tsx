@@ -716,7 +716,7 @@ export function AdminDashboardClient({
   const [auditList, setAuditList] = useState<any[]>([]);
   const [auditBusy, setAuditBusy] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newUser, setNewUser] = useState({ name: "", email: "", phone: "", role: "CASHIER" });
+  const [newUser, setNewUser] = useState({ name: "", email: "", phone: "", role: "CASHIER", password: "" });
   const [addingUser, setAddingUser] = useState(false);
   const [userFeedback, setUserFeedback] = useState<{ text: string; isError: boolean } | null>(null);
 
@@ -768,6 +768,14 @@ export function AdminDashboardClient({
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (addingUser) return;
+    if (
+      newUser.password.length < 8 ||
+      !/[A-Za-z]/.test(newUser.password) ||
+      !/[0-9]/.test(newUser.password)
+    ) {
+      setUserFeedback({ text: "Şifre en az 8 karakter, en az bir harf ve bir rakam içermelidir.", isError: true });
+      return;
+    }
     setAddingUser(true);
     setUserFeedback(null);
     try {
@@ -783,7 +791,7 @@ export function AdminDashboardClient({
       }
       setUserFeedback({ text: `${data.data.name} kaydı oluşturuldu.`, isError: false });
       setUsersList((prev) => [data.data, ...prev]);
-      setNewUser({ name: "", email: "", phone: "", role: "CASHIER" });
+      setNewUser({ name: "", email: "", phone: "", role: "CASHIER", password: "" });
       setIsAddUserOpen(false);
     } catch {
       setUserFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
@@ -5377,6 +5385,23 @@ export function AdminDashboardClient({
                     <option value="CASHIER">POS Kasiyeri</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">Geçici Şifre:</label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="new-password"
+                  minLength={8}
+                  placeholder="Örn: Magaza2026!"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono tracking-wide"
+                />
+                <p className="text-[10px] text-stone-400 mt-1">
+                  En az 8 karakter, en az bir harf ve bir rakam. Personel ilk girişte şifresini <strong>Hesabım</strong> sayfasından değiştirebilir — şifreyi güvenli yolla iletin.
+                </p>
               </div>
 
               <button
