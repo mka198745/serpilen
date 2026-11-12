@@ -262,10 +262,9 @@ export function AdminDashboardClient({
   const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance">("sales");
   const [reportBusy, setReportBusy] = useState(false);
 
-  /* --- FAZ 6: Satın Alma (talep→onay→sipariş→kabul + öneriler) --- */
+  /* --- FAZ 6: Satın Alma (sipariş→mal kabul + öneriler) --- */
   const [suppliersList, setSuppliersList] = useState(initialSuppliers);
-  const [purchasingSubTab, setPurchasingSubTab] = useState<"suggest" | "requests" | "orders" | "receipts" | "suppliers">("suggest");
-  const [purchaseRequests, setPurchaseRequests] = useState<any[]>([]);
+  const [purchasingSubTab, setPurchasingSubTab] = useState<"suggest" | "orders" | "receipts" | "suppliers">("suggest");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [suggestionCount, setSuggestionCount] = useState(0);
   const [receiptsList, setReceiptsList] = useState<any[]>([]);
@@ -275,8 +274,6 @@ export function AdminDashboardClient({
   const [newSupplier, setNewSupplier] = useState({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "30 Gün Vade", rating: "4.5" });
   const [isCreatePOOpen, setIsCreatePOOpen] = useState(false);
   const [poWizard, setPoWizard] = useState({ supplierId: "", warehouseId: "1", expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] as any[] });
-  const [isRequestOpen, setIsRequestOpen] = useState(false);
-  const [requestWizard, setRequestWizard] = useState({ warehouseId: "1", priority: "NORMAL", notes: "", lines: [{ productId: "", qty: "50" }] as any[] });
   const [receiveModalPO, setReceiveModalPO] = useState<any | null>(null);
   const [receiveLines, setReceiveLines] = useState<Record<number, number>>({});
 
@@ -288,7 +285,6 @@ export function AdminDashboardClient({
       if (data.success) {
         setSuppliersList(data.suppliers);
         setPurchaseOrders(data.purchaseOrders);
-        setPurchaseRequests(data.requests || []);
         setReceiptsList(data.receipts || []);
         setSuggestions(data.suggestions || []);
         setSuggestionCount(data.suggestionCount || 0);
@@ -316,43 +312,6 @@ export function AdminDashboardClient({
       setPurchasingFeedback({ text: "Tedarikçi eklendi.", isError: false });
     } else {
       setPurchasingFeedback({ text: data.error || "Tedarikçi eklenemedi.", isError: true });
-    }
-  };
-
-  const handleCreateRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await authFetch("/api/suppliers", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "CREATE_REQUEST",
-        warehouseId: Number(requestWizard.warehouseId),
-        priority: requestWizard.priority,
-        notes: requestWizard.notes,
-        items: requestWizard.lines.filter((l) => l.productId).map((l) => ({ productId: Number(l.productId), qty: Number(l.qty) })),
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setIsRequestOpen(false);
-      setRequestWizard({ warehouseId: "1", priority: "NORMAL", notes: "", lines: [{ productId: "", qty: "50" }] });
-      setPurchasingFeedback({ text: `Talep oluşturuldu: ${data.data.requestNumber}`, isError: false });
-      void loadPurchasing();
-    } else {
-      setPurchasingFeedback({ text: data.error || "Talep oluşturulamadı.", isError: true });
-    }
-  };
-
-  const handleRequestAction = async (requestId: number, action: "APPROVE_REQUEST" | "REJECT_REQUEST" | "CONVERT_REQUEST", extra?: any) => {
-    const res = await authFetch("/api/suppliers", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, requestId, ...extra }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setPurchasingFeedback({ text: "Talep işlemi tamamlandı.", isError: false });
-      void loadPurchasing();
-    } else {
-      setPurchasingFeedback({ text: data.error || "İşlem başarısız.", isError: true });
     }
   };
 
@@ -3981,11 +3940,10 @@ export function AdminDashboardClient({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-800">FAZ 6 — Satın Alma</span>
-                <h2 className="text-xl font-black text-stone-900">Talep → Onay → Sipariş → Mal Kabul</h2>
+                <h2 className="text-xl font-black text-stone-900">Sipariş → Mal Kabul</h2>
                 <p className="text-xs text-stone-500">Otomatik yeniden sipariş önerileri, kısmi mal kabul ve tedarikçi karnesi.</p>
               </div>
               <div className="flex gap-1.5">
-                <button onClick={() => setIsRequestOpen(true)} className="px-3 py-2 bg-amber-800 text-white text-xs font-bold rounded-xl">+ Satın Alma Talebi</button>
                 <button onClick={() => setIsCreatePOOpen(true)} className="px-3 py-2 bg-sky-800 text-white text-xs font-bold rounded-xl">+ Sipariş (PO)</button>
                 <button onClick={() => setIsAddSupplierOpen(true)} className="px-3 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl">+ Tedarikçi</button>
               </div>
@@ -3994,7 +3952,6 @@ export function AdminDashboardClient({
             <div className="flex flex-wrap gap-1.5">
               {[
                 { id: "suggest" as const, label: `Öneriler (${suggestionCount})` },
-                { id: "requests" as const, label: `Talepler (${purchaseRequests.length})` },
                 { id: "orders" as const, label: `Siparişler (${purchaseOrders.length})` },
                 { id: "receipts" as const, label: `Mal Kabul (${receiptsList.length})` },
                 { id: "suppliers" as const, label: `Tedarikçiler (${suppliersList.length})` },
@@ -4043,48 +4000,6 @@ export function AdminDashboardClient({
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
-
-            {purchasingSubTab === "requests" && (
-              <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr><th className="py-2.5 px-3">Talep No</th><th className="py-2.5 px-3">Depo</th><th className="py-2.5 px-3">Kalem</th><th className="py-2.5 px-3">Öncelik</th><th className="py-2.5 px-3">Durum</th><th className="py-2.5 px-3">Aksiyon</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {purchaseRequests.map((r: any) => (
-                      <tr key={r.id}>
-                        <td className="py-2.5 px-3 font-mono font-bold">{r.requestNumber}</td>
-                        <td className="py-2.5 px-3">{r.warehouseName}</td>
-                        <td className="py-2.5 px-3">{(r.items || []).map((it: any) => <span key={it.id} className="block truncate max-w-[220px]">{it.productName} × {it.qty}</span>)}</td>
-                        <td className="py-2.5 px-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.priority === "URGENT" ? "bg-rose-600 text-white" : r.priority === "HIGH" ? "bg-amber-100 text-amber-900" : "bg-stone-100 text-stone-600"}`}>{r.priority}</span></td>
-                        <td className="py-2.5 px-3"><span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.status === "APPROVED" ? "bg-emerald-100 text-emerald-800" : r.status === "ORDERED" ? "bg-sky-100 text-sky-800" : r.status === "REJECTED" ? "bg-stone-200 text-stone-500" : "bg-amber-100 text-amber-900"}`}>{r.status}</span></td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex gap-1 flex-wrap">
-                            {r.status === "REQUESTED" && (
-                              <>
-                                <button onClick={() => void handleRequestAction(r.id, "APPROVE_REQUEST")} className="px-2 py-1 bg-emerald-700 text-white rounded-lg text-[10px] font-bold">Onayla</button>
-                                <button onClick={() => void handleRequestAction(r.id, "REJECT_REQUEST")} className="px-2 py-1 bg-stone-200 text-stone-600 rounded-lg text-[10px] font-bold">Reddet</button>
-                              </>
-                            )}
-                            {r.status === "APPROVED" && (
-                              <select
-                                defaultValue=""
-                                onChange={(e) => { if (e.target.value) void handleRequestAction(r.id, "CONVERT_REQUEST", { supplierId: Number(e.target.value) }); e.target.value = ""; }}
-                                className="px-2 py-1 border border-sky-300 rounded-lg text-[10px] font-bold text-sky-800"
-                              >
-                                <option value="">Siparişe dönüştür…</option>
-                                {suppliersList.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                              </select>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {purchaseRequests.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-stone-400">Talep yok.</td></tr>}
-                  </tbody>
-                </table>
               </div>
             )}
 
@@ -5186,43 +5101,6 @@ export function AdminDashboardClient({
                 <div><label className="block font-bold mb-1">Puan</label><input type="number" step="0.1" min="1" max="5" value={newSupplier.rating} onChange={(e) => setNewSupplier({ ...newSupplier, rating: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
               </div>
               <button type="submit" className="w-full py-3 bg-stone-900 text-white font-bold rounded-xl">Tedarikçiyi Kaydet</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* FAZ 6 / MODAL: SATIN ALMA TALEBİ */}
-      {/* ============================================================ */}
-      {isRequestOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
-              <h3 className="font-black text-base text-stone-900">Satın Alma Talebi</h3>
-              <button onClick={() => setIsRequestOpen(false)} className="p-1 text-stone-400 hover:text-stone-700"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateRequest} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2">
-                <select value={requestWizard.warehouseId} onChange={(e) => setRequestWizard({ ...requestWizard, warehouseId: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl">
-                  {warehousesList.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                </select>
-                <select value={requestWizard.priority} onChange={(e) => setRequestWizard({ ...requestWizard, priority: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl">
-                  <option value="LOW">Düşük</option><option value="NORMAL">Normal</option><option value="HIGH">Yüksek</option><option value="URGENT">Acil</option>
-                </select>
-              </div>
-              {requestWizard.lines.map((ln, i) => (
-                <div key={i} className="grid grid-cols-[1fr_80px_32px] gap-1.5">
-                  <select required value={ln.productId} onChange={(e) => { const lines = [...requestWizard.lines]; lines[i] = { ...lines[i], productId: e.target.value }; setRequestWizard({ ...requestWizard, lines }); }} className="px-3 py-2 border border-stone-300 rounded-xl">
-                    <option value="">Ürün seç…</option>
-                    {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <input type="number" min="1" value={ln.qty} onChange={(e) => { const lines = [...requestWizard.lines]; lines[i] = { ...lines[i], qty: e.target.value }; setRequestWizard({ ...requestWizard, lines }); }} className="px-3 py-2 border border-stone-300 rounded-xl" />
-                  <button type="button" onClick={() => setRequestWizard({ ...requestWizard, lines: requestWizard.lines.filter((_, j) => j !== i) })} className="text-rose-600 font-bold">×</button>
-                </div>
-              ))}
-              <button type="button" onClick={() => setRequestWizard({ ...requestWizard, lines: [...requestWizard.lines, { productId: "", qty: "50" }] })} className="text-[11px] font-bold text-amber-800">+ Kalem ekle</button>
-              <input placeholder="Not (opsiyonel)" value={requestWizard.notes} onChange={(e) => setRequestWizard({ ...requestWizard, notes: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
-              <button type="submit" className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl">Talebi Gönder</button>
             </form>
           </div>
         </div>

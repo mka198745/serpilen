@@ -4,8 +4,6 @@ import {
   suppliers,
   purchaseOrders,
   purchaseOrderItems,
-  purchaseRequests,
-  purchaseRequestItems,
   goodsReceipts,
   goodsReceiptItems,
   warehouses,
@@ -58,8 +56,6 @@ export async function GET(request: Request) {
     const allProds = await db.select().from(products);
     const allWh = await db.select().from(warehouses);
     allWhCache = allWh;
-    const allRequests = await db.select().from(purchaseRequests).orderBy(desc(purchaseRequests.id));
-    const allReqItems = await db.select().from(purchaseRequestItems);
     const allReceipts = await db.select().from(goodsReceipts).orderBy(desc(goodsReceipts.id)).limit(20);
 
     // Reorder önerileri: kritik + satış hızı
@@ -128,13 +124,6 @@ export async function GET(request: Request) {
       success: true,
       suppliers: supplierPerf,
       purchaseOrders: enriched,
-      requests: allRequests.map((r) => ({
-        ...r,
-        warehouseName: allWh.find((w) => w.id === r.warehouseId)?.name || "?",
-        items: allReqItems
-          .filter((i) => i.requestId === r.id)
-          .map((i) => ({ ...i, productName: allProds.find((p) => p.id === i.productId)?.name || "?" })),
-      })),
       receipts: allReceipts,
       suggestions,
       suggestionCount: suggestions.filter((s) => s.isCritical).length,
@@ -185,69 +174,6 @@ export async function POST(request: Request) {
         }).where(eq(suppliers.id, Number(id)));
       const [updated] = await db.select().from(suppliers).where(eq(suppliers.id, Number(id)));
       return NextResponse.json({ success: true, data: updated });
-    }
-
-    /* ---------- SATIN ALMA TALEBİ ---------- */
-    if (action === "CREATE_REQUEST") {
-      const { warehouseId = 1, priority = "NORMAL", notes = "", items = [] } = body;
-      const validItems = items.filter((i: any) => Number(i.qty) > 0 && i.productId);
-      if (!validItems.length) return NextResponse.json({ success: false, error: "En az bir kalem ekleyin." }, { status: 422 });
-      const requestNumber = `TAL-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-      const [{ id: __req_id }] = await db.insert(purchaseRequests).values({ requestNumber, warehouseId: Number(warehouseId), status: "REQUESTED", priority, notes, createdBy: user }).returning({ id: purchaseRequests.id });
-      const [req] = await db.select().from(purchaseRequests).where(eq(purchaseRequests.id, __req_id));
-      const allProds = await db.select().from(products);
-      for (const it of validItems) {
-        const p = allProds.find((x) => x.id === Number(it.productId));
-        await db.insert(purchaseRequestItems).values({
-          requestId: req.id,
-          productId: Number(it.productId),
-          variantId: it.variantId ? Number(it.variantId) : null,
-          qty: Number(it.qty),
-          estimatedCost: String(Number(it.qty) * Number(p?.buyPrice || 0)),
-        });
-      }
-      await db.insert(auditLogs).values({ userId: user, userName: user, action: "PURCHASE_REQUEST_CREATED", entity: "PurchaseRequest", entityId: String(req.id), details: `${requestNumber}: ${validItems.length} kalem` });
-      return NextResponse.json({ success: true, data: req });
-    }
-
-    if (action === "APPROVE_REQUEST" || action === "REJECT_REQUEST") {
-      const [req] = await db.select().from(purchaseRequests).where(eq(purchaseRequests.id, Number(body.requestId))).limit(1);
-      if (!req || req.status !== "REQUESTED") return NextResponse.json({ success: false, error: "Talep onaylanabilir durumda değil." }, { status: 409 });
-      const status = action === "APPROVE_REQUEST" ? "APPROVED" : "REJECTED";
-      await db.update(purchaseRequests).set({ status, approvedAt: new Date(), approvedBy: user }).where(eq(purchaseRequests.id, req.id));
-      const [u] = await db.select().from(purchaseRequests).where(eq(purchaseRequests.id, req.id));
-      return NextResponse.json({ success: true, data: u });
-    }
-
-    /* ---------- TALEP → SİPARİŞE DÖNÜŞTÜR ---------- */
-    if (action === "CONVERT_REQUEST") {
-      const [req] = await db.select().from(purchaseRequests).where(eq(purchaseRequests.id, Number(body.requestId))).limit(1);
-      if (!req || req.status !== "APPROVED") return NextResponse.json({ success: false, error: "Sadece onaylı talep siparişe dönüşür." }, { status: 409 });
-      const reqItems = await db.select().from(purchaseRequestItems).where(eq(purchaseRequestItems.requestId, req.id));
-      const supplierId = Number(body.supplierId);
-      if (!supplierId) return NextResponse.json({ success: false, error: "Tedarikçi seçin." }, { status: 422 });
-      const poNumber = `SAT-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-      const allProds = await db.select().from(products);
-      let total = 0;
-      const [{ id: __po_id }] = await db.insert(purchaseOrders).values({ poNumber, supplierId, warehouseId: req.warehouseId, status: "ORDERED", totalAmount: "0.00", notes: `Talep ${req.requestNumber}'den`, expectedDate: body.expectedDate || null }).returning({ id: purchaseOrders.id });
-      const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, __po_id));
-      for (const ri of reqItems) {
-        const p = allProds.find((x) => x.id === ri.productId);
-        const cost = Number(p?.buyPrice || 0);
-        total += cost * ri.qty;
-        await db.insert(purchaseOrderItems).values({
-          purchaseOrderId: po.id,
-          productId: ri.productId,
-          variantId: ri.variantId,
-          quantity: ri.qty,
-          unitCost: String(cost),
-          receivedQty: 0,
-          totalCost: String(cost * ri.qty),
-        });
-      }
-      await db.update(purchaseOrders).set({ totalAmount: String(total) }).where(eq(purchaseOrders.id, po.id));
-      await db.update(purchaseRequests).set({ status: "ORDERED" }).where(eq(purchaseRequests.id, req.id));
-      return NextResponse.json({ success: true, data: { ...po, totalAmount: String(total) } });
     }
 
     /* ---------- DOĞRUDAN PO ---------- */
