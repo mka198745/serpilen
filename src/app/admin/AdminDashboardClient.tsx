@@ -32,6 +32,9 @@ import {
   Check,
   X,
   ShieldCheck,
+  Lock,
+  RotateCcw,
+  Save,
   UserPlus,
   Power,
   Pencil,
@@ -66,7 +69,18 @@ import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
 import { authFetch } from "@/lib/client-auth";
+import {
+  ADMIN_MODULES,
+  ADMIN_MODULE_GROUPS,
+  MATRIX_ROLES,
+  DEFAULT_ROLE_MATRIX,
+  normalizeRoleMatrix,
+  type RoleMatrix,
+} from "@/lib/admin-modules";
 interface AdminDashboardClientProps {
+  currentRole?: string;
+  currentUserName?: string;
+  currentRoleLabel?: string;
   products: any[];
   categories: any[];
   brands: any[];
@@ -100,6 +114,9 @@ interface AdminDashboardClientProps {
 }
 
 export function AdminDashboardClient({
+  currentRole = "SUPER_ADMIN",
+  currentUserName = "Yönetici",
+  currentRoleLabel = "Süper Admin",
   products: initialProducts,
   categories,
   brands,
@@ -608,6 +625,88 @@ export function AdminDashboardClient({
     minCartAmount: "500.00",
     usageLimit: 100,
   });
+
+  /* --- Rol × Modül görünürlük matrisi --- */
+  const [roleMatrix, setRoleMatrix] = useState<RoleMatrix>(() => normalizeRoleMatrix(null));
+  const [matrixLoaded, setMatrixLoaded] = useState(false);
+  const [matrixSaving, setMatrixSaving] = useState(false);
+  const [matrixDirty, setMatrixDirty] = useState(false);
+  const [matrixMsg, setMatrixMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const isSuper = currentRole === "SUPER_ADMIN";
+  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || DEFAULT_ROLE_MATRIX.SUPER_ADMIN;
+  // dashboard herkese açık taban erişimdir
+  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] !== false;
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const res = await authFetch("/api/role-matrix", { cache: "no-store" });
+        const data = await res.json();
+        if (data?.success && data?.data?.matrix) {
+          setRoleMatrix(normalizeRoleMatrix(data.data.matrix));
+        }
+      } catch {
+        /* matris okunamazsa varsayılanlar kullanılır */
+      } finally {
+        setMatrixLoaded(true);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleMatrixCell = (role: string, moduleKey: string) => {
+    if (role === "SUPER_ADMIN" || moduleKey === "dashboard") return; // kilitli hücreler
+    setRoleMatrix((prev) => ({
+      ...prev,
+      [role]: { ...prev[role as keyof RoleMatrix], [moduleKey]: !prev[role as keyof RoleMatrix]?.[moduleKey] },
+    }) as RoleMatrix);
+    setMatrixDirty(true);
+    setMatrixMsg(null);
+  };
+
+  const saveMatrix = async (next?: RoleMatrix) => {
+    const payload = next ?? roleMatrix;
+    setMatrixSaving(true);
+    setMatrixMsg(null);
+    try {
+      const res = await authFetch("/api/role-matrix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matrix: payload }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        setRoleMatrix(normalizeRoleMatrix(data.data.matrix));
+        setMatrixDirty(false);
+        setMatrixMsg({ ok: true, text: "Matris kaydedildi; sol menü rolünüz için güncellendi." });
+      } else {
+        setMatrixMsg({ ok: false, text: data?.error?.message || "Matris kaydedilemedi." });
+      }
+    } catch {
+      setMatrixMsg({ ok: false, text: "Sunucuya ulaşılamadı." });
+    } finally {
+      setMatrixSaving(false);
+    }
+  };
+
+  const resetMatrixToDefaults = async () => {
+    const defaults = normalizeRoleMatrix(null);
+    setRoleMatrix(defaults);
+    setMatrixDirty(true);
+    await saveMatrix(defaults);
+  };
+
+  const matrixOpenCount = (role: string) =>
+    ADMIN_MODULES.filter((m) => m.key === "dashboard" || role === "SUPER_ADMIN" || roleMatrix[role as keyof RoleMatrix]?.[m.key] !== false).length;
+
+  // Rolünüzün göremediği sekmede kalınmasın (menü gizlense de durum güvenli kalsın)
+  React.useEffect(() => {
+    if (!matrixLoaded) return;
+    if (canSee(activeTab)) return;
+    const first = ADMIN_MODULES.find((m) => canSee(m.key));
+    if (first && first.key !== activeTab) setActiveTab(first.key as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrixLoaded, roleMatrix, currentRole]);
 
   /* --- FAZ 1: Kullanıcılar & Roller + Denetim Kaydı --- */
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -1350,6 +1449,7 @@ export function AdminDashboardClient({
 
         {/* Navigation Tabs */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto text-xs font-semibold">
+          {canSee("dashboard") && (
           <button
             onClick={() => setActiveTab("dashboard")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1361,7 +1461,9 @@ export function AdminDashboardClient({
             <LayoutDashboard className="w-4 h-4" />
             <span>Genel Bakış (KPI)</span>
           </button>
+          )}
 
+          {canSee("catalog") && (
           <button
             onClick={() => setActiveTab("catalog")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1373,7 +1475,9 @@ export function AdminDashboardClient({
             <Package className="w-4 h-4" />
             <span>Ürün & Katalog</span>
           </button>
+          )}
 
+          {canSee("wms") && (
           <button
             onClick={() => setActiveTab("wms")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1385,7 +1489,9 @@ export function AdminDashboardClient({
             <Boxes className="w-4 h-4" />
             <span>Çoklu Depo & WMS</span>
           </button>
+          )}
 
+          {canSee("barcode") && (
           <button
             onClick={() => setActiveTab("barcode")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1397,7 +1503,9 @@ export function AdminDashboardClient({
             <Barcode className="w-4 h-4" />
             <span>Barkod & Etiket</span>
           </button>
+          )}
 
+          {canSee("pos") && (
           <button
             onClick={() => setActiveTab("pos")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1409,7 +1517,9 @@ export function AdminDashboardClient({
             <MonitorCheck className="w-4 h-4" />
             <span>POS & Kasalar</span>
           </button>
+          )}
 
+          {canSee("orders") && (
           <button
             onClick={() => setActiveTab("orders")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1421,7 +1531,9 @@ export function AdminDashboardClient({
             <ShoppingBag className="w-4 h-4" />
             <span>Siparişler ({orders.length})</span>
           </button>
+          )}
 
+          {canSee("crm") && (
           <button
             onClick={() => setActiveTab("crm")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1433,7 +1545,9 @@ export function AdminDashboardClient({
             <Users className="w-4 h-4" />
             <span>Müşteri CRM</span>
           </button>
+          )}
 
+          {canSee("purchasing") && (
           <button
             onClick={() => setActiveTab("purchasing")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1445,7 +1559,9 @@ export function AdminDashboardClient({
             <Truck className="w-4 h-4" />
             <span>Satın Alma & Mal Kabul</span>
           </button>
+          )}
 
+          {canSee("reports") && (
           <button
             onClick={() => setActiveTab("reports")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1457,7 +1573,9 @@ export function AdminDashboardClient({
             <BarChart3 className="w-4 h-4" />
             <span>Raporlar & Analitik</span>
           </button>
+          )}
 
+          {canSee("coupons") && (
           <button
             onClick={() => setActiveTab("coupons")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1469,7 +1587,9 @@ export function AdminDashboardClient({
             <Tag className="w-4 h-4" />
             <span>Pazarlama & Kampanya</span>
           </button>
+          )}
 
+          {canSee("erp") && (
           <button
             onClick={() => setActiveTab("erp")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1481,7 +1601,9 @@ export function AdminDashboardClient({
             <FileText className="w-4 h-4" />
             <span>ERP & e-Fatura Entegrasyon</span>
           </button>
+          )}
 
+          {canSee("ai") && (
           <button
             onClick={() => setActiveTab("ai")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1493,13 +1615,17 @@ export function AdminDashboardClient({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <span>AI Yönetim Asistanı</span>
           </button>
+          )}
 
-          <div className="pt-3 border-t border-stone-800">
-            <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
-              FAZ 1 — Temel
-            </p>
-          </div>
+          {(canSee("users") || canSee("registeredCustomers") || canSee("roleMatrix") || canSee("audit")) && (
+            <div className="pt-3 border-t border-stone-800">
+              <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
+                FAZ 1 — Temel
+              </p>
+            </div>
+          )}
 
+          {canSee("users") && (
           <button
             onClick={() => setActiveTab("users")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1511,7 +1637,9 @@ export function AdminDashboardClient({
             <Users2 className="w-4 h-4" />
             <span>Kullanıcılar & Roller</span>
           </button>
+          )}
 
+          {canSee("registeredCustomers") && (
           <button
             onClick={() => setActiveTab("registeredCustomers")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1523,7 +1651,9 @@ export function AdminDashboardClient({
             <Users className="w-4 h-4" />
             <span>Kayıtlı Müşteriler</span>
           </button>
+          )}
 
+          {canSee("roleMatrix") && (
           <button
             onClick={() => setActiveTab("roleMatrix")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1535,7 +1665,9 @@ export function AdminDashboardClient({
             <ShieldCheck className="w-4 h-4" />
             <span>Rol Yetki Matrisi</span>
           </button>
+          )}
 
+          {canSee("audit") && (
           <button
             onClick={() => setActiveTab("audit")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1547,13 +1679,17 @@ export function AdminDashboardClient({
             <ScrollText className="w-4 h-4" />
             <span>Denetim Kaydı (Audit)</span>
           </button>
+          )}
 
-          <div className="pt-3 border-t border-stone-800">
-            <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
-              İçerik Yönetimi
-            </p>
-          </div>
+          {canSee("content") && (
+            <div className="pt-3 border-t border-stone-800">
+              <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
+                İçerik Yönetimi
+              </p>
+            </div>
+          )}
 
+          {canSee("content") && (
           <button
             onClick={() => setActiveTab("content")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1565,13 +1701,17 @@ export function AdminDashboardClient({
             <Newspaper className="w-4 h-4" />
             <span>İçerik Yönetimi</span>
           </button>
+          )}
 
-          <div className="pt-3 border-t border-stone-800">
-            <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
-              Site Yönetimi
-            </p>
-          </div>
+          {(canSee("siteHeader") || canSee("siteFooter") || canSee("siteCart") || canSee("paymentApi") || canSee("database")) && (
+            <div className="pt-3 border-t border-stone-800">
+              <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
+                Site Yönetimi
+              </p>
+            </div>
+          )}
 
+          {canSee("siteHeader") && (
           <button
             onClick={() => setActiveTab("siteHeader")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1583,7 +1723,9 @@ export function AdminDashboardClient({
             <PanelTop className="w-4 h-4" />
             <span>Header Ayarı</span>
           </button>
+          )}
 
+          {canSee("siteFooter") && (
           <button
             onClick={() => setActiveTab("siteFooter")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1595,7 +1737,9 @@ export function AdminDashboardClient({
             <PanelBottom className="w-4 h-4" />
             <span>Footer Ayarı</span>
           </button>
+          )}
 
+          {canSee("siteCart") && (
           <button
             onClick={() => setActiveTab("siteCart")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1607,7 +1751,9 @@ export function AdminDashboardClient({
             <ShoppingCart className="w-4 h-4" />
             <span>Sepetim Ayarı</span>
           </button>
+          )}
 
+          {canSee("paymentApi") && (
           <button
             onClick={() => setActiveTab("paymentApi")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1619,7 +1765,9 @@ export function AdminDashboardClient({
             <Wallet className="w-4 h-4" />
             <span>Ödeme API Ayarları</span>
           </button>
+          )}
 
+          {canSee("database") && (
           <button
             onClick={() => setActiveTab("database")}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
@@ -1631,6 +1779,7 @@ export function AdminDashboardClient({
             <Database className="w-4 h-4" />
             <span>Veritabanı Ayarı</span>
           </button>
+          )}
 
           <div className="pt-3 border-t border-stone-800">
             <Link
@@ -1645,9 +1794,9 @@ export function AdminDashboardClient({
 
         {/* User profile footer */}
         <div className="p-3 bg-stone-950/80 border-t border-stone-800 text-[11px] flex items-center justify-between">
-          <div>
-            <p className="font-bold text-white">Ahmet Yılmaz</p>
-            <p className="text-stone-400">Süper Admin</p>
+          <div className="min-w-0">
+            <p className="font-bold text-white truncate">{currentUserName}</p>
+            <p className="text-stone-400">{currentRoleLabel}</p>
           </div>
           <Link href="/" className="text-amber-400 hover:underline">
             Siteye Dön
@@ -4255,78 +4404,172 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {activeTab === "roleMatrix" && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Başlık + kaydet/varsayılan düğmeleri */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-stone-900">Rol Yetki Matrisi</h2>
                 <p className="text-xs text-stone-500">
-                  Hangi rolün hangi modüle erişebildiğini gösteren matris (FAZ 1 — Temel modülü).
+                  Sol menüdeki tüm modüllerin hangi rolde görüneceğini buradan belirleyin. Değişiklikler kaydedilince menü anında uygulanır.
                 </p>
               </div>
-              <button
-                onClick={() => setActiveTab("users")}
-                className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-              >
-                <Users2 className="w-4 h-4" />
-                <span>Kullanıcılar & Roller'e Git</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {matrixDirty && (
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                    Kaydedilmemiş değişiklikler var
+                  </span>
+                )}
+                {matrixMsg && (
+                  <span className={`text-[10px] font-bold ${matrixMsg.ok ? "text-emerald-700" : "text-rose-600"}`}>
+                    {matrixMsg.text}
+                  </span>
+                )}
+                <button
+                  onClick={() => setActiveTab("users")}
+                  className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
+                >
+                  <Users2 className="w-4 h-4" />
+                  <span>Kullanıcılar & Roller'e Git</span>
+                </button>
+                {isSuper && (
+                  <>
+                    <button
+                      onClick={() => void resetMatrixToDefaults()}
+                      disabled={matrixSaving}
+                      className="px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl flex items-center gap-1.5 border border-stone-200 transition disabled:opacity-60"
+                      title="Tüm rolleri fabrika ayarlarına döndürür ve hemen kaydeder"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Varsayılanlara Dön</span>
+                    </button>
+                    <button
+                      onClick={() => void saveMatrix()}
+                      disabled={matrixSaving || !matrixDirty}
+                      className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{matrixSaving ? "Kaydediliyor…" : "Tümünü Kaydet"}</span>
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-3">
-              <h3 className="font-bold text-sm text-stone-900">Rol → Modül Yetki Matrisi</h3>
+            {!isSuper && (
+              <div className="flex items-start gap-2 text-[11px] text-sky-900 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
+                <Lock className="w-4 h-4 shrink-0 mt-0.5 text-sky-700" />
+                <span>Bu matris <strong>salt okunurdur</strong>; yalnız Süper Admin (SUPER_ADMIN) hücreleri açıp kapatabilir.</span>
+              </div>
+            )}
+
+            {/* Detaylı matris tablosu */}
+            <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
+              <div className="px-5 py-4 border-b border-stone-100 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-sm text-stone-900">Rol → Modül Görünürlük Matrisi</h3>
+                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">{ADMIN_MODULES.length} modül × {MATRIX_ROLES.length} rol</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-[11px] text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                     <tr>
-                      <th className="py-2 px-3">Rol</th>
-                      <th className="py-2 px-3">Kod</th>
-                      <th className="py-2 px-3 text-center">Yönetim & WMS</th>
-                      <th className="py-2 px-3 text-center">Web POS</th>
+                      <th className="py-2.5 px-3 min-w-[210px]">Modül (Sol Menü)</th>
+                      {MATRIX_ROLES.map((role) => (
+                        <th key={role} className="py-2.5 px-2 text-center min-w-[108px]">
+                          <div>{role === "SUPER_ADMIN" ? "Süper Admin" : role === "STORE_MANAGER" ? "Mağaza Müdürü" : role === "WAREHOUSE_KEEPER" ? "Depo Sorumlusu" : "POS Kasiyeri"}</div>
+                          <div className="text-[8px] font-mono font-normal text-stone-400 normal-case">{role}</div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
-                    {[
-                      ["SUPER_ADMIN", "Süper Admin", true, true],
-                      ["STORE_MANAGER", "Mağaza Müdürü", true, true],
-                      ["WAREHOUSE_KEEPER", "Depo Sorumlusu", true, false],
-                      ["CASHIER", "POS Kasiyeri", false, true],
-                    ].map(([key, label, adm, pos]) => (
-                      <tr key={String(key)}>
-                        <td className="py-2 px-3 font-bold text-stone-800">{String(label)}</td>
-                        <td className="py-2 px-3 font-mono text-[10px] text-stone-500">{String(key)}</td>
-                        {[adm, pos].map((granted, i) => (
-                          <td key={i} className="py-2 px-3 text-center">
-                            {granted ? (
-                              <Check className="w-4 h-4 text-emerald-600 inline" />
-                            ) : (
-                              <X className="w-4 h-4 text-rose-400 inline" />
-                            )}
+                    {ADMIN_MODULE_GROUPS.map((group) => (
+                      <React.Fragment key={group}>
+                        <tr className="bg-stone-100/70">
+                          <td colSpan={MATRIX_ROLES.length + 1} className="py-1.5 px-3 text-[9px] font-black uppercase tracking-widest text-stone-500">
+                            {group}
                           </td>
+                        </tr>
+                        {ADMIN_MODULES.filter((m) => m.group === group).map((mod) => (
+                          <tr key={mod.key} className="hover:bg-stone-50/60">
+                            <td className="py-2 px-3">
+                              <span className="font-bold text-stone-800 block">{mod.label}</span>
+                              <span className="text-[9px] font-mono text-stone-400">{mod.key}</span>
+                            </td>
+                            {MATRIX_ROLES.map((role) => {
+                              const locked = role === "SUPER_ADMIN" || mod.key === "dashboard";
+                              const granted = mod.key === "dashboard" || role === "SUPER_ADMIN"
+                                ? true
+                                : roleMatrix[role]?.[mod.key] !== false;
+                              return (
+                                <td key={role} className="py-2 px-2 text-center">
+                                  <button
+                                    type="button"
+                                    disabled={locked || !isSuper || !matrixLoaded}
+                                    onClick={() => toggleMatrixCell(role, mod.key)}
+                                    title={
+                                      locked
+                                        ? role === "SUPER_ADMIN"
+                                          ? "Süper Admin tüm modülleri görür (kilitli)"
+                                          : "Genel Bakış herkese açık taban erişimdir (kilitli)"
+                                        : granted
+                                        ? "Görünür — gizlemek için tıklayın"
+                                        : "Gizli — göstermek için tıklayın"
+                                    }
+                                    className={`w-9 h-9 inline-flex items-center justify-center rounded-xl border transition ${
+                                      granted
+                                        ? locked
+                                          ? "bg-amber-100 border-amber-300 text-amber-800 cursor-not-allowed"
+                                          : "bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200"
+                                        : "bg-rose-50 border-rose-200 text-rose-400 hover:bg-rose-100"
+                                    } disabled:cursor-not-allowed disabled:hover:bg-inherit`}
+                                  >
+                                    {locked ? <Lock className="w-4 h-4" /> : granted ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
                         ))}
-                      </tr>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <p className="text-[10px] text-stone-400">
-                Matris bilgilendirme amaçlıdır; roller veritabanında tutulur ve ileride modül erişim kısıtları bu tabloya bağlanabilir.
-              </p>
+              <div className="px-5 py-3 border-t border-stone-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-stone-500">
+                <span className="flex items-center gap-1.5"><Lock className="w-3 h-3 text-amber-700" /> Kilitli hücre (Süper Admin / Genel Bakış)</span>
+                <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-emerald-600" /> Menüde görünür</span>
+                <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-rose-400" /> Menüde gizli</span>
+                <span className="text-stone-400">Matris yalnızca menü/sekme görünürlüğünü yönetir; API uçları kendi personel doğrulamalarını yapar.</span>
+              </div>
             </div>
 
+            {/* Rol özet kartları */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                ["Süper Admin", "SUPER_ADMIN", "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans, stok ve ERP."],
-                ["Mağaza Müdürü", "STORE_MANAGER", "Mağaza operasyonu: POS, stok, sipariş ve raporlar. Kullanıcı yönetimi ve kritik ayarlar hariç."],
-                ["Depo Sorumlusu", "WAREHOUSE_KEEPER", "Depo/WMS: stok hareketleri, sayım, transfer, mal kabul. POS ve finansal ekranlara erişemez."],
-                ["POS Kasiyeri", "CASHIER", "Yalnızca Web POS: satış, iade, vardiya aç/kapat. Yönetim ve rapor ekranlarına erişemez."],
-              ].map(([label, code, desc]) => (
-                <div key={String(code)} className="bg-white rounded-2xl border border-stone-200 p-4 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-xs font-bold text-stone-900">{label}</h4>
-                    <code className="text-[10px] font-mono text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{code}</code>
+              {MATRIX_ROLES.map((role) => {
+                const label = role === "SUPER_ADMIN" ? "Süper Admin" : role === "STORE_MANAGER" ? "Mağaza Müdürü" : role === "WAREHOUSE_KEEPER" ? "Depo Sorumlusu" : "POS Kasiyeri";
+                const desc =
+                  role === "SUPER_ADMIN"
+                    ? "Sistemin tüm modüllerine tam erişim: kullanıcı yönetimi, ayarlar, finans, stok ve ERP."
+                    : role === "STORE_MANAGER"
+                    ? "Mağaza operasyonu: stok, sipariş, POS, raporlar ve içerik. Kullanıcı yönetimi ve kritik sistem ayarları bu rolde kapalı gelir."
+                    : role === "WAREHOUSE_KEEPER"
+                    ? "Depo/WMS: stok hareketleri, sayım, transfer, mal kabul. POS ve finansal ekranlar bu rolde kapalı gelir."
+                    : "Yalnızca Web POS: satış, vardiya ve sipariş iade işlemleri. Diğer modüller bu rolde kapalı gelir.";
+                return (
+                  <div key={role} className="bg-white rounded-2xl border border-stone-200 p-4 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-bold text-stone-900">{label}</h4>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                          {matrixOpenCount(role)}/{ADMIN_MODULES.length} modül açık
+                        </span>
+                        <code className="text-[10px] font-mono text-amber-900 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{role}</code>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-stone-500 leading-relaxed">{desc}</p>
                   </div>
-                  <p className="text-[11px] text-stone-500 leading-relaxed">{desc}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

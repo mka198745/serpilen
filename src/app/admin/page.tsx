@@ -27,14 +27,20 @@ import { AdminDashboardClient } from "./AdminDashboardClient";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  let currentUserName = "Yönetici";
+  let currentRole = "SUPER_ADMIN";
+  let currentRoleLabel = "Süper Admin";
   if (AUTH_ENABLED) {
     const sessionUser = await getSessionUser();
-    let staff = !!sessionUser?.isStaff;
-    if (!staff) {
+    let staffUser = sessionUser;
+    if (!staffUser?.isStaff) {
       const { kt } = await searchParams;
-      staff = !!(await getStaffUserFromKt(kt));
+      staffUser = await getStaffUserFromKt(kt);
     }
-    if (!staff) redirect("/?giris=1&next=/admin");
+    if (!staffUser?.isStaff) redirect("/?giris=1&next=/admin");
+    currentUserName = staffUser.name;
+    currentRole = staffUser.role;
+    currentRoleLabel = staffUser.roleLabel;
   }
   const allProds = await db.select().from(products).orderBy(desc(products.id));
   const allVars = await db.select().from(productVariants);
@@ -182,6 +188,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       erpLogs={allErpLogs}
       shifts={allShifts}
       dashboardStats={dashboardStats}
+      currentRole={currentRole}
+      currentUserName={currentUserName}
+      currentRoleLabel={currentRoleLabel}
     />
     </>
   );
