@@ -4,9 +4,13 @@ import { stockTransfers, stockTransferItems, warehouses, products, productVarian
 import { adjustInventory } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const rows = await db.select().from(stockTransfers).orderBy(desc(stockTransfers.id)).limit(50);
   const items = await db.select().from(stockTransferItems);
   const allWh = await db.select().from(warehouses);
@@ -49,6 +53,9 @@ async function markTransfer(id: number, patch: Record<string, unknown>) {
  *  CANCEL    → CANCELLED (yalnızca SHIPPED öncesi)
  */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     transferId?: number;

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPaymentSettingsMasked, savePaymentSettings, PaymentValidationError } from "@/lib/payment-settings";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /** GET /api/payment-settings — Maskeli görünüm (gizli anahtarların DEĞERLERİ asla döndürülmez). */
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const masked = await getPaymentSettingsMasked();
     return NextResponse.json({ success: true, data: masked });
@@ -16,6 +20,9 @@ export async function GET() {
 
 /** POST /api/payment-settings — { patch: {...} } ya da düz nesne. Boş gizli alan = değiştirme. */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const patch =
     body && typeof body === "object" && body.patch && typeof body.patch === "object"

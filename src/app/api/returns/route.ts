@@ -4,9 +4,13 @@ import { orders, orderItems, orderReturns, orderReturnItems, orderStatusHistory,
 import { adjustInventory } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const rows = await db.select().from(orderReturns).orderBy(desc(orderReturns.id)).limit(50);
   const items = await db.select().from(orderReturnItems);
   return NextResponse.json({
@@ -24,6 +28,9 @@ export async function GET() {
  * İade akışı: REQUESTED → APPROVED → RECEIVED (stok geri) → REFUNDED
  */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     orderId?: number;

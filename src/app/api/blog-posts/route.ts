@@ -4,6 +4,7 @@ import { blogPosts } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { slugifyTr, ensureUniqueSlug } from "@/lib/slug";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const VALID_CATEGORIES = [
@@ -48,6 +49,9 @@ export async function GET() {
 
 /** POST /api/blog-posts — Yeni içerik. Slug başlıktan üretilir, çakışırsa -2 eklenir. */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const title = cleanString(body?.title, 300);
   const content = cleanString(body?.content, 100_000);
@@ -92,6 +96,9 @@ export async function POST(request: Request) {
 
 /** PATCH /api/blog-posts — id ile günceller. Slug DEĞİŞMEZ (linkler bozulmasın). */
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const id = Number(body?.id);
   if (!Number.isFinite(id)) {
@@ -151,6 +158,9 @@ export async function PATCH(request: Request) {
 
 /** DELETE /api/blog-posts?id=N (veya gövdede { id }) — İçeriği kalıcı siler. */
 export async function DELETE(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const url = new URL(request.url);
   let id = Number(url.searchParams.get("id"));
   if (!Number.isFinite(id)) {

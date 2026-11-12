@@ -9,9 +9,13 @@ import {
 } from "@/lib/inventory-engine";
 import { desc } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   await expireReservations();
   const rows = await db.select().from(inventoryReservations).orderBy(desc(inventoryReservations.id)).limit(60);
   const allProds = await db.select({ id: products.id, name: products.name, sku: products.sku }).from(products);
@@ -33,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     warehouseId?: number;

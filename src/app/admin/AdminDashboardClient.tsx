@@ -67,6 +67,7 @@ import { SiteManagement } from "@/components/admin/SiteManagement";
 import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
+import { authFetch } from "@/lib/client-auth";
 interface AdminDashboardClientProps {
   products: any[];
   categories: any[];
@@ -170,7 +171,7 @@ export function AdminDashboardClient({
 
   const loadPosShifts = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/pos/shift?warehouseId=2", { cache: "no-store" });
+      const res = await authFetch("/api/pos/shift?warehouseId=2", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setShiftsList(data.history || []);
@@ -275,7 +276,7 @@ export function AdminDashboardClient({
   const loadPurchasing = React.useCallback(async () => {
     setPurchasingBusy(true);
     try {
-      const res = await fetch("/api/suppliers", { cache: "no-store" });
+      const res = await authFetch("/api/suppliers", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setSuppliersList(data.suppliers);
@@ -296,7 +297,7 @@ export function AdminDashboardClient({
 
   const handleCreateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/suppliers", {
+    const res = await authFetch("/api/suppliers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "CREATE_SUPPLIER", ...newSupplier }),
     });
@@ -313,7 +314,7 @@ export function AdminDashboardClient({
 
   const handleCreateRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/suppliers", {
+    const res = await authFetch("/api/suppliers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "CREATE_REQUEST",
@@ -335,7 +336,7 @@ export function AdminDashboardClient({
   };
 
   const handleRequestAction = async (requestId: number, action: "APPROVE_REQUEST" | "REJECT_REQUEST" | "CONVERT_REQUEST", extra?: any) => {
-    const res = await fetch("/api/suppliers", {
+    const res = await authFetch("/api/suppliers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, requestId, ...extra }),
     });
@@ -350,7 +351,7 @@ export function AdminDashboardClient({
 
   const handleCreatePO = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/suppliers", {
+    const res = await authFetch("/api/suppliers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "CREATE_PO",
@@ -387,7 +388,7 @@ export function AdminDashboardClient({
       setPurchasingFeedback({ text: "Kabul edilecek miktar girin.", isError: true });
       return;
     }
-    const res = await fetch("/api/suppliers", {
+    const res = await authFetch("/api/suppliers", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "RECEIVE_GOODS", purchaseOrderId: receiveModalPO.id, lines }),
     });
@@ -396,7 +397,7 @@ export function AdminDashboardClient({
       setPurchasingFeedback({ text: `Mal kabul fişi ${data.data.receipt.receiptNumber} — ${data.data.receivedQty} adet stoğa girdi (${data.data.poStatus}).`, isError: false });
       setReceiveModalPO(null);
       void loadPurchasing();
-      const invRes = await fetch("/api/inventory");
+      const invRes = await authFetch("/api/inventory");
       const invData = await invRes.json();
       if (invData.success) setInventoryList(invData.inventory);
     } else {
@@ -407,7 +408,7 @@ export function AdminDashboardClient({
   const loadReport = React.useCallback(async (days: number) => {
     setReportBusy(true);
     try {
-      const res = await fetch(`/api/reports?days=${days}`, { cache: "no-store" });
+      const res = await authFetch(`/api/reports?days=${days}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) setReportData(data);
     } finally {
@@ -430,13 +431,13 @@ export function AdminDashboardClient({
   };
 
   const refreshOrders = async () => {
-    const res = await fetch("/api/orders", { cache: "no-store" });
+    const res = await authFetch("/api/orders", { cache: "no-store" });
     const data = await res.json();
     if (data.success) setOrders(data.data);
   };
 
   const loadReturns = React.useCallback(async () => {
-    const res = await fetch("/api/returns", { cache: "no-store" });
+    const res = await authFetch("/api/returns", { cache: "no-store" });
     const data = await res.json();
     if (data.success) setReturnsList(data.data);
   }, []);
@@ -446,7 +447,7 @@ export function AdminDashboardClient({
   }, [activeTab, ordersSubTab, loadReturns]);
 
   const advanceOrder = async (id: number, status: string) => {
-    const res = await fetch("/api/orders", {
+    const res = await authFetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status, changedBy: "Sipariş Yönetimi" }),
@@ -491,7 +492,7 @@ export function AdminDashboardClient({
       changedBy: "Sipariş Yönetimi",
     };
     if (markShipped) payload.status = "SHIPPED";
-    const res = await fetch("/api/orders", {
+    const res = await authFetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -531,7 +532,7 @@ export function AdminDashboardClient({
       setOrderFeedback({ text: "İade edilecek kalem/adet seçin.", isError: true });
       return;
     }
-    const res = await fetch("/api/returns", {
+    const res = await authFetch("/api/returns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "CREATE", orderId: returnModalOrder.id, items, reason: "Müşteri iadesi" }),
@@ -548,7 +549,7 @@ export function AdminDashboardClient({
   };
 
   const returnAction = async (returnId: number, action: string) => {
-    const res = await fetch("/api/returns", {
+    const res = await authFetch("/api/returns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, returnId }),
@@ -638,7 +639,7 @@ export function AdminDashboardClient({
   const loadUsers = React.useCallback(async () => {
     setUsersBusy(true);
     try {
-      const res = await fetch("/api/users", { cache: "no-store" });
+      const res = await authFetch("/api/users", { cache: "no-store" });
       const data = await res.json();
       if (data?.success) setUsersList(data.data);
     } catch {
@@ -651,7 +652,7 @@ export function AdminDashboardClient({
   const loadAudit = React.useCallback(async () => {
     setAuditBusy(true);
     try {
-      const res = await fetch("/api/audit", { cache: "no-store" });
+      const res = await authFetch("/api/audit", { cache: "no-store" });
       const data = await res.json();
       if (data?.success) setAuditList(data.data || []);
     } catch {
@@ -672,7 +673,7 @@ export function AdminDashboardClient({
     setAddingUser(true);
     setUserFeedback(null);
     try {
-      const res = await fetch("/api/users", {
+      const res = await authFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newUser),
@@ -694,7 +695,7 @@ export function AdminDashboardClient({
   };
 
   const updateUser = async (id: number, patch: { role?: string; isActive?: boolean }) => {
-    const res = await fetch("/api/users", {
+    const res = await authFetch("/api/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...patch }),
@@ -706,7 +707,7 @@ export function AdminDashboardClient({
   };
 
   const refreshProducts = async () => {
-    const pRes = await fetch("/api/products");
+    const pRes = await authFetch("/api/products");
     const pData = await pRes.json();
     if (pData.success) setProducts(pData.data);
   };
@@ -714,7 +715,7 @@ export function AdminDashboardClient({
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
-    const res = await fetch("/api/products", {
+    const res = await authFetch("/api/products", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -748,7 +749,7 @@ export function AdminDashboardClient({
   };
 
   const toggleProductFlag = async (id: number, field: "isFeatured" | "isActive", value: boolean) => {
-    const res = await fetch("/api/products", {
+    const res = await authFetch("/api/products", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, [field]: value }),
@@ -762,7 +763,7 @@ export function AdminDashboardClient({
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCategory.name.trim()) return;
-    const res = await fetch("/api/categories", {
+    const res = await authFetch("/api/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -784,7 +785,7 @@ export function AdminDashboardClient({
   const handleAddBrandAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandAdmin.trim()) return;
-    const res = await fetch("/api/brands", {
+    const res = await authFetch("/api/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newBrandAdmin }),
@@ -800,7 +801,7 @@ export function AdminDashboardClient({
   };
 
   const handleToggleBrand = async (b: any) => {
-    const res = await fetch("/api/brands", {
+    const res = await authFetch("/api/brands", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: b.id, isActive: !(b.isActive !== false) }),
@@ -816,7 +817,7 @@ export function AdminDashboardClient({
 
   const handleSaveBrand = async () => {
     if (editingBrandId == null || !editingBrandName.trim()) return;
-    const res = await fetch("/api/brands", {
+    const res = await authFetch("/api/brands", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: editingBrandId, name: editingBrandName.trim() }),
@@ -839,7 +840,7 @@ export function AdminDashboardClient({
       return;
     }
     if (!window.confirm(`"${b.name}" markası silinsin mi? Bu işlem geri alınamaz.`)) return;
-    const res = await fetch("/api/brands", {
+    const res = await authFetch("/api/brands", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: b.id }),
@@ -860,7 +861,7 @@ export function AdminDashboardClient({
       setCatalogFeedback({ text: "Önce bir ürün seçin.", isError: true });
       return;
     }
-    const res = await fetch("/api/variants", {
+    const res = await authFetch("/api/variants", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -894,10 +895,10 @@ export function AdminDashboardClient({
     setWmsBusy(true);
     try {
       const [tRes, cRes, lRes, rRes] = await Promise.all([
-        fetch("/api/transfers", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
-        fetch("/api/counts", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
-        fetch("/api/locations", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
-        fetch("/api/reservations", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        authFetch("/api/transfers", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        authFetch("/api/counts", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        authFetch("/api/locations", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        authFetch("/api/reservations", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
       ]);
       if (tRes?.success) setTransfers(tRes.data);
       if (cRes?.success) setCountSessions(cRes.data);
@@ -909,7 +910,7 @@ export function AdminDashboardClient({
   }, []);
 
   const loadInventory = React.useCallback(async () => {
-    const invRes = await fetch("/api/inventory", { cache: "no-store" });
+    const invRes = await authFetch("/api/inventory", { cache: "no-store" });
     const invData = await invRes.json();
     if (invData.success) {
       setInventoryList(invData.inventory);
@@ -925,7 +926,7 @@ export function AdminDashboardClient({
   }, [activeTab, loadWmsSection, loadInventory]);
 
   const transferAction = async (action: string, transferId?: number, payload?: Record<string, unknown>) => {
-    const res = await fetch("/api/transfers", {
+    const res = await authFetch("/api/transfers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, transferId, ...payload }),
@@ -957,7 +958,7 @@ export function AdminDashboardClient({
   };
 
   const handleStartCount = async () => {
-    const res = await fetch("/api/counts", {
+    const res = await authFetch("/api/counts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "START", warehouseId: Number(selectedWhFilter === "ALL" ? "1" : selectedWhFilter) }),
@@ -974,7 +975,7 @@ export function AdminDashboardClient({
   const handleCountScan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeCountSession || !countBarcodeInput.trim()) return;
-    const res = await fetch("/api/counts", {
+    const res = await authFetch("/api/counts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -999,7 +1000,7 @@ export function AdminDashboardClient({
 
   const handleCompleteCount = async () => {
     if (!activeCountSession) return;
-    const res = await fetch("/api/counts", {
+    const res = await authFetch("/api/counts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "COMPLETE", sessionId: activeCountSession.id }),
@@ -1016,7 +1017,7 @@ export function AdminDashboardClient({
 
   const handleAddLocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/locations", {
+    const res = await authFetch("/api/locations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newLocation),
@@ -1037,7 +1038,7 @@ export function AdminDashboardClient({
     setAddingWarehouseForm(true);
     setWmsFeedback(null);
     try {
-      const res = await fetch("/api/warehouses", {
+      const res = await authFetch("/api/warehouses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1070,7 +1071,7 @@ export function AdminDashboardClient({
   const handleToggleWarehouse = async (id: number, nextActive: boolean) => {
     setWmsFeedback(null);
     try {
-      const res = await fetch("/api/warehouses", {
+      const res = await authFetch("/api/warehouses", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, isActive: nextActive }),
@@ -1092,7 +1093,7 @@ export function AdminDashboardClient({
     if (typeof window !== "undefined" && !window.confirm(`"${name}" deposu silinsin mi? Bu işlem geri alınamaz.`)) return;
     setWmsFeedback(null);
     try {
-      const res = await fetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.success) {
         setWmsFeedback({ text: data?.error?.message || "Depo silinemedi.", isError: true });
@@ -1106,7 +1107,7 @@ export function AdminDashboardClient({
   };
 
   const handleReserveDemo = async () => {
-    const res = await fetch("/api/reservations", {
+    const res = await authFetch("/api/reservations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1130,7 +1131,7 @@ export function AdminDashboardClient({
   };
 
   const handleReleaseReservation = async (referenceId: string) => {
-    const res = await fetch("/api/reservations", {
+    const res = await authFetch("/api/reservations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "RELEASE", referenceId }),
@@ -1199,7 +1200,7 @@ export function AdminDashboardClient({
     e.preventDefault();
     try {
       const { photos, ...rest } = newProd;
-      const res = await fetch("/api/products", {
+      const res = await authFetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...rest, images: photos }),
@@ -1209,7 +1210,7 @@ export function AdminDashboardClient({
         alert("Ürün başarıyla oluşturuldu.");
         setIsAddProductOpen(false);
         // Refresh product list
-        const pRes = await fetch("/api/products");
+        const pRes = await authFetch("/api/products");
         const pData = await pRes.json();
         if (pData.success) setProducts(pData.data);
       } else {
@@ -1223,7 +1224,7 @@ export function AdminDashboardClient({
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/inventory", {
+      const res = await authFetch("/api/inventory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1236,7 +1237,7 @@ export function AdminDashboardClient({
         alert("Depolar arası transfer tamamlandı! Ref: " + data.ref);
         setIsTransferOpen(false);
         // Refresh inventory
-        const invRes = await fetch("/api/inventory");
+        const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
         if (invData.success) {
           setInventoryList(invData.inventory);
@@ -1253,7 +1254,7 @@ export function AdminDashboardClient({
   const handleAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/inventory", {
+      const res = await authFetch("/api/inventory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1265,7 +1266,7 @@ export function AdminDashboardClient({
       if (data.success) {
         alert(data.message);
         setIsAdjustOpen(false);
-        const invRes = await fetch("/api/inventory");
+        const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
         if (invData.success) {
           setInventoryList(invData.inventory);
@@ -1280,7 +1281,7 @@ export function AdminDashboardClient({
   const handleReceiveGoods = async (poId: number) => {
     if (!confirm("Bu satın alma siparişinin mal kabulünü onaylıyor musunuz? (Depo stokları otomatik artacaktır)")) return;
     try {
-      const res = await fetch("/api/suppliers", {
+      const res = await authFetch("/api/suppliers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1292,10 +1293,10 @@ export function AdminDashboardClient({
       if (data.success) {
         alert(data.message);
         // Refresh POs
-        const poRes = await fetch("/api/suppliers");
+        const poRes = await authFetch("/api/suppliers");
         const poData = await poRes.json();
         if (poData.success) setPurchaseOrders(poData.purchaseOrders);
-        const invRes = await fetch("/api/inventory");
+        const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
         if (invData.success) setInventoryList(invData.inventory);
       } else {
@@ -1309,7 +1310,7 @@ export function AdminDashboardClient({
   const handleAddB2B = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/b2b", {
+      const res = await authFetch("/api/b2b", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newB2B),
@@ -1318,7 +1319,7 @@ export function AdminDashboardClient({
       if (data.success) {
         alert("B2B Cari Kartı Başarıyla Açıldı.");
         setIsAddB2BOpen(false);
-        const cRes = await fetch("/api/b2b");
+        const cRes = await authFetch("/api/b2b");
         const cData = await cRes.json();
         if (cData.success) setCustomers((prev) => [...prev, data.data]);
       }
@@ -2092,7 +2093,7 @@ export function AdminDashboardClient({
                           <td className="py-3 px-3">
                             <button
                               onClick={async () => {
-                                await fetch("/api/categories", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id, isActive: !c.isActive }) });
+                                await authFetch("/api/categories", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id, isActive: !c.isActive }) });
                                 setCategoriesList((prev) => prev.map((x) => x.id === c.id ? { ...x, isActive: !x.isActive } : x));
                               }}
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.isActive !== false ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-500"}`}

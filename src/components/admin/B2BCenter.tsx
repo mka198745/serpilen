@@ -15,6 +15,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 type SubTab = "accounts" | "pricelists" | "receivables";
 
 const RISK_COLORS: Record<string, string> = {
@@ -47,8 +48,8 @@ export function B2BCenter() {
     setBusy(true);
     try {
       const [b2b, pl] = await Promise.all([
-        fetch("/api/b2b", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/price-lists", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/b2b", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/price-lists", { cache: "no-store" }).then((r) => r.json()),
       ]);
       if (b2b?.success) setAccounts(b2b.data);
       if (pl?.success) {
@@ -67,7 +68,7 @@ export function B2BCenter() {
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
 
   const openStatement = async (id: number) => {
-    const res = await fetch(`/api/b2b?statement=${id}`, { cache: "no-store" }).then((r) => r.json());
+    const res = await authFetch(`/api/b2b?statement=${id}`, { cache: "no-store" }).then((r) => r.json());
     if (res.success) setStatement(res);
   };
 

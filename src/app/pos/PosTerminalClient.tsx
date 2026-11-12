@@ -30,6 +30,7 @@ import {
   Coins,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 interface PosCartItem {
   productId: number;
   variantId: number | null;
@@ -277,7 +278,7 @@ export function PosTerminalClient({
         })),
       };
 
-      const res = await fetch("/api/orders", {
+      const res = await authFetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderPayload),
@@ -307,7 +308,7 @@ export function PosTerminalClient({
 
         // Refresh shift totals
         if (shift) {
-          const sRes = await fetch("/api/pos/shift?warehouseId=2");
+          const sRes = await authFetch("/api/pos/shift?warehouseId=2");
           const sData = await sRes.json();
           if (sData.success && sData.currentShift) {
             setShift(sData.currentShift);
@@ -325,7 +326,7 @@ export function PosTerminalClient({
   // Shift Management: Open & Close
   const handleStartShift = async () => {
     try {
-      const res = await fetch("/api/pos/shift", {
+      const res = await authFetch("/api/pos/shift", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -351,7 +352,7 @@ export function PosTerminalClient({
   const handleCloseShift = async () => {
     if (!shift) return;
     try {
-      const res = await fetch("/api/pos/shift", {
+      const res = await authFetch("/api/pos/shift", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -379,7 +380,7 @@ export function PosTerminalClient({
     if (!shift || !cashTransAmount) return;
 
     try {
-      const res = await fetch("/api/pos/shift", {
+      const res = await authFetch("/api/pos/shift", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -399,7 +400,7 @@ export function PosTerminalClient({
         showFeedback(data.message);
 
         // Refresh shift totals
-        const sRes = await fetch("/api/pos/shift?warehouseId=2");
+        const sRes = await authFetch("/api/pos/shift?warehouseId=2");
         const sData = await sRes.json();
         if (sData.success && sData.currentShift) {
           setShift(sData.currentShift);
@@ -420,7 +421,7 @@ export function PosTerminalClient({
     setIsSearchingReturn(true);
     setReturnOrderData(null);
     try {
-      const res = await fetch(`/api/orders?orderNumber=${encodeURIComponent(returnSearchQuery.trim())}`);
+      const res = await authFetch(`/api/orders?orderNumber=${encodeURIComponent(returnSearchQuery.trim())}`);
       const data = await res.json();
       setIsSearchingReturn(false);
       if (data.success && data.data) {
@@ -463,7 +464,7 @@ export function PosTerminalClient({
     }
 
     try {
-      const res = await fetch("/api/pos/return", {
+      const res = await authFetch("/api/pos/return", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -484,7 +485,7 @@ export function PosTerminalClient({
 
         // Refresh shift totals
         if (shift) {
-          const sRes = await fetch("/api/pos/shift?warehouseId=2");
+          const sRes = await authFetch("/api/pos/shift?warehouseId=2");
           const sData = await sRes.json();
           if (sData.success && sData.currentShift) {
             setShift(sData.currentShift);
@@ -502,7 +503,7 @@ export function PosTerminalClient({
   const handleCreateFastCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/b2b", {
+      const res = await authFetch("/api/b2b", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

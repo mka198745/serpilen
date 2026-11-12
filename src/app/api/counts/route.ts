@@ -12,6 +12,7 @@ import {
 import { adjustInventory } from "@/lib/inventory-engine";
 import { and, desc, eq, sql } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /** Barkod/SKU'dan ürün + varyant çözümler. */
@@ -36,7 +37,10 @@ async function currentExpected(warehouseId: number, productId: number, variantId
   return rows[0]?.physicalQty ?? 0;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const sessions = await db.select().from(stockCountSessions).orderBy(desc(stockCountSessions.id)).limit(20);
   const items = await db.select().from(stockCountItems).orderBy(desc(stockCountItems.id));
   const allWh = await db.select().from(warehouses);
@@ -65,6 +69,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     warehouseId?: number;

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { PanelShell } from "@/components/admin/SiteManagement";
 
+import { authFetch } from "@/lib/client-auth";
 const inputCls =
   "w-full px-3 py-2 border border-stone-300 rounded-xl text-xs focus:outline-none focus:border-amber-700 bg-white";
 const labelCls = "block text-[10px] font-bold text-stone-500 uppercase mb-1";
@@ -181,7 +182,7 @@ export function PaymentApiSettings() {
 
   const load = () => {
     setLoading(true);
-    fetch("/api/payment-settings", { cache: "no-store" })
+    authFetch("/api/payment-settings", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d?.success) applyMasked(d.data);
@@ -214,7 +215,7 @@ export function PaymentApiSettings() {
             ...(iyzico.apiSecret.trim() ? { "site.payment.iyzico.api_secret": iyzico.apiSecret.trim() } : {}),
           };
     try {
-      const res = await fetch("/api/payment-settings", {
+      const res = await authFetch("/api/payment-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patch }),

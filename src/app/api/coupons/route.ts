@@ -3,7 +3,11 @@ import { db } from "@/db";
 import { coupons } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 
-export async function GET() {
+import { requireStaff } from "@/lib/auth";
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const all = await db.select().from(coupons);
     return NextResponse.json({ success: true, data: all });
@@ -13,6 +17,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { action = "CREATE" } = body;

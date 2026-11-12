@@ -5,6 +5,7 @@ import { adjustInventory } from "@/lib/inventory-engine";
 import { erpAdapter } from "@/lib/erp-adapter";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 // Sipariş yaşam döngüsü — geçerli durum geçişleri
 const ORDER_FLOW: Record<string, string[]> = {
   PENDING: ["PAID", "CANCELLED"],
@@ -37,6 +38,12 @@ export async function GET(request: Request) {
     const customerId = searchParams.get("customerId");
     const orderNumber = searchParams.get("orderNumber"); // müşteri sipariş takibi
     const phone = searchParams.get("phone");
+
+    // Toplu sipariş listesi yalnızca personele açıktır; müşteri takibi (orderNumber+phone) herkese açıktır.
+    if (!orderNumber) {
+      const __gate = await requireStaff(request);
+      if (!__gate.ok) return __gate.response;
+    }
 
     // Tekil sipariş takibi (müşteri): sipariş no + telefon eşleşmesi
     if (orderNumber) {
@@ -359,6 +366,9 @@ export async function POST(request: Request) {
 
 /** PATCH /api/orders — durum ilerletme, kargo bilgisi, iptal. */
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const id = Number(body.id);

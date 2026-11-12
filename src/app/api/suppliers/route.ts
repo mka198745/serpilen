@@ -19,6 +19,7 @@ import {
 import { adjustInventory } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 function enrichedPOs(allSuppliers: any[], allPOs: any[], allPOItems: any[], allProds: any[]) {
@@ -46,6 +47,9 @@ function enrichedPOs(allSuppliers: any[], allPOs: any[], allPOItems: any[], allP
 let allWhCache: any[] = [];
 
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const allSuppliers = await db.select().from(suppliers).orderBy(desc(suppliers.id));
@@ -141,6 +145,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { action } = body;

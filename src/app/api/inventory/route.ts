@@ -4,7 +4,11 @@ import { inventory, inventoryLedger, warehouses, products, productVariants } fro
 import { adjustInventory, transferBetweenWarehouses } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get("warehouseId");
@@ -71,6 +75,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { action } = body;

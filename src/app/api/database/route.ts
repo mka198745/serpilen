@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { sqlite, sqlitePath } from "@/db";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 function backupDir(): string {
@@ -45,6 +46,9 @@ function dbFileInfo() {
 
 /** GET /api/database — DB bilgisi + tablo istatistikleri + yedekler. ?download=<ad> ile yedek indirilir. */
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const url = new URL(request.url);
   const download = url.searchParams.get("download");
   if (download) {
@@ -94,6 +98,9 @@ export async function GET(request: Request) {
 
 /** POST /api/database { action: "backup" } — Tutarlı bir yedek dosyası üretir (VACUUM INTO). */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { action?: string };
   if (body?.action !== "backup") {
     return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' kullanın." } }, { status: 422 });

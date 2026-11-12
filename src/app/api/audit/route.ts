@@ -3,6 +3,7 @@ import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLogs } from "@/db/schema";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const SECURITY_SCOPED_ACTIONS = [
@@ -19,6 +20,9 @@ const SECURITY_SCOPED_ACTIONS = [
 
 /** GET /api/audit?scope=security — denetim kayıtları (koruma kaldırıldı; açık erişim). */
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const { searchParams } = new URL(request.url);
   const scope = searchParams.get("scope");
 
@@ -42,6 +46,9 @@ export async function GET(request: Request) {
 
 /** POST /api/audit — manuel denetim kaydı. */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { action?: string; entity?: string; details?: string; userName?: string };
   if (!body.action || !body.entity) {
     return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "action ve entity zorunludur." } }, { status: 422 });

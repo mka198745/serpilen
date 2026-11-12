@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { ImagePlus, Link2, Upload, X, Star } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 export const MAX_PHOTOS = 6;
 
 interface PhotoManagerProps {
@@ -50,7 +51,7 @@ export function PhotoManager({ photos, onChange }: PhotoManagerProps) {
       for (const file of picked) {
         const form = new FormData();
         form.append("file", file);
-        const res = await fetch("/api/uploads", { method: "POST", body: form });
+        const res = await authFetch("/api/uploads", { method: "POST", body: form });
         const data = await res.json();
         if (!data.success) {
           setError(data?.error || `"${file.name}" yüklenemedi.`);

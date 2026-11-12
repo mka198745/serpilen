@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
+import { authFetch } from "@/lib/client-auth";
 type SiteTab = "header" | "footer" | "cart" | "database";
 
 const inputCls =
@@ -60,7 +61,7 @@ function useSiteSettings() {
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null);
 
   useEffect(() => {
-    fetch("/api/site-settings", { cache: "no-store" })
+    authFetch("/api/site-settings", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d?.success && d.data) setForm({ ...DEFAULT_SITE_SETTINGS, ...d.data });
@@ -75,7 +76,7 @@ function useSiteSettings() {
     try {
       const patch: Record<string, string> = {};
       for (const k of keys) patch[k] = form[k] ?? "";
-      const res = await fetch("/api/site-settings", {
+      const res = await authFetch("/api/site-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patch }),
@@ -553,7 +554,7 @@ function DatabaseSettingsPanel() {
 
   const load = () => {
     setLoading(true);
-    fetch("/api/database", { cache: "no-store" })
+    authFetch("/api/database", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d?.success) setInfo(d.data);
@@ -568,7 +569,7 @@ function DatabaseSettingsPanel() {
     setBackingUp(true);
     setFeedback(null);
     try {
-      const res = await fetch("/api/database", {
+      const res = await authFetch("/api/database", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "backup" }),

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { seedDatabase } from "@/db/seed";
 
-export async function GET() {
+import { requireStaff } from "@/lib/auth";
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const res = await seedDatabase();
     return NextResponse.json(res);
@@ -11,7 +15,10 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const res = await seedDatabase();
     return NextResponse.json(res);

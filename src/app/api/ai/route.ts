@@ -11,6 +11,7 @@ import { db } from "@/db";
 import { products, auditLogs } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const GUARDRAILS = {
@@ -18,7 +19,10 @@ const GUARDRAILS = {
   content: "Guardrail: Üretilen içerikler önizleme modundadır. 'Uygula' onayı verilmeden ürüne yazılmaz.",
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   return NextResponse.json({
     success: true,
     modules: [
@@ -42,6 +46,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { module, productId, prompt, tone, keywords } = body;

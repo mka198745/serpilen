@@ -24,6 +24,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 export function ErpIntegrationConsole() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any | null>(null);
@@ -35,7 +36,7 @@ export function ErpIntegrationConsole() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/erp?entityType=${entityFilter}&status=${statusFilter}`);
+      const res = await authFetch(`/api/erp?entityType=${entityFilter}&status=${statusFilter}`);
       const json = await res.json();
       if (json.success) {
         setData(json);
@@ -58,7 +59,7 @@ export function ErpIntegrationConsole() {
 
   const handleSetProvider = async (providerId: string) => {
     try {
-      const res = await fetch("/api/erp", {
+      const res = await authFetch("/api/erp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "SET_PROVIDER", provider: providerId }),
@@ -78,7 +79,7 @@ export function ErpIntegrationConsole() {
   const handleAction = async (action: string, payload: any = {}) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/erp", {
+      const res = await authFetch("/api/erp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...payload }),

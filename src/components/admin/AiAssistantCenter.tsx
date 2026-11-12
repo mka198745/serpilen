@@ -23,6 +23,7 @@ import {
   Coins,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 type AiResult = any;
 
 const MODULES = [
@@ -87,7 +88,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/ai", {
+      const res = await authFetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ module: moduleId }),
@@ -113,7 +114,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
     setChatInput("");
 
     try {
-      const res = await fetch("/api/ai", {
+      const res = await authFetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ module: "chat", prompt: msg }),
@@ -134,7 +135,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
     setGeneratedContent(null);
     setApplied(false);
     try {
-      const res = await fetch("/api/ai", {
+      const res = await authFetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ module: "content_generator", productId: Number(contentProductId), tone: contentTone }),
@@ -155,7 +156,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
     if (!generatedContent) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/ai", {
+      const res = await authFetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

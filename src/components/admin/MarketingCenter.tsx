@@ -16,6 +16,7 @@ import {
   BadgeCheck,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 interface Props {
   categories: any[];
   brands: any[];
@@ -82,12 +83,12 @@ export function MarketingCenter({ categories, brands }: Props) {
     setBusy(true);
     try {
       const [pr, cp, ly, rv, rvA, qs] = await Promise.all([
-        fetch("/api/promotions", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/coupons", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/loyalty", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/reviews?all=1", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/promotions", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/coupons", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/loyalty", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/reviews?all=1", { cache: "no-store" }).then((r) => r.json()),
         Promise.resolve({ success: true, data: [] }),
-        fetch("/api/questions?all=1", { cache: "no-store" }).then((r) => r.json()),
+        authFetch("/api/questions?all=1", { cache: "no-store" }).then((r) => r.json()),
       ]);
       if (pr?.success) setPromotions(pr.data);
       if (cp?.success) setCoupons(cp.data);
@@ -142,7 +143,7 @@ export function MarketingCenter({ categories, brands }: Props) {
   };
 
   const handleToggleCoupon = async (id: number, active: boolean) => {
-    const res = await fetch("/api/coupons", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "TOGGLE", id, isActive: !active }) });
+    const res = await authFetch("/api/coupons", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "TOGGLE", id, isActive: !active }) });
     if (res.ok) void loadAll();
   };
 

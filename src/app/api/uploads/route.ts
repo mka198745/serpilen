@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+import { requireStaff } from "@/lib/auth";
 /**
  * Site deposuna ürün görseli yükleme.
  * POST multipart/form-data, alan adı: "file".
@@ -18,6 +19,9 @@ const ALLOWED: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const form = await request.formData();
     const file = form.get("file");

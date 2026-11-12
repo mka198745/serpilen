@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { users, adminSessions } from "@/db/schema";
 import { and, eq, gt, isNull } from "drizzle-orm";
@@ -176,6 +177,39 @@ export async function getSessionUserFromRequest(request: Request): Promise<Sessi
   const byCookie = await getSessionUser();
   if (byCookie) return byCookie;
   return getUserByToken(getRequestToken(request));
+}
+
+export type StaffGate =
+  | { ok: true; user: SessionUser }
+  | { ok: false; response: NextResponse };
+
+/**
+ * Personel kapısı (route handler'lar için): giriş yoksa 401,
+ * personel değilse 403 döner. Kullanım:
+ *   const gate = await requireStaff(request);
+ *   if (!gate.ok) return gate.response;
+ */
+export async function requireStaff(request: Request): Promise<StaffGate> {
+  const user = await getSessionUserFromRequest(request);
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { success: false, error: { code: "UNAUTHENTICATED", message: "Bu işlem için giriş yapmalısınız." } },
+        { status: 401 }
+      ),
+    };
+  }
+  if (!user.isStaff) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { success: false, error: { code: "FORBIDDEN", message: "Bu işlem için personel yetkisi gerekiyor." } },
+        { status: 403 }
+      ),
+    };
+  }
+  return { ok: true, user };
 }
 
 /** Proxy arkasında tarayıcının gördüğü kök adres (mutlak yönlendirmeler için).

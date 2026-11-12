@@ -4,9 +4,13 @@ import { priceLists, priceListItems, priceTiers, products, customers, auditLogs 
 import { getTierLadder, quoteCart } from "@/lib/pricing-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const ladderProductId = searchParams.get("ladderProductId");
@@ -44,6 +48,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { action = "CREATE_LIST" } = body;

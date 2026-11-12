@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users, auditLogs } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const ROLES = ["SUPER_ADMIN", "STORE_MANAGER", "WAREHOUSE_KEEPER", "CASHIER", "B2B_MANAGER"] as const;
@@ -16,7 +17,10 @@ const ROLE_LABELS: Record<string, string> = {
   B2B_MANAGER: "B2B Satış Temsilcisi",
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const all = await db
     .select({
       id: users.id,
@@ -44,6 +48,9 @@ export async function GET() {
 
 /** POST /api/users — Yeni personel kaydı. Parola doğrudan üretilir (giriş modülü kapalı olduğundan yedek tutulur). */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     email?: string;
@@ -97,6 +104,9 @@ export async function POST(request: Request) {
 
 /** PATCH /api/users — Rol, durum ve iletişim güncellemesi. */
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     id?: number;
     role?: string;

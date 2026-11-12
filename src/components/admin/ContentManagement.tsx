@@ -23,6 +23,7 @@ import {
   Search,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 const CATEGORIES = [
   "Dikiş Rehberi",
   "Malzeme Rehberi",
@@ -90,7 +91,7 @@ export function ContentManagement() {
 
   const load = () => {
     setLoading(true);
-    fetch("/api/blog-posts", { cache: "no-store" })
+    authFetch("/api/blog-posts", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         if (d?.success) setPosts(d.data || []);
@@ -211,7 +212,7 @@ export function ContentManagement() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: fd });
+      const res = await authFetch("/api/uploads", { method: "POST", body: fd });
       const d = await res.json();
       if (d.success) {
         insertAtCursor(`[media:image]${d.data.url}[/media]`);
@@ -261,12 +262,12 @@ export function ContentManagement() {
         if (Number.isFinite(d.getTime())) payload.publishedAt = d.toISOString();
       }
       const res = editing
-        ? await fetch("/api/blog-posts", {
+        ? await authFetch("/api/blog-posts", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: editing.id, ...payload }),
           })
-        : await fetch("/api/blog-posts", {
+        : await authFetch("/api/blog-posts", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -292,7 +293,7 @@ export function ContentManagement() {
       ? { id: post.id, publishedAt: new Date().toISOString() }
       : { id: post.id, isPublished: !post.isPublished };
     try {
-      const res = await fetch("/api/blog-posts", {
+      const res = await authFetch("/api/blog-posts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyPayload),
@@ -315,7 +316,7 @@ export function ContentManagement() {
   const remove = async (post: BlogPost) => {
     if (typeof window !== "undefined" && !window.confirm(`"${post.title}" silinsin mi? Bu işlem geri alınamaz.`)) return;
     try {
-      const res = await fetch(`/api/blog-posts?id=${post.id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/blog-posts?id=${post.id}`, { method: "DELETE" });
       const d = await res.json();
       if (d.success) {
         setPosts((prev) => prev.filter((p) => p.id !== post.id));
@@ -334,7 +335,7 @@ export function ContentManagement() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: fd });
+      const res = await authFetch("/api/uploads", { method: "POST", body: fd });
       const d = await res.json();
       if (d.success) {
         setForm((f) => ({ ...f, imageUrl: d.data.url }));

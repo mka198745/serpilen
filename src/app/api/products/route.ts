@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { products, productVariants, productImages, categories, brands, inventory } from "@/db/schema";
 import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -189,6 +190,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const {
@@ -261,6 +265,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const id = Number(body.id);

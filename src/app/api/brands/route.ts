@@ -4,6 +4,7 @@ import { brands, products } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { ensureUniqueSlug, slugifyTr } from "@/lib/slug";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -13,6 +14,9 @@ export async function GET() {
 
 /** POST /api/brands — Admin panelinden manuel marka ekleme. Aynı isim varsa mevcudu döner (idempotent). */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { name?: string };
   const name = String(body?.name || "").trim();
 
@@ -42,6 +46,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     id?: number;
     name?: string;
@@ -75,6 +82,9 @@ export async function PATCH(request: Request) {
 
 /** DELETE /api/brands — Marka silme. Ürünü olan marka silinemez (önce ürünleri taşıyın/pasife alın). */
 export async function DELETE(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { id?: number };
   const id = Number(body?.id);
   if (!id) {

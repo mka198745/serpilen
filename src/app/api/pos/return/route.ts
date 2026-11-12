@@ -4,9 +4,13 @@ import { orders, orderItems, posShifts, orderReturns, orderReturnItems, orderSta
 import { adjustInventory } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const {

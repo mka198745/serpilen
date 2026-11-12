@@ -4,6 +4,7 @@ import { categories, products } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { ensureUniqueSlug, slugifyTr } from "@/lib/slug";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -20,6 +21,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     name?: string;
     parentId?: number | null;
@@ -61,6 +65,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     id?: number;
     name?: string;

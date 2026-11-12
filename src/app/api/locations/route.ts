@@ -3,9 +3,13 @@ import { db } from "@/db";
 import { warehouseLocations, warehouses } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const { searchParams } = new URL(request.url);
   const warehouseId = searchParams.get("warehouseId");
 
@@ -24,6 +28,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     warehouseId?: number;
     zone?: string;
@@ -61,6 +68,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { id?: number; zone?: string; aisle?: string; rack?: string; shelf?: string };
   const id = Number(body?.id);
   if (!id) {

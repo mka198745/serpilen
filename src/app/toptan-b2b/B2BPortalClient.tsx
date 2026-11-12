@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 
+import { authFetch } from "@/lib/client-auth";
 interface B2BPortalClientProps {
   products: Product[];
   b2bCustomers: Customer[];
@@ -68,7 +69,7 @@ export function B2BPortalClient({ products, b2bCustomers }: B2BPortalClientProps
     }
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/price-lists", {
+      const res = await authFetch("/api/price-lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "QUOTE", customerId: selectedCustomer.id, lines: cartLines }),
@@ -84,7 +85,7 @@ export function B2BPortalClient({ products, b2bCustomers }: B2BPortalClientProps
     const total = (quote?.subtotal || 0) * 1.2;
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/b2b", {
+      const res = await authFetch("/api/b2b", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "CHECK_CREDIT", customerId: selectedCustomer.id, orderTotal: total }),
@@ -96,7 +97,7 @@ export function B2BPortalClient({ products, b2bCustomers }: B2BPortalClientProps
 
   const loadStatement = useCallback(async () => {
     if (!selectedCustomer) return;
-    const res = await fetch(`/api/b2b?statement=${selectedCustomer.id}`, { cache: "no-store" }).then((r) => r.json());
+    const res = await authFetch(`/api/b2b?statement=${selectedCustomer.id}`, { cache: "no-store" }).then((r) => r.json());
     if (res.success) setStatement(res);
   }, [selectedCustomer]);
 
@@ -104,7 +105,7 @@ export function B2BPortalClient({ products, b2bCustomers }: B2BPortalClientProps
 
   const loadLadder = async (productId: number) => {
     if (ladders[productId]) return;
-    const res = await fetch(`/api/price-lists?ladderProductId=${productId}${selectedCustomer ? `&customerId=${selectedCustomer.id}` : ""}`).then((r) => r.json());
+    const res = await authFetch(`/api/price-lists?ladderProductId=${productId}${selectedCustomer ? `&customerId=${selectedCustomer.id}` : ""}`).then((r) => r.json());
     if (res.success) setLadders((prev) => ({ ...prev, [productId]: res.data }));
   };
 
@@ -138,7 +139,7 @@ export function B2BPortalClient({ products, b2bCustomers }: B2BPortalClientProps
     setIsSubmitting(true);
     setOrderError(null);
     try {
-      const res = await fetch("/api/orders", {
+      const res = await authFetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -183,7 +184,7 @@ export function B2BPortalClient({ products, b2bCustomers }: B2BPortalClientProps
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/b2b", {
+    const res = await authFetch("/api/b2b", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...appForm, approvalStatus: "PENDING", creditLimit: "0.00", discountRate: "0.00" }),

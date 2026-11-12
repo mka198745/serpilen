@@ -4,9 +4,13 @@ import { erpSyncLogs, erpSyncJobs, customers, orders, orderItems, inventory, pro
 import { erpAdapter, ERP_PROVIDERS, ErpProviderType } from "@/lib/erp-adapter";
 import { desc, eq, and, sql } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const entityTypeFilter = searchParams.get("entityType");
@@ -62,6 +66,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { action } = body;

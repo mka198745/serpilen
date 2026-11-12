@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { productVariants, products, inventory } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
@@ -34,6 +35,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     productId?: number;
     sku?: string;
@@ -103,6 +107,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as {
     id?: number;
     retailPrice?: string;

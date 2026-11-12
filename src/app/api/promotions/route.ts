@@ -4,9 +4,13 @@ import { promotions, categories, brands, auditLogs } from "@/db/schema";
 import { applyPromotions } from "@/lib/promotion-engine";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const rows = await db.select().from(promotions).orderBy(desc(promotions.priority), desc(promotions.id));
     const cats = await db.select().from(categories);
@@ -39,6 +43,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const {

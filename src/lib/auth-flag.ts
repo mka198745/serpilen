@@ -8,4 +8,4 @@
  * Değişiklikten sonra derleyip yeniden başlatın (`npm run build && npm start`).
  * (İstemci + sunucu ortak kullandığı için saf TS modülüdür; Node import'u yok.)
  */
-export const AUTH_ENABLED = false;
+export const AUTH_ENABLED = true;

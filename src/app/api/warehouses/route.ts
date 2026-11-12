@@ -17,17 +17,24 @@ import {
 import { desc, eq, count } from "drizzle-orm";
 import { slugifyTr } from "@/lib/slug";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 const ALLOWED_TYPES = ["CENTRAL", "STORE", "ONLINE", "WHOLESALE"] as const;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const all = await db.select().from(warehouses).orderBy(desc(warehouses.id));
   return NextResponse.json({ success: true, data: all });
 }
 
 /** POST /api/warehouses — Admin panelinden manuel depo ekleme. Kod otomatik üretilir. */
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { name?: string; type?: string; address?: string };
   const name = String(body?.name || "").trim();
   const type = String(body?.type || "CENTRAL").toUpperCase();
@@ -75,6 +82,9 @@ export async function POST(request: Request) {
 
 /** PATCH /api/warehouses — Depo Aktif/Pasif (isActive) günceller. */
 export async function PATCH(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const body = (await request.json().catch(() => ({}))) as { id?: number | string; isActive?: boolean };
   const id = Number(body?.id);
   if (!Number.isFinite(id)) {
@@ -112,6 +122,9 @@ export async function PATCH(request: Request) {
  * varsa silmeyi REDDEDER (409) — veri kaybetmemek için.
  */
 export async function DELETE(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   const url = new URL(request.url);
   let id = Number(url.searchParams.get("id"));
   if (!Number.isFinite(id)) {

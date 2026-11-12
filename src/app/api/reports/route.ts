@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 function toCsv(headers: string[], rows: (string | number)[][]) {
@@ -28,6 +29,9 @@ function toCsv(headers: string[], rows: (string | number)[][]) {
 const DAYS = (n: number) => Date.now() - n * 86400000;
 
 export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const days = Number(searchParams.get("days") || 30);

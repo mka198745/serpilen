@@ -4,9 +4,13 @@ import { loyaltyTransactions, customers, auditLogs } from "@/db/schema";
 import { DEFAULT_SETTINGS, getSettings, saveSettings } from "@/lib/settings";
 import { desc, eq } from "drizzle-orm";
 
+import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const settings = await getSettings();
     const txs = await db.select().from(loyaltyTransactions).orderBy(desc(loyaltyTransactions.id)).limit(30);
@@ -43,6 +47,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const __gate = await requireStaff(request);
+  if (!__gate.ok) return __gate.response;
+
   try {
     const body = await request.json();
     const { action } = body;
