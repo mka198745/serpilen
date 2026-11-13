@@ -1,7 +1,7 @@
 # FAZ 3 — KARAR ZEKÂSI (COMMERCE INTELLIGENCE ENGINE) — SONUÇ RAPORU
 
 Tarih: 2026-11-13 · Branch: `arena/01a0a9cf-serpilen` · Temel: FAZ 1 (`6858df9`) + FAZ 2 (`d6c7fb1`)
-Durum: **Kod tamam; canlı veri tabanına migration 0006 UYGULANMADI** (yalnız şema dosyası + scratch doğrulaması). Kullanıcı onayı bekliyor.
+Durum: **FAZ 3 TAMAM.** Migration 0006 canlı `data/tuhafiye.db`'ye kullanıcı onayıyla uygulandı (2026-11-13 20:10, taze yedek `tuhafiye.db.bak-20261113-201053-faz3`, integrity ok, mevcut kayıtlar değişmedi).
 
 ---
 
@@ -19,7 +19,7 @@ Durum: **Kod tamam; canlı veri tabanına migration 0006 UYGULANMADI** (yalnız 
 | 8 | Monte Carlo Engine | ✅ TAMAM | Seed'li PRNG (seed + algorithm_version saklanır); normal/lognormal/uniform/triangular/poisson/empirical; korelasyon matrisi doğrulamalı (PSD değilse RED); boşsa "bağımsızlık varsayımı" raporda etiketli; outlier clip (faz3 ayarı); yakınsama kontrolü; |r| duyarlılığı |
 | 9 | Sonuç ölçümü (outcomes) | ✅ TAMAM | `recordOutcome` (yalnız IMPLEMENTED/MONITORING/COMPLETED), `computeEffectiveness` (kabul/uygulama/başarı oranı, finansal gerçekleşme, tür kırılımı) |
 | 10 | Yönetim Hedefleri | ✅ TAMAM | AUTO ölçüm (9 KPI), kategori-KPI uyumu doğrulaması, çelişki tespiti (ciro↔marj vb.), ilerleme formülü KPI yönüne göre, tahmin YALNIZ ≥14 gün veriyle (yoksa "veri yok" — uydurma yok) |
-| 11 | Migration `0006_decision_intelligence_faz3.sql` | 🟡 KISMİ | Üretildi (10 YENİ tablo, yalnız CREATE — mevcut tabloya ALTER YOK); scratch'ta uygulandı + doğrulandı; **canlı DB'de UYGULANMADI**; `schema.mysql.ts` parite TAM (10/10 tablo); `__migrations` canlıda 0005'te |
+| 11 | Migration `0006_decision_intelligence_faz3.sql` | ✅ TAMAM | 10 YENİ tablo (yalnız CREATE — mevcut tabloya ALTER YOK); canlıya 20:10'da uygulandı + doğrulandı (`__migrations`=0006, 53 tablo, integrity ok, 1 sipariş/7 ürün aynen); scratch'ta da doğrulandı; `schema.mysql.ts` parite TAM (10/10) |
 | 12 | UI | ✅ TAMAM | Intelligence Center → **Karar Zekâsı** (11. sekme, "COMMERCE INTELLIGENCE ENGINE — FAZ 1 + FAZ 2 + FAZ 3"). 9 alt görünüm: Özet / Öneriler / Erken Uyarı / What-if / Monte Carlo / Yönetim Hedefleri / Karar Geçmişi / Etkililik / Ayarlar |
 | 13 | API katmanı | ✅ TAMAM | `/api/intelligence/decision/*` — 34 `route.ts`; `requireStaff` her yerde; yazma uçları SUPER_ADMIN/STORE_MANAGER; her yazma `audit_logs`'a düşer |
 | 14 | AI Sohbet Asistanı | ✅ TAMAM | 3 yeni intent (öneri listesi / erken uyarı / hedefler) + yardım metni; SALT OKUMA; karar tabloları yoksa kibar uyarı (defansif try/catch) |
@@ -48,15 +48,14 @@ Durum: **Kod tamam; canlı veri tabanına migration 0006 UYGULANMADI** (yalnız 
 15. ✅ AI asistanı: "karar önerileri neler" → decision_recommendations (gerçek kayıtlarla); "en kârlı ürünler" → FAZ 1 intent'i korundu; "satışlar nasıl" → sales (gölgelenme yok)
 16. ✅ TypeScript: `npx tsc --noEmit` — HATA YOK
 17. ✅ Production build: `npm run build` — ✓ Compiled (Turbopack), 1 adet ÖNCEDEN VAR OLAN NFT uyarısı dışında temiz; postbuild standalone'a statikleri kopyaladı
-18. ✅ Canlı DB değiştirilmedi: `__migrations` = 0005'e kadar; 0006 tabloları canlıda YOK (bilinçli)
+18. ✅ Canlı DB 2026-11-13 20:10'da ONAY İLE migrate edildi: 10 FAZ 3 tablosu + `__migrations` 0006; taze yedek `tuhafiye.db.bak-20261113-201053-faz3` (integrity ok); mevcut kayıt sayısı değişmedi (1 sipariş)
 19. ✅ MySQL parite: `schema.mysql.ts` 10/10 FAZ 3 tablosu (runtime SQLite; MySQL test edilemedi — TEST EDİLMEDİ)
-20. ✅ Yedek: `data/backups/tuhafiye.db.bak-20261113-commercial-faz2` (2026-11-13 18:44) mevcut; ek taze yedek AŞAMA 11 onayında alınır
+20. ✅ Yedekler: `data/backups/tuhafiye.db.bak-20261113-201053-faz3` (20:10, ONAY SONRASI taze) + `tuhafiye.db.bak-20261113-commercial-faz2` (18:44) mevcut
 
 ---
 
 ## 3. KAPSAM DIŞI / YAPILMAYANLAR (bilinçli)
 
-- **Canlı DB'ye 0006 UYGULANMADI** — kullanıcı onayı bekliyor (yalnız CREATE TABLE; mevcut kayıtlara dokunmaz)
 - `comparePeriodsPrePost` (counterfactual) — `orders.createdAt` saniye-int varsayımı Teyit EDİLMEDİ → yalnız "önceki dönem" etiketiyle; nedensel iddia YOK (DiD yok)
 - AHP / TOPSIS — ilk sürümde değil (Weighted Scoring + Cost-Benefit yeterli)
 - SCHEDULED / EVENT_DRIVEN orkestrasyon — yalnız MANUAL
@@ -81,19 +80,12 @@ Durum: **Kod tamam; canlı veri tabanına migration 0006 UYGULANMADI** (yalnız 
 
 ---
 
-## 5. CANLIYA ALMAK İÇİN (AŞAMA 11 — kullanıcı onayı sonrası)
+## 5. CANLIYA ALMA (AŞAMA 11 — TAMAMLANDI 20:10)
 
-```bash
-# 1) Taze yedek
-cp data/tuhafiye.db data/backups/tuhafiye.db.bak-$(date +%Y%m%d-%H%M%S)-faz3
-# 2) Migration (yalnız 10 CREATE TABLE)
-DATABASE_URL=sqlite:./data/tuhafiye.db node scripts/db-apply.mjs
-# 3) Doğrulama: 10 tablo + __migrations'da 0006
-# 4) npm run build && preview restart (port 3000)
-```
+Yapılanlar (20:10 UTC): better-sqlite3 online backup → `tuhafiye.db.bak-20261113-201053-faz3` (integrity ok) → preview durduruldu → `DATABASE_URL=sqlite:./data/tuhafiye.db node scripts/db-apply.mjs` → "0006 (30 ifade) uygulandı" → 10 tablo + `__migrations` 0006 doğrulandı → preview yeniden başlatıldı (HTTP 200; auth'sız /api/intelligence/decision/overview → 401).
 
-Sonrasında: Intelligence Center → Karar Zekâsı → "Karar Analizini Çalıştır" (MANUAL).
-Beklenti: canlıda 1 sipariş olduğu için FAZ 3 analizi de `INSUFFICIENT_DATA` ağırlıkla çalışır — boş sonuç ÜRETİLMEZ ama dürüst "veri yok" raporlar.
+Sonrası (kullanıcı tarafı): Intelligence Center → Karar Zekâsı → "Karar Analizini Çalıştır" (MANUAL).
+Beklenti: canlıda 1 sipariş olduğu için FAZ 3 analizi `INSUFFICIENT_DATA` ağırlıkla çalışır — dürüst "veri yok" raporlar; yeni siparişler biriktikçe anlam kazanır.
 
 ---
 
