@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Commerce Intelligence Center (FAZ 1 + FAZ 2 Ticari Optimizasyon) — 10 bölüm.
+ * Commerce Intelligence Center (FAZ 1 + FAZ 2 Ticari Optimizasyon + FAZ 3 Karar Zekâsı) — 11 bölüm.
  * Tümü `/api/intelligence/*` uçlarından beslenir; sunucu taraflı hesaplama.
  * Guardrail: salt okuma + "Analizi Çalıştır" (kalıcı kayıt) dışında hiçbir
  * tablo değiştirilmez. Fiyat/stok/sipariş kayıtlarına yazılmaz.
@@ -9,10 +9,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Brain, LayoutDashboard, Coins, LineChart, Siren, Users, Grid3X3, Boxes, Gauge, Settings,
-  Loader2, RefreshCw, Sparkles, AlertTriangle, CheckCircle2, X, ShieldAlert, ChevronRight, Target,
+  Loader2, RefreshCw, Sparkles, AlertTriangle, CheckCircle2, X, ShieldAlert, ChevronRight, Target, ClipboardList,
 } from "lucide-react";
 import { authFetch } from "@/lib/client-auth";
 import { CommercialOptimization } from "./CommercialOptimization";
+import { DecisionIntelligence } from "./DecisionIntelligence";
 
 const tl = (n: number | null | undefined) =>
   n == null ? "—" : new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(n);
@@ -72,6 +73,7 @@ const TABS = [
   { id: "abcxyz", label: "ABC-XYZ", icon: Boxes },
   { id: "accuracy", label: "Tahmin Doğruluğu", icon: Gauge },
   { id: "commercial", label: "Ticari Optimizasyon", icon: Target },
+  { id: "decision", label: "Karar Zekâsı", icon: ClipboardList },
   { id: "settings", label: "Ayarlar", icon: Settings },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -87,7 +89,7 @@ export function IntelligenceCenter() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <span className="text-[10px] font-black uppercase tracking-widest text-violet-800 flex items-center gap-1.5">
-            <Brain className="w-3.5 h-3.5" /> COMMERCE INTELLIGENCE ENGINE — FAZ 1 + FAZ 2
+            <Brain className="w-3.5 h-3.5" /> COMMERCE INTELLIGENCE ENGINE — FAZ 1 + FAZ 2 + FAZ 3
           </span>
           <h2 className="text-xl font-black text-stone-900 mt-1">Intelligence Center</h2>
           <p className={sub}>Deterministik, açıklanabilir analiz. LLM yok; her sayı kendi verinizden hesaplanır. Hiçbir fiyat / stok / sipariş kaydı değiştirilmez.</p>
@@ -129,6 +131,7 @@ export function IntelligenceCenter() {
       {tab === "abcxyz" && <AbcXyzTab refreshKey={refreshKey} />}
       {tab === "accuracy" && <AccuracyTab refreshKey={refreshKey} />}
       {tab === "commercial" && <CommercialOptimization refreshKey={refreshKey} />}
+      {tab === "decision" && <DecisionIntelligence refreshKey={refreshKey} />}
       {tab === "settings" && <SettingsTab refreshKey={refreshKey} />}
     </div>
   );

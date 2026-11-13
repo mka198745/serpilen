@@ -700,6 +700,83 @@ export async function chat(message: string): Promise<ChatResponse> {
     };
   }
 
+  // --- Karar Zekâsı (FAZ 3) — salt okuma özet; uygulamaz, onay süreçlerine karışmaz ---
+  if (wants("karar", "öneri listesi", "bekleyen öneri", "yapay zeka öner", "ai öner")) {
+    try {
+      const { decisionRecords } = await import("@/db/schema");
+      const { inArray, desc } = await import("drizzle-orm");
+      const rows = await db.select().from(decisionRecords).where(inArray(decisionRecords.status, ["RECOMMENDED", "UNDER_REVIEW"])).orderBy(desc(decisionRecords.createdAt)).limit(5);
+      return {
+        intent: "decision_recommendations",
+        answer: rows.length
+          ? `Bekleyen ${rows.length} öneri (son kayıtlar):\n\n${rows
+              .map((r) => `• [${r.decisionType.replace(/_/g, " ").toLowerCase()}] ${r.title} — kâr etkisi ~${fmt(Number(r.expectedProfitImpact))} TL, risk ${Math.round(Number(r.riskScore))}/100 (${r.status})`)
+              .join("\n")}\n\nOnay/uygulama: Intelligence Center → Karar Zekâsı → Öneriler. Hiçbir öneri kendiliğinden uygulanmaz; karar sizin.`
+          : "Açık karar önerisi yok. Intelligence Center → Karar Zekâsı → 'Karar Analizini Çalıştır' ile FAZ 1+2 fırsatlarından öneri üretin.",
+        suggestions: ["Erken uyarılar", "Hedeflerim", "En kârlı ürünler", "Satış analizi"],
+        data: { count: rows.length },
+      };
+    } catch {
+      return {
+        intent: "decision_unavailable",
+        answer: "Karar Zekâsı şu an veri tabanında aktif değil (karar kayıt tabloları henüz kurulmamış — migration 0006 bekliyor). Intelligence Center → Karar Zekâsı sekmesi de kuruluma bağlıdır.",
+        suggestions: ["En kârlı ürünler", "Satış analizi", "Yardım"],
+        data: null,
+      };
+    }
+  }
+
+  if (wants("erken uyarı", "uyarı listesi", "kritik uyarı", "alarmlar", "uyarılarım")) {
+    try {
+      const { earlyWarningEvents } = await import("@/db/schema");
+      const { desc, sql } = await import("drizzle-orm");
+      const open = await db.select().from(earlyWarningEvents).where(sql`${earlyWarningEvents.status} in ('NEW','ACKNOWLEDGED','INVESTIGATING','ACTION_REQUIRED')`).orderBy(desc(earlyWarningEvents.riskScore)).limit(5);
+      const critical = open.filter((x) => x.severity === "CRITICAL").length;
+      return {
+        intent: "decision_alerts",
+        answer: open.length
+          ? `${open.length} açık erken uyarı (${critical} kritik):\n\n${open
+              .map((a) => `• [${a.severity}] ${a.relatedEntityLabel || a.alertType} — ${a.triggerCondition?.slice(0, 90) ?? ""} (risk ${Math.round(Number(a.riskScore))}/100)`)
+              .join("\n")}\n\nKarar Zekâsı → Erken Uyarı sekmesinden inceleyebilir, aksiyona alabilir veya yanlış alarm işaretleyebilirsiniz.`
+          : "Açık erken uyarı yok. Son taramada kritik bir sapma bulamadım.",
+        suggestions: ["Karar önerileri", "Hedeflerim", "Anomali taraması", "Satış analizi"],
+        data: { open: open.length, critical },
+      };
+    } catch {
+      return {
+        intent: "decision_unavailable",
+        answer: "Erken Uyarı motoru şu an veri tabanında aktif değil (migration 0006 bekliyor).",
+        suggestions: ["Anomali taraması", "Satış analizi", "Yardım"],
+        data: null,
+      };
+    }
+  }
+
+  if (wants("hedefim", "hedeflerim", "yönetim hedefi", "hedef durumu", "ne kadar kaldı")) {
+    try {
+      const { listGoalsWithProgress } = await import("@/lib/intelligence/decision/goals/store");
+      const { goals } = await listGoalsWithProgress({ status: "ACTIVE" });
+      return {
+        intent: "decision_goals",
+        answer: goals.length
+          ? `Aktif ${goals.length} yönetim hedefim var:\n\n${goals
+              .slice(0, 5)
+              .map((g) => `• ${g.name} — %${g.progressPct != null ? Math.round(g.progressPct) : "?"} (hedef ${g.targetValue} ${g.unit}, kalan ${g.remaining != null ? Math.round(g.remaining) : "?"} ${g.unit}, ${g.daysRemaining}g kaldı)`)
+              .join("\n")}\n\nKarar Zekâsı → Yönetim Hedefleri: ölçüm ve dönem sonu değerlendirmesi oradan yapılır.`
+          : "Aktif yönetim hedefi tanımlı değil. Departmanınız için ciro/marj/ölü stok üçlüsüyle başlayabilirsiniz (Karar Zekâsı → Yönetim Hedefleri).",
+        suggestions: ["Karar önerileri", "Erken uyarılar", "Satış analizi"],
+        data: { active: goals.length },
+      };
+    } catch {
+      return {
+        intent: "decision_unavailable",
+        answer: "Hedef motoru şu an veri tabanında aktif değil (migration 0006 bekliyor).",
+        suggestions: ["Satış analizi", "Yardım"],
+        data: null,
+      };
+    }
+  }
+
   if (wants("satış", "ciro", "hasılat", "kâr", "kar", "gelir")) {
     const s = await analyzeSales();
     return {
@@ -803,8 +880,8 @@ export async function chat(message: string): Promise<ChatResponse> {
     return {
       intent: "help",
       answer:
-        "Merhaba! Ben İpek Tuhafiye AI Asistanıyım. Size şu konularda yardımcı olabilirim:\n\n• 📈 **Satış analizi** — ciro, kanal, trend, tahmin\n• 📦 **Stok analizi** — kritik stok, tükenme tahmini, ölü stok\n• 🛒 **Satın alma önerisi** — tedarikçi + miktar + maliyet\n• 👥 **Müşteri analizi** — segmentasyon, churn riski, LTV\n• 📝 **Ürün içerik** — SEO açıklama, meta, etiket\n• 🎯 **Kampanya önerisi** — verilere dayalı promosyon fikirleri\n\nSadece doğal dilde sorun: \"Bugünkü satışlar nasıl?\" gibi.",
-      suggestions: ["Bugünkü satışlar", "Kritik stoklar", "Satın alma önerisi", "VIP müşteriler"],
+        "Merhaba! Ben İpek Tuhafiye AI Asistanıyım. Size şu konularda yardımcı olabilirim:\n\n• 📈 **Satış analizi** — ciro, kanal, trend, tahmin\n• 📦 **Stok analizi** — kritik stok, tükenme tahmini, ölü stok\n• 🛒 **Satın alma önerisi** — tedarikçi + miktar + maliyet\n• 👥 **Müşteri analizi** — segmentasyon, churn riski, LTV\n• 📝 **Ürün içerik** — SEO açıklama, meta, etiket\n• 🎯 **Kampanya önerisi** — verilere dayalı promosyon fikirleri\n• 🧠 **Karar Zekâsı özeti** — bekleyen öneriler, erken uyarılar, hedeflerim\n\nSadece doğal dilde sorun: \"Bugünkü satışlar nasıl?\" gibi.",
+      suggestions: ["Bugünkü satışlar", "Karar önerileri", "Erken uyarılar", "Hedeflerim"],
       data: null,
     };
   }

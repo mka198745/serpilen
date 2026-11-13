@@ -32,6 +32,7 @@ export async function GET(request: Request) {
       { id: "crm_assistant", label: "AI CRM & Churn Asistanı", description: "Segmentasyon, kayıp riski skoru ve LTV analizi." },
       { id: "content_generator", label: "AI Ürün İçerik & SEO Asistanı", description: "SEO başlık, meta, uzun açıklama ve etiket üretimi." },
       { id: "commerce_intelligence", label: "Commerce Intelligence", description: "Tahmin, kârlılık, ABC-XYZ, anomali, RFM ve cohort analizleri (FAZ 1)." },
+      { id: "decision_intelligence", label: "Karar Zekâsı", description: "Karar önerileri, erken uyarılar, hedefler — salt okuma özet (FAZ 3)." },
       { id: "chat", label: "AI Sohbet Asistanı", description: "Doğal dil ile serbest soru-cevap." },
     ],
     guardrails: GUARDRAILS,
@@ -45,6 +46,9 @@ export async function GET(request: Request) {
       "En kârlı ürünler",
       "Anomali taraması",
       "ABC-XYZ analizi",
+      "Karar önerileri",
+      "Erken uyarılar",
+      "Hedeflerim ne durumda?",
     ],
   });
 }
