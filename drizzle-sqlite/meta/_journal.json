@@ -36,6 +36,13 @@
       "when": 1794517679137,
       "tag": "0004_intelligence_engine_faz1",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794593683058,
+      "tag": "0005_commercial_optimization_faz2",
+      "breakpoints": true
     }
   ]
 }

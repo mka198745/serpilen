@@ -728,3 +728,95 @@ export const intelligenceSettings = sqliteTable("intelligence_settings", {
   description: text("description"),
   updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
+
+// ==========================================
+// 13. COMMERCE INTELLIGENCE ENGINE — FAZ 2 (TİCARİ OPTİMİZASYON)
+// ==========================================
+// Ticari fırsat havuzu: tüm modüllerin tespitlerini tek havuzda toplar.
+export const commercialOpportunities = sqliteTable("commercial_opportunities", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  opportunityKey: text("opportunity_key").notNull().unique(), // dedup anahtarı: type|entity|metric
+  opportunityType: text("opportunity_type").notNull(), // PRICING_OPPORTUNITY, MARGIN_IMPROVEMENT, CAMPAIGN_OPPORTUNITY, ...
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  sourceModule: text("source_module").notNull(), // pricing, campaigns, basket, suppliers, quality, procurement
+  relatedProductId: integer("related_product_id"),
+  relatedCategoryId: integer("related_category_id"),
+  relatedSupplierId: integer("related_supplier_id"),
+  relatedCampaignId: integer("related_campaign_id"),
+  estimatedRevenueImpact: numeric("estimated_revenue_impact").notNull().default("0"),
+  estimatedProfitImpact: numeric("estimated_profit_impact").notNull().default("0"),
+  estimatedCostSaving: numeric("estimated_cost_saving").notNull().default("0"),
+  estimatedCashImpact: numeric("estimated_cash_impact").notNull().default("0"),
+  confidenceScore: numeric("confidence_score").notNull().default("50"), // 0-100
+  dataCoverage: numeric("data_coverage").notNull().default("50"), // 0-100
+  priorityScore: numeric("priority_score").notNull().default("0"), // 0-100
+  severity: text("severity").notNull().default("MEDIUM"), // LOW, MEDIUM, HIGH, CRITICAL
+  evidence: text("evidence"), // JSON: ölçümler listesi
+  assumptions: text("assumptions"), // JSON: varsayımlar listesi
+  calculationMethod: text("calculation_method").notNull().default(""),
+  recommendedAction: text("recommended_action").notNull().default(""),
+  status: text("status").notNull().default("NEW"), // NEW, UNDER_REVIEW, APPROVED, REJECTED, IN_PROGRESS, COMPLETED, EXPIRED, CANCELLED
+  ownerName: text("owner_name"),
+  algorithmVersion: text("algorithm_version").notNull().default("commercial@1.0.0"),
+  dataPeriodStart: text("data_period_start"),
+  dataPeriodEnd: text("data_period_end"),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
+}, (t) => [
+  index("commercial_opportunities_status_idx").on(t.status),
+  index("commercial_opportunities_priority_idx").on(t.priorityScore),
+  index("commercial_opportunities_type_idx").on(t.opportunityType),
+  index("commercial_opportunities_product_idx").on(t.relatedProductId),
+]);
+
+// Fırsat yaşam döngüsü geçmişi (kim, ne zaman, hangi duruma)
+export const opportunityHistory = sqliteTable("opportunity_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  opportunityId: integer("opportunity_id").notNull(),
+  action: text("action").notNull(), // CREATED, UPDATED, REVIEWED, APPROVED, REJECTED, ASSIGNED, APPLIED, COMPLETED, EXPIRED, CANCELLED, REOPENED
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  details: text("details"),
+  actorName: text("actor_name").notNull().default("Sistem"),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("opportunity_history_opp_idx").on(t.opportunityId),
+]);
+
+// Beklenen vs gerçekleşen etki ölçümü
+export const opportunityImpactResults = sqliteTable("opportunity_impact_results", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  opportunityId: integer("opportunity_id").notNull(),
+  expectedProfitImpact: numeric("expected_profit_impact").notNull().default("0"),
+  actualProfitImpact: numeric("actual_profit_impact").notNull().default("0"),
+  realizationRate: numeric("realization_rate"), // % gerçekleşen / beklenen; beklenen 0 ise null
+  evaluationWindowStart: text("evaluation_window_start"),
+  evaluationWindowEnd: text("evaluation_window_end"),
+  note: text("note"),
+  measuredBy: text("measured_by").notNull().default("Yönetici"),
+  measuredAt: integer("measured_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("opportunity_impact_opp_idx").on(t.opportunityId),
+]);
+
+// Reklam verisi — manuel giriş (harici platform entegrasyonu yok; sıfır-uydurma)
+export const advertisingPerformance = sqliteTable("advertising_performance", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(), // kampanya adı (serbest metin; promotions ile bağımsız)
+  channel: text("channel").notNull().default("OTHER"), // GOOGLE_ADS, META_ADS, INSTAGRAM, E_MAIL, OTHER
+  spend: numeric("spend").notNull().default("0"),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  conversions: integer("conversions").notNull().default(0),
+  revenueAttributed: numeric("revenue_attributed").notNull().default("0"),
+  startsOn: text("starts_on").notNull(), // YYYY-MM-DD
+  endsOn: text("ends_on"), // YYYY-MM-DD; null = devam ediyor
+  enteredBy: text("entered_by").notNull().default("Yönetici"),
+  notes: text("notes"),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (t) => [
+  index("advertising_performance_period_idx").on(t.startsOn, t.endsOn),
+  index("advertising_performance_channel_idx").on(t.channel),
+]);

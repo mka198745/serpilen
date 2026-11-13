@@ -721,3 +721,91 @@ export const intelligenceSettings = mysqlTable("intelligence_settings", {
   description: text("description"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// ==========================================
+// 13. COMMERCE INTELLIGENCE ENGINE — FAZ 2 (TİCARİ OPTİMİZASYON)
+// ==========================================
+export const commercialOpportunities = mysqlTable("commercial_opportunities", {
+  id: int("id").primaryKey().autoincrement(),
+  opportunityKey: varchar("opportunity_key", { length: 255 }).notNull().unique(),
+  opportunityType: varchar("opportunity_type", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  sourceModule: varchar("source_module", { length: 32 }).notNull(),
+  relatedProductId: int("related_product_id"),
+  relatedCategoryId: int("related_category_id"),
+  relatedSupplierId: int("related_supplier_id"),
+  relatedCampaignId: int("related_campaign_id"),
+  estimatedRevenueImpact: decimal("estimated_revenue_impact", { precision: 14, scale: 2 }).notNull().default("0"),
+  estimatedProfitImpact: decimal("estimated_profit_impact", { precision: 14, scale: 2 }).notNull().default("0"),
+  estimatedCostSaving: decimal("estimated_cost_saving", { precision: 14, scale: 2 }).notNull().default("0"),
+  estimatedCashImpact: decimal("estimated_cash_impact", { precision: 14, scale: 2 }).notNull().default("0"),
+  confidenceScore: decimal("confidence_score", { precision: 5, scale: 2 }).notNull().default("50"),
+  dataCoverage: decimal("data_coverage", { precision: 5, scale: 2 }).notNull().default("50"),
+  priorityScore: decimal("priority_score", { precision: 5, scale: 2 }).notNull().default("0"),
+  severity: varchar("severity", { length: 16 }).notNull().default("MEDIUM"),
+  evidence: text("evidence"),
+  assumptions: text("assumptions"),
+  calculationMethod: text("calculation_method").notNull(),
+  recommendedAction: text("recommended_action").notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("NEW"),
+  ownerName: varchar("owner_name", { length: 128 }),
+  algorithmVersion: varchar("algorithm_version", { length: 64 }).notNull().default("commercial@1.0.0"),
+  dataPeriodStart: varchar("data_period_start", { length: 32 }),
+  dataPeriodEnd: varchar("data_period_end", { length: 32 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+}, (t) => [
+  index("commercial_opportunities_status_idx").on(t.status),
+  index("commercial_opportunities_priority_idx").on(t.priorityScore),
+  index("commercial_opportunities_type_idx").on(t.opportunityType),
+  index("commercial_opportunities_product_idx").on(t.relatedProductId),
+]);
+
+export const opportunityHistory = mysqlTable("opportunity_history", {
+  id: int("id").primaryKey().autoincrement(),
+  opportunityId: int("opportunity_id").notNull(),
+  action: varchar("action", { length: 32 }).notNull(),
+  fromStatus: varchar("from_status", { length: 16 }),
+  toStatus: varchar("to_status", { length: 16 }),
+  details: text("details"),
+  actorName: varchar("actor_name", { length: 128 }).notNull().default("Sistem"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("opportunity_history_opp_idx").on(t.opportunityId),
+]);
+
+export const opportunityImpactResults = mysqlTable("opportunity_impact_results", {
+  id: int("id").primaryKey().autoincrement(),
+  opportunityId: int("opportunity_id").notNull(),
+  expectedProfitImpact: decimal("expected_profit_impact", { precision: 14, scale: 2 }).notNull().default("0"),
+  actualProfitImpact: decimal("actual_profit_impact", { precision: 14, scale: 2 }).notNull().default("0"),
+  realizationRate: decimal("realization_rate", { precision: 7, scale: 2 }),
+  evaluationWindowStart: varchar("evaluation_window_start", { length: 32 }),
+  evaluationWindowEnd: varchar("evaluation_window_end", { length: 32 }),
+  note: text("note"),
+  measuredBy: varchar("measured_by", { length: 128 }).notNull().default("Yönetici"),
+  measuredAt: timestamp("measured_at").defaultNow().notNull(),
+}, (t) => [
+  index("opportunity_impact_opp_idx").on(t.opportunityId),
+]);
+
+export const advertisingPerformance = mysqlTable("advertising_performance", {
+  id: int("id").primaryKey().autoincrement(),
+  name: varchar("name", { length: 255 }).notNull(),
+  channel: varchar("channel", { length: 32 }).notNull().default("OTHER"),
+  spend: decimal("spend", { precision: 14, scale: 2 }).notNull().default("0"),
+  impressions: int("impressions").notNull().default(0),
+  clicks: int("clicks").notNull().default(0),
+  conversions: int("conversions").notNull().default(0),
+  revenueAttributed: decimal("revenue_attributed", { precision: 14, scale: 2 }).notNull().default("0"),
+  startsOn: varchar("starts_on", { length: 32 }).notNull(),
+  endsOn: varchar("ends_on", { length: 32 }),
+  enteredBy: varchar("entered_by", { length: 128 }).notNull().default("Yönetici"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("advertising_performance_period_idx").on(t.startsOn, t.endsOn),
+  index("advertising_performance_channel_idx").on(t.channel),
+]);
