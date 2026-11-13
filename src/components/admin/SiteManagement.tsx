@@ -19,6 +19,9 @@ import {
   Table2,
   CheckCircle2,
   AlertTriangle,
+  RotateCcw,
+  History,
+  Loader2,
 } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
@@ -255,7 +258,7 @@ function FooterSettingsPanel() {
 
           <div className="pt-2 border-t border-stone-100">
             <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1">Sosyal Medya</p>
-            <p className="text-[10px] text-stone-400 mb-2">Boş bırakılan alan footer'da gösterilmez. Tam adres (https://...) girin.</p>
+            <p className="text-[10px] text-stone-400 mb-2">Boş bırakılan alan footer&apos;da gösterilmez. Tam adres (https://...) girin.</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {SOCIAL_FIELDS.map((f) => (
                 <div key={f.key}>
@@ -307,7 +310,7 @@ function CartSettingsPanel() {
             />
             <span>
               <span className="text-xs font-bold text-stone-800 block">Sepet etkin</span>
-              <span className="text-[10px] text-stone-500">Kapatırsanız header'daki “Sepetim” düğmesi gizlenir; sepet çekmecesi, sepet sayfası ve ödeme adımında uyarı gösterilir.</span>
+              <span className="text-[10px] text-stone-500">Kapatırsanız header&apos;daki “Sepetim” düğmesi gizlenir; sepet çekmecesi, sepet sayfası ve ödeme adımında uyarı gösterilir.</span>
             </span>
           </label>
 
@@ -478,7 +481,7 @@ function CheckoutSettingsCard() {
 
       <div className="pt-1 border-t border-stone-100">
         <p className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-1 mt-1 flex items-center gap-1.5"><Landmark className="w-3.5 h-3.5" /> Havale / EFT Hesap Bilgileri</p>
-        <p className="text-[10px] text-stone-400 mb-2">Müşteri ödeme sayfasında Havale/EFT seçtiğinde gösterilir. IBAN'ı boş bırakırsanız hesap kutusu gizlenir.</p>
+        <p className="text-[10px] text-stone-400 mb-2">Müşteri ödeme sayfasında Havale/EFT seçtiğinde gösterilir. IBAN&apos;ı boş bırakırsanız hesap kutusu gizlenir.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Banka & Şube</label>
@@ -542,18 +545,40 @@ interface DbInfo {
   tableCount: number;
   totalRows: number;
   tables: { name: string; rows: number }[];
-  backups: { name: string; sizeBytes: number; createdAt: string }[];
+  backups: BackupEntry[];
+  restoreState?: {
+    source: string;
+    restoredAt: string;
+    preRestoreBackup: string;
+    actor: string;
+    tables: number;
+    rowsCopied: number;
+  } | null;
 }
+
+type BackupEntry = {
+  name: string;
+  sizeBytes: number;
+  createdAt: string;
+  integrity: "ok" | "fail" | "unknown";
+  tables: number;
+  orders: number | null;
+  products: number | null;
+  customers: number | null;
+  users: number | null;
+  error?: string;
+};
 
 function DatabaseSettingsPanel() {
   const [info, setInfo] = useState<DbInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [tableFilter, setTableFilter] = useState("");
 
   const load = () => {
-    setLoading(true);
     authFetch("/api/database", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
@@ -563,7 +588,9 @@ function DatabaseSettingsPanel() {
       .catch(() => setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true }))
       .finally(() => setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const backup = async () => {
     setBackingUp(true);
@@ -588,6 +615,31 @@ function DatabaseSettingsPanel() {
     }
   };
 
+  const restore = async (name: string) => {
+    setRestoring(true);
+    setFeedback(null);
+    try {
+      const res = await authFetch("/api/database", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "restore", name }),
+      });
+      const d = await res.json();
+      if (!d.success) {
+        setFeedback({ text: d?.error?.message || "Geri yükleme başarısız.", isError: true });
+        return;
+      }
+      setConfirmRestore(null);
+      setFeedback({ text: `${name} geri yüklendi (${(d.data?.rowsCopied ?? 0).toLocaleString("tr-TR")} satır, ${d.data?.tables ?? 0} tablo). Güvenlik yedeği: ${d.data?.preRestoreBackup}. Sayfa yenileniyor…`, isError: false });
+      // Geri yüklenen DB'nin durumunu herkese göster: tam yenileme
+      window.setTimeout(() => window.location.reload(), 1800);
+    } catch {
+      setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   const filteredTables = useMemo(
     () => (info?.tables || []).filter((t) => t.name.toLowerCase().includes(tableFilter.trim().toLowerCase())),
     [info, tableFilter]
@@ -596,7 +648,7 @@ function DatabaseSettingsPanel() {
   const integrityOk = info?.integrity === "ok";
 
   return (
-    <PanelShell icon={Database} title="Veritabanı Ayarı" desc="SQLite veritabanının durumu, tablo istatistikleri ve tutarlı yedek alma.">
+    <PanelShell icon={Database} title="Veritabanı Ayarı" desc="SQLite veritabanının durumu, tablo istatistikleri, tutarlı yedek alma ve yedekten geri yükleme.">
       <Feedback feedback={feedback} />
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] text-stone-400">{loading ? "Yükleniyor…" : info ? `Son güncelleme: ${new Date().toLocaleString("tr-TR")}` : ""}</p>
@@ -642,23 +694,66 @@ function DatabaseSettingsPanel() {
             <span className="text-amber-400">DATABASE_URL</span> → {info.path}
           </div>
 
+          {info.restoreState && (
+            <div className="flex items-start gap-2 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900">
+              <History className="w-4 h-4 mt-0.5 shrink-0" />
+              <span><b>Son geri yükleme:</b> {info.restoreState.source} — {new Date(info.restoreState.restoredAt).toLocaleString("tr-TR")} ({info.restoreState.rowsCopied?.toLocaleString("tr-TR")} satır). Önceki durum <span className="font-mono">{info.restoreState.preRestoreBackup}</span> olarak saklandı.</span>
+            </div>
+          )}
+
+          <div className="flex items-start gap-2 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span><b>Geri yükleme</b>, seçilen yedeği sistemde çalışır hale getirir: mevcut TÜM veriler yedekteki hal ile DEĞİŞTİRİLİR. İşlem öncesi mevcut durum otomatik olarak <span className="font-mono">tuhafiye-pre-restore-*.db</span> olarak yedeklenir; istediğinizde o yedeğe tekrar dönebilirsiniz. Yalnız Süper Admin yapabilir. Yedek yüklendikten sonra mevcut oturum düşebilir — yeniden giriş yapmanız gerekebilir.</span>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* Yedekler */}
             <div className="lg:col-span-2 bg-white rounded-2xl border border-stone-200 overflow-hidden h-max">
               <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
                 <h3 className="text-xs font-bold text-stone-900 uppercase tracking-wide">Yedekler ({info.backups.length})</h3>
               </div>
-              <div className="max-h-80 overflow-y-auto divide-y divide-stone-100">
+              <div className="max-h-96 overflow-y-auto divide-y divide-stone-100">
                 {info.backups.length === 0 && <p className="px-4 py-6 text-xs text-stone-400 text-center">Henüz yedek yok. “Yedek Oluştur” ile ilk kopyayı alın.</p>}
                 {info.backups.map((b) => (
-                  <div key={b.name} className="px-4 py-2.5 flex items-center justify-between gap-2 text-xs">
-                    <div className="min-w-0">
-                      <p className="font-mono font-bold text-stone-800 truncate">{b.name}</p>
-                      <p className="text-[10px] text-stone-400">{new Date(b.createdAt).toLocaleString("tr-TR")} • {formatBytes(b.sizeBytes)}</p>
+                  <div key={b.name} className="px-4 py-2.5 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono font-bold text-stone-800 truncate" title={b.name}>{b.name}</p>
+                        <p className="text-[10px] text-stone-400">{new Date(b.createdAt).toLocaleString("tr-TR")} • {formatBytes(b.sizeBytes)}{b.tables >= 0 ? ` • ${b.tables} tablo` : ""}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a href={`/api/database?download=${encodeURIComponent(b.name)}`} className="p-2 rounded-lg bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 transition" title="Yedeği indir">
+                          <Download className="w-4 h-4" />
+                        </a>
+                        <button
+                          onClick={() => setConfirmRestore(confirmRestore === b.name ? null : b.name)}
+                          disabled={restoring || b.integrity !== "ok"}
+                          title={b.integrity === "ok" ? "Bu yedeği sisteme geri yükle" : "Yedek bütünlük kontrolünden geçemedi — yüklenemez"}
+                          className="flex items-center gap-1 px-2.5 py-2 rounded-lg bg-violet-700 hover:bg-violet-800 disabled:opacity-40 disabled:hover:bg-violet-700 text-white text-[10px] font-bold transition"
+                        >
+                          {restoring && confirmRestore === b.name ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                          Yükle
+                        </button>
+                      </div>
                     </div>
-                    <a href={`/api/database?download=${encodeURIComponent(b.name)}`} className="shrink-0 p-2 rounded-lg bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 transition" title="Yedeği indir">
-                      <Download className="w-4 h-4" />
-                    </a>
+                    <div className="flex items-center gap-2 text-[10px] text-stone-500 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full font-bold ${b.integrity === "ok" ? "bg-emerald-100 text-emerald-800" : b.integrity === "fail" ? "bg-rose-100 text-rose-800" : "bg-stone-100 text-stone-500"}`}>
+                        {b.integrity === "ok" ? "Sağlam" : b.integrity === "fail" ? "Bozuk" : "Özet yok"}
+                      </span>
+                      {b.orders != null && <span>Sipariş: <b>{b.orders.toLocaleString("tr-TR")}</b></span>}
+                      {b.products != null && <span>Ürün: <b>{b.products.toLocaleString("tr-TR")}</b></span>}
+                      {b.customers != null && <span>Müşteri: <b>{b.customers.toLocaleString("tr-TR")}</b></span>}
+                      {b.users != null && <span>Kullanıcı: <b>{b.users.toLocaleString("tr-TR")}</b></span>}
+                    </div>
+                    {confirmRestore === b.name && (
+                      <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[10px] text-rose-900 space-y-1.5">
+                        <p><b>Emin misiniz?</b> Mevcut veritabanı bu yedekteki haline dönecek. Önce otomatik güvenlik yedeği alınır.</p>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => restore(b.name)} disabled={restoring} className="px-2.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold transition">{restoring ? "Geri yükleniyor…" : "Evet, geri yükle"}</button>
+                          <button onClick={() => setConfirmRestore(null)} disabled={restoring} className="px-2.5 py-1.5 rounded-lg bg-white border border-rose-200 text-rose-800 font-bold hover:bg-rose-100 transition">Vazgeç</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

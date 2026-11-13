@@ -4,6 +4,7 @@ import path from "node:path";
 import { sqlite, sqlitePath } from "@/db";
 
 import { requireStaff } from "@/lib/auth";
+import { summarizeBackup, performRestore, readRestoreState, isValidBackupName } from "@/lib/db-restore";
 export const dynamic = "force-dynamic";
 
 function backupDir(): string {
@@ -11,17 +12,25 @@ function backupDir(): string {
   return path.join(base, "backups");
 }
 
-function listBackups() {
+function listBackupsBase() {
   const dir = backupDir();
   if (!fs.existsSync(dir)) return [] as { name: string; sizeBytes: number; createdAt: string }[];
   return fs
     .readdirSync(dir)
-    .filter((f) => /^tuhafiye(-[\w.-]+)?\.db$/.test(f) && fs.statSync(path.join(dir, f)).isFile())
+    .filter((f) => isValidBackupName(f) && fs.statSync(path.join(dir, f)).isFile())
     .map((f) => {
       const st = fs.statSync(path.join(dir, f));
       return { name: f, sizeBytes: st.size, createdAt: st.mtime.toISOString() };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Yedeklere bütünlük + içerik özeti ekler (en fazla 15 dosya özetlenir). */
+function listBackups() {
+  const base = listBackupsBase();
+  return base.map((entry, i) =>
+    i < 15 ? summarizeBackup(sqlitePath, entry) : { ...entry, integrity: "unknown" as const, tables: -1, orders: null, products: null, customers: null, users: null },
+  );
 }
 
 function tableStats() {
@@ -88,6 +97,7 @@ export async function GET(request: Request) {
         totalRows,
         tables,
         backups: listBackups(),
+        restoreState: readRestoreState(sqlitePath),
       },
     });
   } catch (err: any) {
@@ -96,14 +106,47 @@ export async function GET(request: Request) {
   }
 }
 
-/** POST /api/database { action: "backup" } — Tutarlı bir yedek dosyası üretir (VACUUM INTO). */
+/** POST /api/database
+ *  { action: "backup" }                      — Tutarlı yedek üretir (VACUUM INTO)
+ *  { action: "restore", name: "<yedek.db>" } — Yedeği sisteme geri yükler (YALNIZ SUPER_ADMIN)
+ */
 export async function POST(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
 
-  const body = (await request.json().catch(() => ({}))) as { action?: string };
+  const body = (await request.json().catch(() => ({}))) as { action?: string; name?: string };
+
+  if (body?.action === "restore") {
+    const role = (__gate.user.role || "").toUpperCase();
+    if (role !== "SUPER_ADMIN") {
+      return NextResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Yedek geri yükleme yalnız Süper Admin içindir." } }, { status: 403 });
+    }
+    const name = String(body?.name ?? "").trim();
+    if (!isValidBackupName(name)) {
+      return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz yedek adı." } }, { status: 422 });
+    }
+    const actor = (__gate.user.email || __gate.user.name || "admin").toString();
+    const result = await performRestore({ livePath: sqlitePath, name, actor });
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: { code: "RESTORE_FAILED", message: result.error } }, { status: 400 });
+    }
+    return NextResponse.json({
+      success: true,
+      data: {
+        restored: result.source,
+        preRestoreBackup: result.preRestoreBackup,
+        tables: result.tables,
+        rowsCopied: result.rowsCopied,
+        skippedTables: result.skippedTables,
+        message: `'${result.source}' geri yüklendi; önceki canlı durum '${result.preRestoreBackup}' olarak saklandı. Sayfayı yenileyin.`,
+        backups: listBackups(),
+        restoreState: readRestoreState(sqlitePath),
+      },
+    });
+  }
+
   if (body?.action !== "backup") {
-    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' kullanın." } }, { status: 422 });
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' veya 'restore' kullanın." } }, { status: 422 });
   }
   try {
     const dir = backupDir();
