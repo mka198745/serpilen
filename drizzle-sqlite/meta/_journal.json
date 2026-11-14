@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1794223224421,
+      "tag": "0000_harsh_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794231903550,
+      "tag": "0001_blog_seo_scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794506797117,
+      "tag": "0002_remove_b2b",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794513457348,
+      "tag": "0003_remove_erp",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794517679137,
+      "tag": "0004_intelligence_engine_faz1",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794593683058,
+      "tag": "0005_commercial_optimization_faz2",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794597030461,
+      "tag": "0006_decision_intelligence_faz3",
+      "breakpoints": true
+    }
+  ]
+}

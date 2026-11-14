@@ -1,0 +1,20 @@
+# Serpilen Collection — tek komutla test/canlı kurulum (Uygulama + SQLite dosyası)
+# Kullanım:  docker compose up -d --build
+# Takip:     docker compose logs -f app
+# Veriler:   app-data volume'ünde /app/data/tuhafiye.db olarak saklanır.
+# MySQL'e geçiş: docker-compose.mysql.yml dosyasını kullanın (bkz. README).
+services:
+  app:
+    build: .
+    environment:
+      DATABASE_URL: sqlite:/app/data/tuhafiye.db
+      STOCK_RESERVATION_MINUTES: ${STOCK_RESERVATION_MINUTES:-15}
+      PORT: "3000"
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  app-data:
