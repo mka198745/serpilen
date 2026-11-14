@@ -41,4 +41,29 @@ for (const artifact of runtimeArtifacts) {
   }
 }
 
+// Turbopack external (hash'li) paket stubları: Next, native paketleri
+// `.next/standalone/.next/node_modules/<pkg>-<hash16>` olarak "external module"
+// çıkarır; dizin boş kalabiliyor ve runtime'da require("<pkg>-<hash16>") patlıyor.
+// Boş kalan her hash'li dizine, gerçek pakete yönlendiren stub yazılır.
+const hashedRoot = path.join(standaloneDir, ".next", "node_modules");
+if (fs.existsSync(hashedRoot)) {
+  for (const entry of fs.readdirSync(hashedRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const m = entry.name.match(/^([^/@][^/]*)-([0-9a-f]{16})$/);
+    if (!m) continue;
+    const realName = m[1];
+    const dir = path.join(hashedRoot, entry.name);
+    if (fs.readdirSync(dir).length > 0) continue;
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: entry.name, version: "0.0.0", main: "index.js" })
+    );
+    fs.writeFileSync(
+      path.join(dir, "index.js"),
+      `module.exports = require(${JSON.stringify(realName)});\n`
+    );
+    console.log(`[postbuild] stub yazıldı: ${entry.name} -> ${realName}`);
+  }
+}
+
 console.log("[postbuild] standalone çıktısı hazır (yalnız .env vb. gizli dosyalar KOPYALANMAZ).");
