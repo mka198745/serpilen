@@ -22,18 +22,28 @@ Debian 12 üzerinde şu yöntemle derlendi:
    kaldırmak için `bits/c++config.h` sarmalayıcısı (`_GLIBCXX_USE_PTHREAD_*_CLOCKWAIT`,
    `_GLIBCXX_USE_PTHREAD_*_CLOCKLOCK`, `_GLIBCXX_USE_PTHREAD_RWLOCK_CLOCKLOCK` #undef)
    ve `-nostdinc` + elle dizin sıralaması (`#include_next` karışımını önler).
-4. glibc 2.28'de bulunmayan 3 sembol `shim.c` ile sağlandı (`-Bsymbolic` ile yalnız
-   bu DSO içinde bağlanır): `__libc_single_threaded=0`, `arc4random` (getrandom),
-   `_dl_find_object` (dl_iterate_phdr ile).
+4. glibc 2.28'de bulunmayan/dışa verilmeyen semboller `shim.c` ile sağlandı
+   (`-Bsymbolic` ile yalnız bu DSO içinde bağlanır):
+   - `__libc_single_threaded=0`, `arc4random` (getrandom), `_dl_find_object` (dl_iterate_phdr),
+   - largefile alias'ları: `stat64`/`lstat64`/`fstat64` (→ `__xstat64/__lxstat64/__fxstat64(1,...)`;
+     x86_64'te `_STAT_VER_LINUX=1`), `open64` (→ `open`), `fcntl64` (→ `fcntl`),
+     `mmap64` (→ `mmap`), `ftruncate64` (→ `ftruncate`).
+     NOT: glibc 2.28 x86_64'te bu *64 sembolleri dinamik sembol olarak dışa verilmez;
+     normalde `libc_nonshared.a` statik sarmalayıcılarıdır. İlk sürümü bu yüzden host'ta
+     "undefined symbol: stat64" ile ölüyordu.
 5. Bağlama, SONAME'leri doğru stub kütüphanelerle yapıldı (`libc.so.6`,
    `libm.so.6`, `libpthread.so.0`, `libdl.so.2`) → **hiçbir versiyonlu sembol
    referansı kalmadı** (`readelf -V` boş); NEEDED yalnız bu 4 çekirdek kütüphane.
 6. stat64/fstat64/lstat64/dlopen/... compat sembolleri (glibc >= 2.2) kullanılır —
    2.28'de hepsi mevcut.
 
-Doğrulama: sembol düzeyi tarama (2.28'de olmayan isim yok) + FTS5/JSON1/WAL/
-transaction/dosya roundtrip smoke testi (SQLite 3.53.4) + paketli hâlinde
-(`prebuilds/linux-x64.node` değiştirilerek) yükleme testi.
+Doğrulama: `readelf -V` (versiyon referansı YOK) + `objdump -T` UND taraması
+(2.28'de olmayan isim yok) + FTS5/JSON1/WAL/transaction/dosya oluşturma smoke testi
+(SQLite 3.53.4) + shim fonksiyonlarının tekil testi (stat64/open64/... rc=0) +
+paketli hâlinde yükleme testi.
+
+Hata geçmişi: v1 (0721872c...) "undefined symbol: stat64" — büyük dosya alias'ları
+exportun dışındaydı; v2 (bc16b013...) shim'e eklendi. v1 kullanmayın.
 
 ## Hosting'de uygulama (CloudLinux 8 / glibc 2.28)
 
