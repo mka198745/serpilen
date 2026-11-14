@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { sqlite, sqlitePath } from "@/db";
 
 import { requireStaff } from "@/lib/auth";
-import { summarizeBackup, performRestore, readRestoreState, isValidBackupName } from "@/lib/db-restore";
+import { summarizeBackup, performRestore, performRestoreFromPath, readRestoreState, isValidBackupName } from "@/lib/db-restore";
 export const dynamic = "force-dynamic";
 
 function backupDir(): string {
@@ -106,13 +107,91 @@ export async function GET(request: Request) {
   }
 }
 
+const MAX_UPLOAD_BYTES = 256 * 1024 * 1024; // 256 MB üst sınır
+const SQLITE_MAGIC = Buffer.from("SQLite format 3\0", "latin1");
+
+type StaffGate = Extract<Awaited<ReturnType<typeof requireStaff>>, { ok: true }>;
+
+/** multipart/form-data ile gelen yüklenen .db yedeğini geri yükler (YALNIZ SUPER_ADMIN). */
+async function handleRestoreUpload(request: Request, gate: StaffGate) {
+  const role = (gate.user.role || "").toUpperCase();
+  if (role !== "SUPER_ADMIN") {
+    return NextResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Yedek geri yükleme yalnız Süper Admin içindir." } }, { status: 403 });
+  }
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Form verisi okunamadı; dosya 256 MB'ı aşıyor veya istek bozuk olabilir." } }, { status: 400 });
+  }
+  const file = form.get("file");
+  if (!file || typeof file === "string") {
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Dosya seçilmedi (form alanı: 'file')." } }, { status: 400 });
+  }
+  if (file.size === 0) {
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Yüklenen dosya boş." } }, { status: 400 });
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ success: false, error: { code: "PAYLOAD_TOO_LARGE", message: "Dosya 256 MB sınırını aşıyor." } }, { status: 413 });
+  }
+  // SQLite magic bytes — diske yazmadan önce kabaca SQLite dosyası olduğunu doğrula
+  try {
+    const head = Buffer.from(await file.slice(0, 16).arrayBuffer());
+    if (head.length < 16 || !head.subarray(0, 16).equals(SQLITE_MAGIC)) {
+      return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Bu bir SQLite veritabanı dosyası değil." } }, { status: 422 });
+    }
+  } catch {
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Dosya okunamadı." } }, { status: 400 });
+  }
+
+  // Staging: geçici dizine yaz; geri yükleme bitince (başarı/başarısızlık) temizlenir
+  const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), "serpilen-restore-"));
+  const rawName = path.basename(String(file.name || "upload.db"));
+  const safeName = rawName.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 120) || "upload.db";
+  const stagingPath = path.join(stagingDir, safeName.toLowerCase().endsWith(".db") ? safeName : `${safeName}.db`);
+  try {
+    const buf = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(stagingPath, buf);
+    const actor = (gate.user.email || gate.user.name || "admin").toString();
+    const result = await performRestoreFromPath({ livePath: sqlitePath, backupPath: stagingPath, source: safeName, actor });
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: { code: "RESTORE_FAILED", message: result.error } }, { status: 400 });
+    }
+    return NextResponse.json({
+      success: true,
+      data: {
+        restored: result.source,
+        preRestoreBackup: result.preRestoreBackup,
+        tables: result.tables,
+        rowsCopied: result.rowsCopied,
+        skippedTables: result.skippedTables,
+        message: `'${result.source}' geri yüklendi; önceki canlı durum '${result.preRestoreBackup}' olarak saklandı. Sayfayı yenileyin.`,
+        backups: listBackups(),
+        restoreState: readRestoreState(sqlitePath),
+      },
+    });
+  } finally {
+    try {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 /** POST /api/database
  *  { action: "backup" }                      — Tutarlı yedek üretir (VACUUM INTO)
  *  { action: "restore", name: "<yedek.db>" } — Yedeği sisteme geri yükler (YALNIZ SUPER_ADMIN)
+ *  multipart/form-data  { file: <yedek.db> } — Bilgisayardan yedek yükleyip geri yükler (YALNIZ SUPER_ADMIN)
  */
 export async function POST(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
+
+  const contentType = (request.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("multipart/form-data")) {
+    return handleRestoreUpload(request, __gate);
+  }
 
   const body = (await request.json().catch(() => ({}))) as { action?: string; name?: string };
 
@@ -146,7 +225,7 @@ export async function POST(request: Request) {
   }
 
   if (body?.action !== "backup") {
-    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' veya 'restore' kullanın." } }, { status: 422 });
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' veya 'restore' kullanın ya da multipart/form-data ile 'file' gönderin." } }, { status: 422 });
   }
   try {
     const dir = backupDir();

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   PanelTop,
   PanelBottom,
@@ -22,6 +22,7 @@ import {
   RotateCcw,
   History,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
@@ -577,6 +578,10 @@ function DatabaseSettingsPanel() {
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [tableFilter, setTableFilter] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [confirmUpload, setConfirmUpload] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = () => {
     authFetch("/api/database", { cache: "no-store" })
@@ -612,6 +617,36 @@ function DatabaseSettingsPanel() {
       setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
     } finally {
       setBackingUp(false);
+    }
+  };
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    setUploadFile(f);
+    setConfirmUpload(false);
+    setFeedback(null);
+  };
+
+  const restoreFromUpload = async () => {
+    if (!uploadFile || uploading) return;
+    setUploading(true);
+    setFeedback(null);
+    try {
+      const form = new FormData();
+      form.append("file", uploadFile, uploadFile.name);
+      const res = await authFetch("/api/database", { method: "POST", body: form });
+      const d = await res.json();
+      if (!d?.success) {
+        setFeedback({ text: d?.error?.message || "Yükleme başarısız.", isError: true });
+        return;
+      }
+      setConfirmUpload(false);
+      setFeedback({ text: `${d.data?.restored ?? uploadFile.name} geri yüklendi (${(d.data?.rowsCopied ?? 0).toLocaleString("tr-TR")} satır, ${d.data?.tables ?? 0} tablo). Güvenlik yedeği: ${d.data?.preRestoreBackup}. Sayfa yenileniyor…`, isError: false });
+      window.setTimeout(() => window.location.reload(), 1800);
+    } catch {
+      setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -704,6 +739,52 @@ function DatabaseSettingsPanel() {
           <div className="flex items-start gap-2 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <span><b>Geri yükleme</b>, seçilen yedeği sistemde çalışır hale getirir: mevcut TÜM veriler yedekteki hal ile DEĞİŞTİRİLİR. İşlem öncesi mevcut durum otomatik olarak <span className="font-mono">tuhafiye-pre-restore-*.db</span> olarak yedeklenir; istediğinizde o yedeğe tekrar dönebilirsiniz. Yalnız Süper Admin yapabilir. Yedek yüklendikten sonra mevcut oturum düşebilir — yeniden giriş yapmanız gerekebilir.</span>
+          </div>
+
+          {/* Bilgisayardan yedek yükle */}
+          <div className="rounded-2xl border border-dashed border-violet-300 bg-violet-50/60 p-3 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-start gap-2 min-w-0 flex-1">
+                <Upload className="w-5 h-5 mt-0.5 shrink-0 text-violet-700" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-violet-900">Bilgisayardan Yedek Yükle</p>
+                  <p className="text-[10px] text-violet-900/80 leading-snug">Kendi bilgisayarınızdaki <span className="font-mono">.db</span> yedek dosyasını doğrudan sisteme yükleyin. Dosya önce SQLite bütünlük ve zorunlu tablo (users/products/orders/order_items) kontrolünden geçirilir; mevcut veritabanı değişmeden önce otomatik güvenlik yedeği alınır.</p>
+                  {uploadFile && (
+                    <p className="text-[10px] font-mono text-violet-950 mt-1 truncate" title={uploadFile.name}>{uploadFile.name} <span className="text-violet-700">• {formatBytes(uploadFile.size)}</span></p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 pl-7 sm:pl-0">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".db,.sqlite,.sqlite3,application/octet-stream"
+                  className="hidden"
+                  onChange={onPickFile}
+                />
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="px-3 py-2 bg-white border border-violet-300 hover:border-violet-500 text-violet-900 text-xs font-bold rounded-xl transition disabled:opacity-60">
+                  {uploadFile ? "Dosyayı Değiştir" : "Dosya Seç"}
+                </button>
+                <button
+                  onClick={() => setConfirmUpload(true)}
+                  disabled={!uploadFile || uploading}
+                  title={uploadFile ? "Seçilen yedeği yükleyip geri yükle" : "Önce bir .db dosyası seçin"}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-40 disabled:hover:bg-violet-700 text-white text-xs font-bold transition"
+                >
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {uploading ? "Yükleniyor…" : "Yedeği Yükle"}
+                </button>
+              </div>
+            </div>
+            {confirmUpload && uploadFile && (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-[10px] text-rose-900 space-y-1.5">
+                <p><b>Emin misiniz?</b> “{uploadFile.name}” içeriği canlı veritabanını tamamen değiştirecek. Önce otomatik güvenlik yedeği alınır.</p>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={restoreFromUpload} disabled={uploading} className="px-2.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 disabled:opacity-60 text-white font-bold transition">{uploading ? "Geri yükleniyor…" : "Evet, yükle ve geri yükle"}</button>
+                  <button onClick={() => setConfirmUpload(false)} disabled={uploading} className="px-2.5 py-1.5 rounded-lg bg-white border border-rose-200 text-rose-800 font-bold hover:bg-rose-100 transition">Vazgeç</button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">

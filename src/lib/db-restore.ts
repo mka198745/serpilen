@@ -138,11 +138,35 @@ export type RestoreResult =
   | { ok: true; source: string; preRestoreBackup: string; tables: number; rowsCopied: number; skippedTables: string[] }
   | { ok: false; error: string; preRestoreBackup?: string };
 
+/**
+ * Bilgisayardan yüklenen (staging) dosyadan geri yükleme.
+ * Dosya adı serbesttir; içerik yine bütünlük + zorunlu tablo kontrolünden geçirilir.
+ * `source` yalnızca görüntüleme/audit amacıyla kullanılır (basename + 120 karakterle sınırlanır).
+ */
+export async function performRestoreFromPath(opts: { livePath: string; backupPath: string; source: string; actor: string }): Promise<RestoreResult> {
+  const { livePath, backupPath } = opts;
+  if (livePath === ":memory:") return { ok: false, error: "Bellek içi veritabanı geri yüklenemez." };
+  const source = String(opts.source || "upload.db").split(/[\\/]/).pop()?.trim().slice(0, 120) || "upload.db";
+  try {
+    if (!fs.existsSync(backupPath) || !fs.statSync(backupPath).isFile()) {
+      return { ok: false, error: "Yüklenen yedek dosyası bulunamadı." };
+    }
+  } catch {
+    return { ok: false, error: "Yüklenen yedek dosyası okunamadı." };
+  }
+  return restoreFromFile({ livePath, file: backupPath, source, actor: opts.actor });
+}
+
 export async function performRestore(opts: { livePath: string; name: string; actor: string }): Promise<RestoreResult> {
   const { livePath, name } = opts;
   if (livePath === ":memory:") return { ok: false, error: "Bellek içi veritabanı geri yüklenemez." };
   const file = resolveBackupFile(livePath, name);
   if (!file) return { ok: false, error: "Geçersiz yedek adı veya dosya bulunamadı." };
+  return restoreFromFile({ livePath, file, source: name, actor: opts.actor });
+}
+
+async function restoreFromFile(opts: { livePath: string; file: string; source: string; actor: string }): Promise<RestoreResult> {
+  const { livePath, file, source } = opts;
 
   // 1) Yedeği salt-okuma doğrula
   try {
@@ -237,7 +261,7 @@ export async function performRestore(opts: { livePath: string; name: string; act
   try {
     fs.writeFileSync(
       path.join(backupDirFor(livePath), ".restore-state.json"),
-      JSON.stringify({ source: name, restoredAt: new Date().toISOString(), preRestoreBackup, actor: opts.actor, tables: tablesCopied, rowsCopied } satisfies RestoreState, null, 1),
+      JSON.stringify({ source, restoredAt: new Date().toISOString(), preRestoreBackup, actor: opts.actor, tables: tablesCopied, rowsCopied } satisfies RestoreState, null, 1),
     );
   } catch (err) {
     console.error("[db-restore] restore-state yazılamadı:", err);
@@ -253,8 +277,8 @@ export async function performRestore(opts: { livePath: string; name: string; act
       opts.actor,
       "DB_BACKUP_RESTORED",
       "Database",
-      name,
-      `Yedekten geri yüklendi: ${name}. Önceki canlı durum '${preRestoreBackup}' olarak saklandı.`,
+      source,
+      `Yedekten geri yüklendi: ${source}. Önceki canlı durum '${preRestoreBackup}' olarak saklandı.`,
       Math.floor(Date.now() / 1000),
     );
     auditDb.close();
@@ -262,5 +286,5 @@ export async function performRestore(opts: { livePath: string; name: string; act
     console.error("[db-restore] audit log yazılamadı:", err);
   }
 
-  return { ok: true, source: name, preRestoreBackup, tables: tablesCopied, rowsCopied, skippedTables };
+  return { ok: true, source, preRestoreBackup, tables: tablesCopied, rowsCopied, skippedTables };
 }
