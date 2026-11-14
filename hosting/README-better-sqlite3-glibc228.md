@@ -31,6 +31,9 @@ Debian 12 üzerinde şu yöntemle derlendi:
      NOT: glibc 2.28 x86_64'te bu *64 sembolleri dinamik sembol olarak dışa verilmez;
      normalde `libc_nonshared.a` statik sarmalayıcılarıdır. İlk sürümü bu yüzden host'ta
      "undefined symbol: stat64" ile ölüyordu.
+   Shim **default visibility** ile derlenir (`-fvisibility=hidden` KULLANMAYIN: semboller
+   DSO'nun dinamik tablosundan görünmez olur, host 2.28'de `undefined symbol` ile ölür;
+   sandbox bunu yakalamaz çünkü glibc ≥2.32 o sembolleri sağlar).
 5. Bağlama, SONAME'leri doğru stub kütüphanelerle yapıldı (`libc.so.6`,
    `libm.so.6`, `libpthread.so.0`, `libdl.so.2`) → **hiçbir versiyonlu sembol
    referansı kalmadı** (`readelf -V` boş); NEEDED yalnız bu 4 çekirdek kütüphane.
@@ -42,8 +45,20 @@ Doğrulama: `readelf -V` (versiyon referansı YOK) + `objdump -T` UND taraması
 (SQLite 3.53.4) + shim fonksiyonlarının tekil testi (stat64/open64/... rc=0) +
 paketli hâlinde yükleme testi.
 
-Hata geçmişi: v1 (0721872c...) "undefined symbol: stat64" — büyük dosya alias'ları
-exportun dışındaydı; v2 (bc16b013...) shim'e eklendi. v1 kullanmayın.
+Doğrulama sırası: `readelf -V` (boş olmalı) **ve mümkünse `objdump -T` UND listesinde
+`__libc_single_threaded`/`arc4random`/`_dl_find_object` gibi shim'in sağladığı sembollerin
+*bulunmadığını* teyit edin** — sandbox glibc'si (≥2.32) bu sembolleri sağladığı için smoke
+testi host'taki eksikliği yakalamaz.
+
+Hata geçmişi:
+- v1 (0721872c...) "undefined symbol: stat64" — büyük dosya alias'ları export'un dışındaydı.
+- v2 (bc16b013...) alias'lar shim'e eklendi ama shim `-fvisibility=hidden` ile derlenmişti;
+  sandbox smoke geçti, host 2.28'de `dlopen` **"undefined symbol: __libc_single_threaded"**
+  (ERR_DLOPEN_FAILED) ile öldü.
+- v3 (2d5e0dda...) shim default visibility ile (hidden KULLANILMADAN) + `-Bsymbolic`
+  yeniden derlendi; semboller DSO'nun dinamik tablosunda tanımlı, UND listesinde
+  `__libc_single_threaded`/`arc4random`/`_dl_find_object` yok; `readelf -V` boş; smoke OK.
+- v1 ve v2 kullanmayın.
 
 ## Hosting'de uygulama (CloudLinux 8 / glibc 2.28)
 

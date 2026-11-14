@@ -51,3 +51,4 @@ image-search/
 # Bun paket yöneticisi dosyaları (bu proje npm kullanır)
 bun.lock
 bun.lockb
+.build-tmp/
