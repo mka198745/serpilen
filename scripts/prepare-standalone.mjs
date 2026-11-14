@@ -48,12 +48,19 @@ for (const artifact of runtimeArtifacts) {
 const hashedRoot = path.join(standaloneDir, ".next", "node_modules");
 if (fs.existsSync(hashedRoot)) {
   for (const entry of fs.readdirSync(hashedRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
     const m = entry.name.match(/^([^/@][^/]*)-([0-9a-f]{16})$/);
     if (!m) continue;
     const realName = m[1];
     const dir = path.join(hashedRoot, entry.name);
-    if (fs.readdirSync(dir).length > 0) continue;
+    if (entry.isSymbolicLink()) {
+      // Symlink (genelde ../../node_modules/<pkg>'e işaret eder): zip'e ve panel
+      // çıkarımına güvenilemez; gerçek stub paketine dönüştür.
+      fs.rmSync(dir, { force: true });
+      fs.mkdirSync(dir);
+    } else if (fs.readdirSync(dir).length > 0) {
+      continue;
+    }
     fs.writeFileSync(
       path.join(dir, "package.json"),
       JSON.stringify({ name: entry.name, version: "0.0.0", main: "index.js" })
