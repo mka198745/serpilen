@@ -5,6 +5,7 @@ import path from "node:path";
 import { sqlite, sqlitePath } from "@/db";
 
 import { requireStaff } from "@/lib/auth";
+import { issueDownloadTicket, consumeDownloadTicket } from "@/lib/download-tickets";
 import { summarizeBackup, performRestore, performRestoreFromPath, readRestoreState, isValidBackupName } from "@/lib/db-restore";
 export const dynamic = "force-dynamic";
 
@@ -56,11 +57,35 @@ function dbFileInfo() {
 
 /** GET /api/database — DB bilgisi + tablo istatistikleri + yedekler. ?download=<ad> ile yedek indirilir. */
 export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const download = url.searchParams.get("download");
+  const ticket = url.searchParams.get("ticket");
+
+  // Biletli indirme: iframe içinden açılan yeni sekme — staff doğrulaması biletle yapılır
+  if (download && ticket) {
+    const safeT = path.basename(download);
+    if (!/^tuhafiye(-[\w.-]+)?\.db$/.test(safeT) || !consumeDownloadTicket(ticket, safeT)) {
+      return NextResponse.json({ success: false, error: { code: "UNAUTHENTICATED", message: "İndirme bileti geçersiz veya süresi doldu." } }, { status: 401 });
+    }
+    const file = path.join(backupDir(), safeT);
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Yedek bulunamadı." } }, { status: 404 });
+    }
+    const buf = fs.readFileSync(file);
+    return new NextResponse(new Uint8Array(buf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${safeT}"`,
+        "Content-Length": String(buf.length),
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
 
-  const url = new URL(request.url);
-  const download = url.searchParams.get("download");
   if (download) {
     const safe = path.basename(download);
     if (!/^tuhafiye(-[\w.-]+)?\.db$/.test(safe)) {
@@ -182,6 +207,7 @@ async function handleRestoreUpload(request: Request, gate: StaffGate) {
 /** POST /api/database
  *  { action: "backup" }                      — Tutarlı yedek üretir (VACUUM INTO)
  *  { action: "restore", name: "<yedek.db>" } — Yedeği sisteme geri yükler (YALNIZ SUPER_ADMIN)
+ *  { action: "download-ticket", name }       — iframe içi indirme için kısa ömürlü tek kullanımlık bilet üretir
  *  multipart/form-data  { file: <yedek.db> } — Bilgisayardan yedek yükleyip geri yükler (YALNIZ SUPER_ADMIN)
  */
 export async function POST(request: Request) {
@@ -194,6 +220,19 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as { action?: string; name?: string };
+
+  if (body?.action === "download-ticket") {
+    const name = String(body?.name ?? "").trim();
+    if (!isValidBackupName(name)) {
+      return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz yedek adı." } }, { status: 422 });
+    }
+    const file = path.join(backupDir(), name);
+    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Yedek bulunamadı." } }, { status: 404 });
+    }
+    const ticket = issueDownloadTicket(name);
+    return NextResponse.json({ success: true, data: { url: `/api/database?download=${encodeURIComponent(name)}&ticket=${ticket}`, expiresInSec: 120 } });
+  }
 
   if (body?.action === "restore") {
     const role = (__gate.user.role || "").toUpperCase();
@@ -225,7 +264,7 @@ export async function POST(request: Request) {
   }
 
   if (body?.action !== "backup") {
-    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' veya 'restore' kullanın ya da multipart/form-data ile 'file' gönderin." } }, { status: 422 });
+    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz işlem. action='backup' | 'restore' | 'download-ticket' kullanın ya da multipart/form-data ile 'file' gönderin." } }, { status: 422 });
   }
   try {
     const dir = backupDir();

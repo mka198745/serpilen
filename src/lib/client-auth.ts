@@ -62,7 +62,8 @@ export async function downloadAuthenticated(url: string, fallbackFilename: strin
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(objectUrl);
+    // Hemen iptal indirmeyi yarıştırabilir — elden bırakıldıktan sonra temizle
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     return { ok: true };
   } catch {
     return { ok: false, message: "Sunucuya ulaşılamadı." };

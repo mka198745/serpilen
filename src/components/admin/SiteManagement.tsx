@@ -584,13 +584,44 @@ function DatabaseSettingsPanel() {
   const [downloading, setDownloading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isInIframe = () => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  };
+
   const downloadBackup = async (name: string) => {
     if (downloading) return;
     setDownloading(name);
     setFeedback(null);
-    const result = await downloadAuthenticated(`/api/database?download=${encodeURIComponent(name)}`, name);
-    if (!result.ok) setFeedback({ text: result.message, isError: true });
-    setDownloading(null);
+    try {
+      if (isInIframe()) {
+        // Çerçeve içinde indirmeler engellenebilir — biletle yeni sekmede aç
+        const res = await authFetch("/api/database", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "download-ticket", name }),
+        });
+        const d = await res.json().catch(() => null);
+        if (!d?.success) {
+          setFeedback({ text: d?.error?.message || "İndirme başlatılamadı.", isError: true });
+          return;
+        }
+        const win = window.open(d.data.url, "_blank", "noopener");
+        if (!win) {
+          setFeedback({ text: "Tarayıcı yeni sekmeyi engelledi. Önizlemeyi sağ üstteki düzenekle yeni sekmede açıp yedeği tekrar indirmeyi deneyin.", isError: true });
+        }
+        return;
+      }
+      const result = await downloadAuthenticated(`/api/database?download=${encodeURIComponent(name)}`, name);
+      if (!result.ok) setFeedback({ text: result.message, isError: true });
+    } catch {
+      setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const load = () => {
