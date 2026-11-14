@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
 
-import { authFetch } from "@/lib/client-auth";
+import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
 type SiteTab = "header" | "footer" | "cart" | "database";
 
 const inputCls =
@@ -581,7 +581,17 @@ function DatabaseSettingsPanel() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [confirmUpload, setConfirmUpload] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const downloadBackup = async (name: string) => {
+    if (downloading) return;
+    setDownloading(name);
+    setFeedback(null);
+    const result = await downloadAuthenticated(`/api/database?download=${encodeURIComponent(name)}`, name);
+    if (!result.ok) setFeedback({ text: result.message, isError: true });
+    setDownloading(null);
+  };
 
   const load = () => {
     authFetch("/api/database", { cache: "no-store" })
@@ -803,9 +813,14 @@ function DatabaseSettingsPanel() {
                         <p className="text-[10px] text-stone-400">{new Date(b.createdAt).toLocaleString("tr-TR")} • {formatBytes(b.sizeBytes)}{b.tables >= 0 ? ` • ${b.tables} tablo` : ""}</p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <a href={`/api/database?download=${encodeURIComponent(b.name)}`} className="p-2 rounded-lg bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 transition" title="Yedeği indir">
-                          <Download className="w-4 h-4" />
-                        </a>
+                        <button
+                          onClick={() => downloadBackup(b.name)}
+                          disabled={downloading === b.name}
+                          className="p-2 rounded-lg bg-stone-100 hover:bg-amber-100 disabled:opacity-60 text-stone-700 hover:text-amber-900 transition"
+                          title="Yedeği indir"
+                        >
+                          {downloading === b.name ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        </button>
                         <button
                           onClick={() => setConfirmRestore(confirmRestore === b.name ? null : b.name)}
                           disabled={restoring || b.integrity !== "ok"}

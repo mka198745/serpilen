@@ -68,7 +68,7 @@ import { SiteManagement } from "@/components/admin/SiteManagement";
 import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
-import { authFetch } from "@/lib/client-auth";
+import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
 import {
   ADMIN_MODULES,
   ADMIN_MODULE_GROUPS,
@@ -264,6 +264,20 @@ export function AdminDashboardClient({
   const [reportDays, setReportDays] = useState(30);
   const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance">("sales");
   const [reportBusy, setReportBusy] = useState(false);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
+
+  const downloadReportCsv = async () => {
+    if (csvBusy) return;
+    setCsvBusy(true);
+    setCsvError(null);
+    const result = await downloadAuthenticated(
+      `/api/reports?days=${reportDays}&format=csv&export=${reportSubTab}`,
+      `rapor-${reportSubTab}-${reportDays}gun.csv`
+    );
+    if (!result.ok) setCsvError(result.message);
+    setCsvBusy(false);
+  };
 
   /* --- FAZ 6: Satın Alma (sipariş→mal kabul + öneriler) --- */
   const [suppliersList, setSuppliersList] = useState(initialSuppliers);
@@ -3026,13 +3040,15 @@ export function AdminDashboardClient({
                   </button>
                 );
               })}
-              <a
-                href={`/api/reports?days=${reportDays}&format=csv&export=${reportSubTab}`}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-stone-900 text-white hover:bg-black transition ml-auto"
+              <button
+                onClick={downloadReportCsv}
+                disabled={csvBusy}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-stone-900 text-white hover:bg-black disabled:opacity-60 transition ml-auto"
               >
                 <Download className="w-3.5 h-3.5" />
-                CSV İndir
-              </a>
+                {csvBusy ? "İndiriliyor…" : "CSV İndir"}
+              </button>
+              {csvError && <span className="text-[11px] font-bold text-rose-700 basis-full text-right">{csvError}</span>}
             </div>
 
             {reportBusy && <div className="text-xs text-stone-500">Hesaplanıyor…</div>}
