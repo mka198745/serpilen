@@ -1,0 +1,53 @@
+# Bağımlılıklar
+node_modules/
+
+# Next.js
+.next/
+out/
+build/
+
+# Ortam dosyaları (asla commitlenmez)
+.env
+.env*.local
+.env.development
+.env.production
+
+# Loglar
+*.log
+npm-debug.log*
+
+# İşletim sistemi
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Drizzle (snapshot hariç her şey commitlenir; studio geçicileri hariç)
+drizzle/meta/_journal.json.bak
+
+# Yerel SQLite veritabanı dosyaları (commitlenmez)
+.bridge-data/
+*.db
+*.db-shm
+*.db-wal
+
+# Test çıktıları
+coverage/
+
+# Derleme artıkları
+tsconfig.tsbuildinfo
+
+# Siteye yüklenen ürün görselleri (çalışma anında oluşur, commitlenmez)
+data/uploads/
+
+# Veritabani yedekleri
+data/backups/
+
+# Tool artifacts (image search scratch)
+image-search/
+
+# Bun paket yöneticisi dosyaları (bu proje npm kullanır)
+bun.lock
+bun.lockb
