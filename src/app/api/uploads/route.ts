@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { requireStaff } from "@/lib/auth";
+import { uploadsProductsDir } from "@/lib/storage-paths";
 /**
  * Site deposuna ürün görseli yükleme.
  * POST multipart/form-data, alan adı: "file".
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const dir = path.join(process.cwd(), "data", "uploads", "products");
+    const dir = uploadsProductsDir();
     await mkdir(dir, { recursive: true });
 
     const name = `${Date.now()}-${randomUUID().slice(0, 8)}${ext}`;
