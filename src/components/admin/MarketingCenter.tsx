@@ -155,7 +155,7 @@ export function MarketingCenter({ categories, brands }: Props) {
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!answerModal || !answerText.trim()) return;
-    await post("/api/questions", { action: "ANSWER", id: answerModal.id, answer: answerText, answeredBy: "İpek Tuhafiye Uzman Ekibi" });
+    await post("/api/questions", { action: "ANSWER", id: answerModal.id, answer: answerText, answeredBy: "Serpilen Collection Uzman Ekibi" });
     setAnswerModal(null);
     setAnswerText("");
     void loadAll();

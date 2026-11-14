@@ -8,7 +8,8 @@ import { CartDrawer } from "@/components/layout/CartDrawer";
 import { AuthModal } from "@/components/layout/AuthModal";
 
 export const metadata: Metadata = {
-  title: "İpek Tuhafiye | Dikiş, Nakış, Fermuar, Düğme & Örgü Malzemeleri",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://serpilencollection.com"),
+  title: "Serpilen Collection | Dikiş, Nakış, Fermuar, Düğme & Örgü Malzemeleri",
   description:
     "Türkiye'nin lider tuhafiye ve tekstil hobi malzemeleri platformu. Gütermann, Coats, YKK ve Prym ürünlerinde perakende satış ve hızlı kargo.",
   keywords: [
@@ -23,9 +24,9 @@ export const metadata: Metadata = {
     "bez tela",
     "pos kasa",
   ],
-  authors: [{ name: "İpek Tuhafiye San. ve Tic. Ltd. Şti." }],
+  authors: [{ name: "Serpilen Collection San. ve Tic. Ltd. Şti." }],
   openGraph: {
-    title: "İpek Tuhafiye | Perakende & POS Dijital Platformu",
+    title: "Serpilen Collection | Perakende & POS Dijital Platformu",
     description: "Fiziki mağaza, online e-ticaret ve çoklu depo stok entegrasyonu.",
     locale: "tr_TR",
     type: "website",
@@ -47,10 +48,10 @@ export default function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "LocalBusiness",
-              name: "İpek Tuhafiye",
+              name: "Serpilen Collection",
               image: "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800",
               telephone: "08508882026",
-              email: "siparis@ipektuhafiye.com",
+              email: "siparis@serpilencollection.com",
               address: {
                 "@type": "PostalAddress",
                 streetAddress: "Moda Caddesi No: 18",

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     if (action === "ANSWER") {
       await db.update(productQuestions).set({
           answer: String(body.answer || "").slice(0, 1200),
-          answeredBy: body.answeredBy || "İpek Tuhafiye Uzman Ekibi",
+          answeredBy: body.answeredBy || "Serpilen Collection Uzman Ekibi",
           status: "ANSWERED",
         }).where(eq(productQuestions.id, Number(body.id)));
       const [u] = await db.select().from(productQuestions).where(eq(productQuestions.id, Number(body.id)));

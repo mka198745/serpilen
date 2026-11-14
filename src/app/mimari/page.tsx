@@ -68,7 +68,7 @@ export default function ArchitecturePage() {
           <span>FAZ 0 — System Architecture & Technical Blueprint</span>
         </div>
         <h1 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
-          Tuhafiye Perakende Ticaret Platformu Mimarisi
+          Serpilen Collection Perakende Ticaret Platformu Mimarisi
         </h1>
         <p className="text-stone-300 text-sm md:text-base leading-relaxed max-w-3xl">
           Bu doküman; 40 maddelik mimari vizyonun, veri modellerinin, tekil stok motorunun, sipariş yaşam döngüsünün tam teknik haritasını sunar.

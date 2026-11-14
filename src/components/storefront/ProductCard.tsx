@@ -74,7 +74,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Brand & Category */}
           <div className="flex items-center justify-between text-[11px] text-gray-400 mb-1">
             <span className="font-semibold text-amber-800 uppercase tracking-wide">
-              {product.brandName || "İpek Tuhafiye"}
+              {product.brandName || "Serpilen Collection"}
             </span>
             <span>{product.unit}</span>
           </div>

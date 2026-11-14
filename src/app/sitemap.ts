@@ -4,7 +4,7 @@ import { products, categories, brands, blogPosts } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://ipektuhafiye.com";
+const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://serpilencollection.com";
 
 const STATIC_PAGES = [
   { url: "", priority: 1.0, changeFrequency: "daily" as const },

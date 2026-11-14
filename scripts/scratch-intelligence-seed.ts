@@ -155,7 +155,7 @@ async function main() {
   // Scratch admin (SUPER_ADMIN) — GERÇEK parolayı bilmiyoruz; scratch'a özgü parola
   await db.insert(users).values({
     email: "qa-admin@scratch.test",
-    passwordHash: hashPassword("Ipek2026!"),
+    passwordHash: hashPassword("Serpilen2026!"),
     name: "QA Scratch Admin",
     role: "SUPER_ADMIN",
     isActive: true,

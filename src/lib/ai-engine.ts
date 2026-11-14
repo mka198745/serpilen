@@ -516,28 +516,28 @@ export async function generateProductContent(productId: number, opts?: { tone?: 
 
   const tone = opts?.tone === "professional" ? "profesyonel" : opts?.tone === "friendly" ? "samimi" : "ustalıklı";
 
-  const seoTitle = `${product.name} — ${brand?.name || "Kaliteli"} | ${price} TL | İpek Tuhafiye`.slice(0, 65);
+  const seoTitle = `${product.name} — ${brand?.name || "Kaliteli"} | ${price} TL | Serpilen Collection`.slice(0, 65);
 
-  const metaDescription = `${product.name} ${brand?.name ? `(${brand.name}) ` : ""}İpek Tuhafiye'de ${price} TL. ${product.shortDescription ? product.shortDescription.slice(0, 90) + " " : ""}Aynı gün kargo, %100 orijinal ürün, 14 gün iade hakkı.`.slice(0, 158);
+  const metaDescription = `${product.name} ${brand?.name ? `(${brand.name}) ` : ""}Serpilen Collection'da ${price} TL. ${product.shortDescription ? product.shortDescription.slice(0, 90) + " " : ""}Aynı gün kargo, %100 orijinal ürün, 14 gün iade hakkı.`.slice(0, 158);
 
   const seoDescription = [
     `${product.name} — ${category?.name || "Tuhafiye"} kategorisinde ${brand?.name ? `${brand.name} güvencesiyle` : "kaliteli üretim"} sunulmaktadır.`,
     product.shortDescription || `${unit} bazında satılır.`,
     `Profesyonel terziler, moda tasarımı öğrencileri ve hobi meraklıları için ideal.`,
-    `İpek Tuhafiye'de ${price} TL fiyatıyla aynı gün kargo avantajıyla sipariş verebilirsiniz.`,
+    `Serpilen Collection'da ${price} TL fiyatıyla aynı gün kargo avantajıyla sipariş verebilirsiniz.`,
     `Anahtar kelimeler: ${keywords.slice(0, 6).join(", ")}.`,
   ].join(" ");
 
   const suggestedTags = keywords.slice(0, 8).join(",");
 
   const longDescription = [
-    `${product.name} İpek Tuhafiye kalitesiyle.`,
+    `${product.name} Serpilen Collection kalitesiyle.`,
     "",
     `${product.description || product.shortDescription || "Bu ürün, uzun ömürlü kullanım için titizlikle seçilmiş malzemelerden üretilmiştir."}`,
     "",
     `Terzi atölyelerinden moda tasarımcılarına, el işi meraklılarından hobi kurslarına kadar geniş bir kullanıcı kitlesi için ideal bir seçimdir.`,
     "",
-    `💡 Neden İpek Tuhafiye?`,
+    `💡 Neden Serpilen Collection?`,
     `• ${brand?.name || "Güvenilir üretici"} onaylı %100 orijinal ürün`,
     `• 30 yılı aşkın tuhafiye sektör tecrübesi`,
     `• Aynı gün kargo ve 14 gün koşulsuz iade hakkı`,
@@ -880,7 +880,7 @@ export async function chat(message: string): Promise<ChatResponse> {
     return {
       intent: "help",
       answer:
-        "Merhaba! Ben İpek Tuhafiye AI Asistanıyım. Size şu konularda yardımcı olabilirim:\n\n• 📈 **Satış analizi** — ciro, kanal, trend, tahmin\n• 📦 **Stok analizi** — kritik stok, tükenme tahmini, ölü stok\n• 🛒 **Satın alma önerisi** — tedarikçi + miktar + maliyet\n• 👥 **Müşteri analizi** — segmentasyon, churn riski, LTV\n• 📝 **Ürün içerik** — SEO açıklama, meta, etiket\n• 🎯 **Kampanya önerisi** — verilere dayalı promosyon fikirleri\n• 🧠 **Karar Zekâsı özeti** — bekleyen öneriler, erken uyarılar, hedeflerim\n\nSadece doğal dilde sorun: \"Bugünkü satışlar nasıl?\" gibi.",
+        "Merhaba! Ben Serpilen Collection AI Asistanıyım. Size şu konularda yardımcı olabilirim:\n\n• 📈 **Satış analizi** — ciro, kanal, trend, tahmin\n• 📦 **Stok analizi** — kritik stok, tükenme tahmini, ölü stok\n• 🛒 **Satın alma önerisi** — tedarikçi + miktar + maliyet\n• 👥 **Müşteri analizi** — segmentasyon, churn riski, LTV\n• 📝 **Ürün içerik** — SEO açıklama, meta, etiket\n• 🎯 **Kampanya önerisi** — verilere dayalı promosyon fikirleri\n• 🧠 **Karar Zekâsı özeti** — bekleyen öneriler, erken uyarılar, hedeflerim\n\nSadece doğal dilde sorun: \"Bugünkü satışlar nasıl?\" gibi.",
       suggestions: ["Bugünkü satışlar", "Karar önerileri", "Erken uyarılar", "Hedeflerim"],
       data: null,
     };

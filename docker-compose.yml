@@ -1,4 +1,4 @@
-# İpek Tuhafiye — tek komutla test/canlı kurulum (Uygulama + SQLite dosyası)
+# Serpilen Collection — tek komutla test/canlı kurulum (Uygulama + SQLite dosyası)
 # Kullanım:  docker compose up -d --build
 # Takip:     docker compose logs -f app
 # Veriler:   app-data volume'ünde /app/data/tuhafiye.db olarak saklanır.

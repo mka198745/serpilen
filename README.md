@@ -1,4 +1,4 @@
-# İpek Tuhafiye — Perakende Ticaret Yönetim Platformu
+# Serpilen Collection — Perakende Ticaret Yönetim Platformu
 
 Fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrini, B2B toptan portalı,
 web tabanlı POS terminali, stok hareket defteri, satın alma, kampanya/sadakat motoru
@@ -135,13 +135,13 @@ sürücüsüne çevirin, `DATABASE_URL=mysql://...` ayarlayın, `npm run db:appl
 - Seed personelin başlangıç şifresi yoktur; tanımlamak için:
 
   ```bash
-  npm run db:set-password -- admin@ipektuhafiye.com YeniSifre123
+  npm run db:set-password -- admin@serpilencollection.com YeniSifre123
   ```
 
   Test ortamındaki hazır hesaplar:
-  `admin@ipektuhafiye.com` / `Admin123!`,
-  `kasiyer@ipektuhafiye.com` / `Kasiyer123!`,
-  `depo@ipektuhafiye.com` / `Depo123!`
+  `admin@serpilencollection.com` / `Admin123!`,
+  `kasiyer@serpilencollection.com` / `Kasiyer123!`,
+  `depo@serpilencollection.com` / `Depo123!`
 
 ## Notlar
 

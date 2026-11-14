@@ -16,13 +16,13 @@ interface BlogPostPageProps {
   }>;
 }
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://ipektuhafiye.com";
+const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://serpilencollection.com";
 
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params;
   const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1);
   if (!post || !post.isPublished || new Date(post.publishedAt).getTime() > Date.now()) {
-    return { title: "İçerik bulunamadı | İpek Tuhafiye" };
+    return { title: "İçerik bulunamadı | Serpilen Collection" };
   }
   const title = post.seoTitle?.trim() || post.title;
   const description = post.seoDescription?.trim() || post.excerpt || undefined;

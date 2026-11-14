@@ -78,7 +78,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
       ...p,
       variants: vars,
       categoryName: cat?.name || "Kategori",
-      brandName: br?.name || "İpek Tuhafiye",
+      brandName: br?.name || "Serpilen Collection",
     };
   });
 

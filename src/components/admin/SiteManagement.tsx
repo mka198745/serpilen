@@ -186,7 +186,7 @@ function HeaderSettingsPanel() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Marka Adı</label>
-              <input className={inputCls} value={form["site.brand_name"]} onChange={(e) => setForm({ ...form, "site.brand_name": e.target.value })} placeholder="İPEK TUHAFİYE" />
+              <input className={inputCls} value={form["site.brand_name"]} onChange={(e) => setForm({ ...form, "site.brand_name": e.target.value })} placeholder="SERPİLEN COLLECTION" />
               <p className="text-[10px] text-stone-400 mt-1">Son kelime vurgu renginde gösterilir.</p>
             </div>
             <div>
@@ -490,7 +490,7 @@ function CheckoutSettingsCard() {
           </div>
           <div>
             <label className={labelCls}>Hesap Adı</label>
-            <input className={inputCls} value={form["site.checkout.eft_account_name"]} onChange={(e) => setForm({ ...form, "site.checkout.eft_account_name": e.target.value })} placeholder="İpek Tuhafiye San. ve Tic. Ltd. Şti." />
+            <input className={inputCls} value={form["site.checkout.eft_account_name"]} onChange={(e) => setForm({ ...form, "site.checkout.eft_account_name": e.target.value })} placeholder="Serpilen Collection San. ve Tic. Ltd. Şti." />
           </div>
         </div>
         <div className="mt-3">

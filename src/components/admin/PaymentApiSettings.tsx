@@ -152,7 +152,7 @@ export function PaymentApiSettings() {
     threedsRequired: true,
   });
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://ipektuhafiye.com";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://serpilencollection.com";
 
   const applyMasked = (d: MaskedPaymentSettings) => {
     setPaytr((p) => ({

@@ -1420,7 +1420,7 @@ export function AdminDashboardClient({
               İK
             </div>
             <div className="min-w-0">
-              <span className="font-black text-white text-sm block tracking-tight">İPEK TUHAFİYE</span>
+              <span className="font-black text-white text-sm block tracking-tight">SERPİLEN COLLECTION</span>
               <span className="text-[10px] text-stone-400 font-mono block">Yönetim SaaS & WMS</span>
             </div>
           </div>
@@ -3336,7 +3336,7 @@ export function AdminDashboardClient({
 
                 <div className="w-64 p-4 border-2 border-stone-800 rounded-xl bg-white shadow-md text-center space-y-2">
                   <div className="text-[10px] font-black uppercase tracking-wider text-stone-600">
-                    İPEK TUHAFİYE
+                    SERPİLEN COLLECTION
                   </div>
                   <h4 className="text-xs font-bold text-stone-900 line-clamp-2 leading-tight">
                     {barcodeLabelTitle}
@@ -5235,7 +5235,7 @@ export function AdminDashboardClient({
                 <input
                   type="email"
                   required
-                  placeholder="ayse@ipektuhafiye.com"
+                  placeholder="ayse@serpilencollection.com"
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   className="w-full px-3 py-2 border border-stone-300 rounded-xl"

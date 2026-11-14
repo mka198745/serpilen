@@ -129,7 +129,7 @@ export function AuthModal() {
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] overflow-y-auto">
         <div className="bg-amber-950 px-5 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-white font-black text-lg leading-tight">İpek Tuhafiye</h2>
+            <h2 className="text-white font-black text-lg leading-tight">Serpilen Collection</h2>
             <p className="text-amber-200/80 text-[11px]">Üye girişi ile siparişlerinizi takip edin</p>
           </div>
           <button onClick={closeAuth} className="p-1.5 text-amber-200/70 hover:text-white hover:bg-white/10 rounded-lg transition" aria-label="Kapat">
@@ -234,9 +234,9 @@ export function AuthModal() {
               <p className="text-[11px] font-bold text-stone-500 mb-2">Test hesapları (tıklayınca doldurur):</p>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { label: "Süper Admin", email: "admin@ipektuhafiye.com", password: "Admin123!" },
-                  { label: "Kasiyer", email: "kasiyer@ipektuhafiye.com", password: "Kasiyer123!" },
-                  { label: "Depo", email: "depo@ipektuhafiye.com", password: "Depo123!" },
+                  { label: "Süper Admin", email: "admin@serpilencollection.com", password: "Admin123!" },
+                  { label: "Kasiyer", email: "kasiyer@serpilencollection.com", password: "Kasiyer123!" },
+                  { label: "Depo", email: "depo@serpilencollection.com", password: "Depo123!" },
                 ].map((a) => (
                   <button
                     key={a.email}

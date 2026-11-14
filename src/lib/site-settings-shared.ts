@@ -5,7 +5,7 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.header.announcement_text": "1.000 TL ve Üzeri Ücretsiz Kargo | Aynı Gün Hızlı Gönderim",
   "site.header.support_phone": "0850 888 20 26",
   // Her iki bölümde de kullanılan marka
-  "site.brand_name": "İPEK TUHAFİYE",
+  "site.brand_name": "SERPİLEN COLLECTION",
   "site.brand_tagline": "Dikiş, Nakış, Fermuar & Hobi",
   // Footer
   "site.footer.description":
@@ -13,8 +13,8 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.footer.store_address": "Moda Cad. No: 18, Kadıköy / İstanbul",
   "site.footer.warehouse_address": "İkitelli OSB Dokumacılar San. Sitesi No: 42, İstanbul",
   "site.footer.phone_line": "0850 888 20 26 & 0216 333 44 55",
-  "site.footer.email": "siparis@ipektuhafiye.com",
-  "site.footer.copyright": "© 2026 İpek Tuhafiye San. ve Tic. Ltd. Şti. Tüm Hakları Saklıdır.",
+  "site.footer.email": "siparis@serpilencollection.com",
+  "site.footer.copyright": "© 2026 Serpilen Collection San. ve Tic. Ltd. Şti. Tüm Hakları Saklıdır.",
   // Sosyal medya (boş bırakılan ikon footer'da gösterilmez)
   "site.social.instagram": "",
   "site.social.facebook": "",
@@ -37,7 +37,7 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.checkout.eft_note": "Havale / EFT ile transfer",
   "site.checkout.eft_bank": "Türkiye İş Bankası — Kadıköy Şubesi",
   "site.checkout.eft_iban": "TR12 0006 4000 0011 2345 6789 01",
-  "site.checkout.eft_account_name": "İpek Tuhafiye San. ve Tic. Ltd. Şti.",
+  "site.checkout.eft_account_name": "Serpilen Collection San. ve Tic. Ltd. Şti.",
   "site.checkout.trust_text": "256-Bit SSL & 3D Secure Güvenli Ödeme",
   "site.checkout.success_note": "Siparişiniz alındı; ödeme adımınız tamamlandığında depomuz hazırlığa başlar.",
 };

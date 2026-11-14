@@ -573,7 +573,7 @@ export function ContentManagement() {
             {/* Google arama sonucu önizlemesi */}
             <div className="rounded-xl border border-stone-200 bg-white p-3 shadow-xs">
               <p className="text-[9px] font-black uppercase tracking-widest text-stone-400 mb-1.5">Google Önizleme</p>
-              <p className="text-[11px] text-emerald-800 truncate">ipektuhafiye.com <span className="text-stone-400">›</span> blog <span className="text-stone-400">›</span> {editing?.slug || "yeni-makale"}</p>
+              <p className="text-[11px] text-emerald-800 truncate">serpilencollection.com <span className="text-stone-400">›</span> blog <span className="text-stone-400">›</span> {editing?.slug || "yeni-makale"}</p>
               <p className="text-[17px] leading-snug text-[#1a0dab] truncate">{(form.seoTitle.trim() || form.title.trim() || "Makale başlığı").slice(0, 70)}</p>
               <p className="text-xs text-stone-600 leading-snug line-clamp-2">
                 {(

@@ -60,7 +60,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
       role: "ai",
-      text: "Merhaba! Ben **İpek Tuhafiye AI Asistanı**yım. Satış, stok, satın alma, müşteri veya kampanya hakkında doğal dilde soru sorabilirsiniz. 🙌",
+      text: "Merhaba! Ben **Serpilen Collection AI Asistanı**yım. Satış, stok, satın alma, müşteri veya kampanya hakkında doğal dilde soru sorabilirsiniz. 🙌",
       suggestions: ["Bugünkü satışlar nasıl?", "Kritik stokları göster", "Satın alma önerisi ver", "VIP müşterilerim"],
     },
   ]);
@@ -200,7 +200,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
           <span className="text-[10px] font-black uppercase tracking-widest text-violet-800">FAZ 11 — AI YÖNETİM ASİSTANI</span>
           <h2 className="text-xl font-black text-stone-900 flex items-center gap-2">
             <Bot className="w-6 h-6 text-violet-700" />
-            <span>Tuhafiye AI Asistanı & Veri Analisti</span>
+            <span>Serpilen Collection AI Asistanı & Veri Analisti</span>
           </h2>
           <p className="text-xs text-stone-500">
             Satış, stok, satın alma, müşteri ve içerik analizleri — doğal dil sohbet desteğiyle.
@@ -601,7 +601,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
                 <Bot className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-black text-sm">İpek Tuhafiye AI Asistanı</h3>
+                <h3 className="font-black text-sm">Serpilen Collection AI Asistanı</h3>
                 <p className="text-[10px] text-violet-200">Verileriniz üzerinden içgörü üretir · Guardrail aktif</p>
               </div>
             </div>

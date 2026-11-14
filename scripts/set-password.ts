@@ -6,7 +6,7 @@ import { hashPassword } from "../src/lib/password";
 
 /**
  * Kullanım: npm run db:set-password -- <e-posta> <yeni-şifre>
- * Örn:     npm run db:set-password -- admin@ipektuhafiye.com Admin123!
+ * Örn:     npm run db:set-password -- admin@serpilencollection.com Admin123!
  */
 async function main() {
   const [emailRaw, password] = process.argv.slice(2);

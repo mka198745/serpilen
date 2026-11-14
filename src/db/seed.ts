@@ -33,21 +33,21 @@ export async function seedDatabase() {
   await db.insert(users).values([
     {
       name: "Ahmet Yılmaz (Yönetici)",
-      email: "admin@ipektuhafiye.com",
+      email: "admin@serpilencollection.com",
       passwordHash: "scrypt_hash_admin",
       role: "SUPER_ADMIN",
       phone: "0532 100 20 30",
     },
     {
       name: "Elif Demir (Kasiyer & Satış)",
-      email: "kasiyer@ipektuhafiye.com",
+      email: "kasiyer@serpilencollection.com",
       passwordHash: "scrypt_hash_cashier",
       role: "CASHIER",
       phone: "0533 200 40 50",
     },
     {
       name: "Murat Kaya (Depo Şefi)",
-      email: "depo@ipektuhafiye.com",
+      email: "depo@serpilencollection.com",
       passwordHash: "scrypt_hash_depo",
       role: "WAREHOUSE_KEEPER",
       phone: "0535 300 60 70",
@@ -614,7 +614,7 @@ export async function seedDatabase() {
       excerpt: "Çift taraflı saten kurdelelerin enleri (10mm, 20mm, 40mm) ile zarif fiyonk bağlama teknikleri.",
       content: `Özel günlerde hediyelerinize lüks bir dokunuş katmak veya bebek elbiselerinin kenarlarına zarif biyeler çekmek için çift taraflı saten kurdeleler vazgeçilmezdir. Kenarları overloklu modeller ütüye dayanıklıdır ve fiyonk yapıldığında formunu kaybetmez.`,
       category: "Hobi & Tasarım",
-      author: "İpek Atölye",
+      author: "Serpilen Collection Atölye",
       imageUrl: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=800&auto=format&fit=crop&q=80",
       isPublished: true,
     },
@@ -629,7 +629,7 @@ export async function seedDatabase() {
       action: "SYSTEM_INITIALIZED",
       entity: "System",
       entityId: "1",
-      details: "Tuhafiye Retail Commerce Platform çekirdek veritabanı başarıyla yapılandırıldı.",
+      details: "Serpilen Collection Retail Commerce Platform çekirdek veritabanı başarıyla yapılandırıldı.",
     },
     {
       userId: "2",

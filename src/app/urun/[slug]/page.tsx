@@ -61,10 +61,10 @@ async function loadProduct(rawSlug: string) {
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
   const data = await loadProduct(slug);
-  if (!data) return { title: "Ürün bulunamadı | İpek Tuhafiye" };
+  if (!data) return { title: "Ürün bulunamadı | Serpilen Collection" };
 
   const { product, category, brand } = data;
-  const title = product.seoTitle || `${product.name} — Fiyatı ${Number(product.retailPrice).toFixed(2)} TL | İpek Tuhafiye`;
+  const title = product.seoTitle || `${product.name} — Fiyatı ${Number(product.retailPrice).toFixed(2)} TL | Serpilen Collection`;
   const description =
     product.seoDescription ||
     (product.shortDescription || product.description || "").slice(0, 158);
@@ -127,7 +127,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
       brand: brand ? { "@type": "Brand", name: brand.name } : undefined,
       offers: {
         "@type": "Offer",
-        url: `https://ipektuhafiye.com/urun/${product.slug}`,
+        url: `https://serpilencollection.com/urun/${product.slug}`,
         priceCurrency: "TRY",
         price: Number(product.campaignPrice || product.retailPrice).toFixed(2),
         availability: totalAvailable > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
@@ -138,10 +138,10 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Ana Sayfa", item: "https://ipektuhafiye.com/" },
-        { "@type": "ListItem", position: 2, name: "Ürünler", item: "https://ipektuhafiye.com/urunler" },
+        { "@type": "ListItem", position: 1, name: "Ana Sayfa", item: "https://serpilencollection.com/" },
+        { "@type": "ListItem", position: 2, name: "Ürünler", item: "https://serpilencollection.com/urunler" },
         category
-          ? { "@type": "ListItem", position: 3, name: category.name, item: `https://ipektuhafiye.com/urunler?category=${category.slug}` }
+          ? { "@type": "ListItem", position: 3, name: category.name, item: `https://serpilencollection.com/urunler?category=${category.slug}` }
           : null,
         { "@type": "ListItem", position: category ? 4 : 3, name: product.name },
       ].filter(Boolean),

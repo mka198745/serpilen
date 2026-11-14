@@ -2,7 +2,7 @@ import React from "react";
 import { OrderTrackClient } from "./OrderTrackClient";
 
 export const metadata = {
-  title: "Sipariş Takibi | İpek Tuhafiye",
+  title: "Sipariş Takibi | Serpilen Collection",
   description: "Sipariş numaranız ve telefonunuzla kargo ve sipariş durumunuzu anlık takip edin.",
 };
 

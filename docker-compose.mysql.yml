@@ -1,4 +1,4 @@
-# İpek Tuhafiye — tek komutla test/canlı kurulum (Uygulama + MySQL 8.4)
+# Serpilen Collection — tek komutla test/canlı kurulum (Uygulama + MySQL 8.4)
 # Kullanım:  docker compose up -d --build
 # Takip:     docker compose logs -f app
 services:

@@ -1,4 +1,4 @@
-# İpek Tuhafiye — Next.js + SQLite (drizzle) üretim imajı
+# Serpilen Collection — Next.js + SQLite (drizzle) üretim imajı
 # better-sqlite3 native modülü derlenebilsin diye araç zinciri deps aşamasına eklenir.
 FROM node:22-slim AS deps
 WORKDIR /app

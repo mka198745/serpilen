@@ -441,7 +441,7 @@ export function ProductDetailClient({
                 <tbody className="divide-y divide-gray-100">
                   <tr className="py-2.5">
                     <td className="py-2 text-gray-400 font-medium w-48">Marka</td>
-                    <td className="py-2 text-gray-900 font-semibold">{brand?.name || "İpek Tuhafiye"}</td>
+                    <td className="py-2 text-gray-900 font-semibold">{brand?.name || "Serpilen Collection"}</td>
                   </tr>
                   <tr className="py-2.5">
                     <td className="py-2 text-gray-400 font-medium">Birim</td>

@@ -48,7 +48,7 @@ export default function ContactPage() {
                 <Mail className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
                 <div>
                   <strong className="block text-stone-900">E-Posta:</strong>
-                  <span>siparis@ipektuhafiye.com</span>
+                  <span>siparis@serpilencollection.com</span>
                 </div>
               </div>
             </div>

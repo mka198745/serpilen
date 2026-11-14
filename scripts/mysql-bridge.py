@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MySQL-protokol -> SQLite geliştirme köprüsü (İpek Tuhafiye önizleme veritabanı).
+MySQL-protokol -> SQLite geliştirme köprüsü (Serpilen Collection önizleme veritabanı).
 
 Gerçek bir MySQL sunucusu olmayan ortamlarda (bu sandbox gibi) uygulamaya
 MySQL gibi görünür: mysql-mimic MySQL protokolünü konuşur, gelen SQL sqlglot

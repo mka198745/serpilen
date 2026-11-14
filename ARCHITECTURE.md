@@ -34,7 +34,7 @@ Bu platform; fiziki tuhafiye mağazası, çoklu depo ağı, B2C e-ticaret vitrin
 ### 5. SİSTEM CONTEXT DIAGRAMI
 ```text
                      ┌───────────────────────────────┐
-                     │    Tuhafiye Retail Commerce   │
+                     │    Serpilen Collection Retail Commerce   │
                      │          Platform             │
                      └───────────────┬───────────────┘
                                      │

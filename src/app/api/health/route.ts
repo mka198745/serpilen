@@ -12,7 +12,7 @@ export async function GET() {
     return Response.json({
       ok: true,
       status: "HEALTHY",
-      platform: "Tuhafiye Retail Commerce Management Platform",
+      platform: "Serpilen Collection Retail Commerce Management Platform",
       timestamp: new Date().toISOString(),
       services: {
         database: "UP",

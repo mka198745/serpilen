@@ -41,7 +41,7 @@ export default async function HomePage() {
       ...p,
       variants: vars,
       categoryName: cat?.name || "Kategori",
-      brandName: br?.name || "İpek Tuhafiye",
+      brandName: br?.name || "Serpilen Collection",
     };
   });
 

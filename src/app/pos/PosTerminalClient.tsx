@@ -1290,7 +1290,7 @@ export function PosTerminalClient({
             {/* Thermal Slip Content */}
             <div className="font-mono text-[11px] text-stone-800 border-2 border-dashed border-stone-300 p-4 rounded-xl bg-stone-50 space-y-2">
               <div className="text-center border-b border-stone-300 pb-2">
-                <h4 className="font-bold text-sm uppercase">İPEK TUHAFİYE SAN. TİC. LTD.</h4>
+                <h4 className="font-bold text-sm uppercase">SERPİLEN COLLECTION SAN. TİC. LTD.</h4>
                 <p>Moda Cad. No:18 Kadıköy / İstanbul</p>
                 <p>VKN: 4810294821 • Kadıköy V.D.</p>
                 <p className="font-bold mt-1">PERAKENDE SATIŞ FİŞİ</p>
@@ -1356,7 +1356,7 @@ export function PosTerminalClient({
               <div className="text-center border-b border-stone-400 pb-2">
                 <h3 className="font-black text-base uppercase">GÜN SONU Z RAPORU</h3>
                 <p className="font-bold text-sm text-amber-900">{zReportData.zReportNumber}</p>
-                <p className="text-[10px]">İPEK TUHAFİYE SAN. TİC. LTD. ŞTİ.</p>
+                <p className="text-[10px]">SERPİLEN COLLECTION SAN. TİC. LTD. ŞTİ.</p>
                 <p className="text-[10px]">Kasa: {zReportData.terminalCode} · Kadıköy Mağaza</p>
               </div>
 
