@@ -71,6 +71,7 @@ import { ContentManagement } from "@/components/admin/ContentManagement";
 
 import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
 import { SupportDesk } from "@/components/admin/SupportDesk";
+import { ZReportsPanel } from "@/components/admin/ZReportsPanel";
 import {
   ADMIN_MODULES,
   ADMIN_MODULE_GROUPS,
@@ -265,7 +266,7 @@ export function AdminDashboardClient({
   /* --- FAZ 5: Raporlama Motoru --- */
   const [reportData, setReportData] = useState<any | null>(null);
   const [reportDays, setReportDays] = useState(30);
-  const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance">("sales");
+  const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance" | "zreports">("sales");
   const [reportBusy, setReportBusy] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -3042,6 +3043,7 @@ export function AdminDashboardClient({
                 { id: "stock" as const, label: "Stok", icon: BoxesIcon },
                 { id: "customers" as const, label: "Müşteri", icon: Users },
                 { id: "finance" as const, label: "Finansal", icon: Wallet },
+                { id: "zreports" as const, label: "Gün Sonu & Z-Raporları", icon: Receipt },
               ].map((t) => {
                 const Icon = t.icon;
                 return (
@@ -3059,7 +3061,8 @@ export function AdminDashboardClient({
               })}
               <button
                 onClick={downloadReportCsv}
-                disabled={csvBusy}
+                disabled={csvBusy || reportSubTab === "zreports"}
+                title={reportSubTab === "zreports" ? "Z raporları CSV olarak dışa aktarılmaz" : undefined}
                 className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-stone-900 text-white hover:bg-black disabled:opacity-60 transition ml-auto"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -3237,6 +3240,8 @@ export function AdminDashboardClient({
                 </div>
               </div>
             )}
+
+            {reportSubTab === "zreports" && <ZReportsPanel />}
 
             {reportData && reportSubTab === "finance" && (
               <div className="space-y-4">
