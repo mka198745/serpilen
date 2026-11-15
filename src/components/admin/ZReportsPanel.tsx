@@ -7,10 +7,12 @@ import {
   Banknote,
   CreditCard,
   ExternalLink,
+  Landmark,
   Printer,
   Receipt,
   RefreshCw,
   Scale,
+  Wallet,
   X,
 } from "lucide-react";
 
@@ -109,9 +111,11 @@ export function ZReportsPanel() {
         acc.cash += n(s.totalSalesCash);
         acc.card += n(s.totalSalesCard) + n(s.totalSalesSplit);
         acc.diff += diffOf(s);
+        acc.opening += n(s.openingAmount);
+        acc.closing += n(s.closingAmount);
         return acc;
       },
-      { revenue: 0, cash: 0, card: 0, diff: 0 }
+      { revenue: 0, cash: 0, card: 0, diff: 0, opening: 0, closing: 0 }
     );
   }, [zRows]);
 
@@ -120,7 +124,10 @@ export function ZReportsPanel() {
   const kpis = [
     { label: "Z Raporu", value: String(zRows.length), icon: Receipt, cls: "text-stone-900" },
     { label: "Toplam Ciro (Z)", value: money(totals.revenue), icon: Banknote, cls: "text-emerald-700" },
-    { label: "Nakit / Kart", value: `${money(totals.cash)} / ${money(totals.card)}`, icon: CreditCard, cls: "text-sky-700" },
+    { label: "Nakit Tahsilat", value: money(totals.cash), icon: Banknote, cls: "text-emerald-700" },
+    { label: "Kart Tahsilat", value: money(totals.card), icon: CreditCard, cls: "text-sky-700" },
+    { label: "Kasa Açılış", value: money(totals.opening), icon: Wallet, cls: "text-stone-900" },
+    { label: "Kasa Kapanış", value: money(totals.closing), icon: Landmark, cls: "text-stone-900" },
     {
       label: `Kasa Farkı · ${openShifts.length} açık vardiya`,
       value: `${totals.diff > 0 ? "+" : ""}${money(totals.diff)}`,
@@ -160,7 +167,7 @@ export function ZReportsPanel() {
       </div>
 
       {/* KPI */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {kpis.map((k) => {
           const Icon = k.icon;
           return (
@@ -224,8 +231,10 @@ export function ZReportsPanel() {
                   <th className="py-3 px-3">Kasiyer</th>
                   <th className="py-3 px-3 text-right">Nakit</th>
                   <th className="py-3 px-3 text-right">Kart</th>
+                  <th className="py-3 px-3 text-right">Kasa Açılış</th>
+                  <th className="py-3 px-3 text-right">Kasa Kapanış</th>
                   <th className="py-3 px-3 text-right">Fark</th>
-                  <th className="py-3 px-3">Kapanış</th>
+                  <th className="py-3 px-3">Kapanış Zamanı</th>
                   <th className="py-3 px-3 text-right">Detay</th>
                 </tr>
               </thead>
@@ -245,6 +254,10 @@ export function ZReportsPanel() {
                       <td className="py-2.5 px-3 text-right text-emerald-700 font-semibold">{money(n(s.totalSalesCash))}</td>
                       <td className="py-2.5 px-3 text-right text-sky-700 font-semibold">
                         {money(n(s.totalSalesCard) + n(s.totalSalesSplit))}
+                      </td>
+                      <td className="py-2.5 px-3 text-right text-stone-600">{money(n(s.openingAmount))}</td>
+                      <td className="py-2.5 px-3 text-right text-stone-800 font-semibold">
+                        {s.closingAmount === null ? <span className="text-stone-400">—</span> : money(n(s.closingAmount))}
                       </td>
                       <td
                         className={`py-2.5 px-3 text-right font-bold ${
@@ -297,7 +310,7 @@ export function ZReportsPanel() {
 
               <div className="border-t border-stone-400 pt-1 space-y-1">
                 <div className="flex justify-between">
-                  <span>Açılış Kasası:</span>
+                  <span>KASA AÇILIŞ:</span>
                   <span>{money(n(selected.openingAmount))}</span>
                 </div>
                 <div className="flex justify-between font-bold text-emerald-800">
@@ -340,7 +353,7 @@ export function ZReportsPanel() {
                   <span>{money(n(selected.expectedAmount))}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Sayılan Fiili Nakit:</span>
+                  <span>KASA KAPANIŞ (Sayılan):</span>
                   <span>{money(n(selected.closingAmount))}</span>
                 </div>
                 <div
