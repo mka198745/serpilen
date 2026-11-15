@@ -3,6 +3,7 @@ import Link from "next/link";
 import { db } from "@/db";
 import { products, productVariants, categories, brands, inventory, blogPosts } from "@/db/schema";
 import { ProductCard } from "@/components/storefront/ProductCard";
+import { CategoryShowcase } from "@/components/storefront/CategoryShowcase";
 import { CampaignStrip } from "@/components/storefront/CampaignStrip";
 import {
   Scissors,
@@ -51,6 +52,23 @@ export default async function HomePage() {
     { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, count: "Yeni", color: "from-fuchsia-500 to-fuchsia-700" },
     { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, count: "45+ Ürün", color: "from-teal-500 to-teal-700" },
     { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, count: "Yeni", color: "from-indigo-500 to-indigo-700" },
+  ];
+
+  // "Günün Öne Çıkan Ürünleri" yalnızca öne çıkanları gösterir (en fazla 8).
+  // Hiçbiri işaretli değilse ilk 8 ürün gösterilir; kategori vitrinleri tüm ürünleri kullanır.
+  const featuredFlagged = featuredList.filter((p) => p.isFeatured);
+  const featuredGrid = (featuredFlagged.length > 0 ? featuredFlagged : featuredList).slice(0, 8);
+
+  /** Anasayfa kategori vitrinleri — sıra kullanıcı isteğine göre sabittir. */
+  const showcaseDefs = [
+    { slug: "hobi-kitleri", title: "Hobi Kitleri", eyebrow: "Başlangıç Setleri" },
+    { slug: "orgu-hobi", title: "Örgü & Hobi", eyebrow: "İplik, Şiş & Tığ" },
+    { slug: "dikis-nakis", title: "Dikiş & Nakış", eyebrow: "İplik & İğne" },
+    { slug: "canta-aksesuarlari", title: "Çanta Aksesuarları", eyebrow: "Toka, Sap & Çıtçıt" },
+    { slug: "fermuar", title: "Fermuar Çeşitleri", eyebrow: "Metal, Spiral & Gizli" },
+    { slug: "kurdele-serit", title: "Kurdele & Şerit", eyebrow: "Saten, Grogren & Jüt" },
+    { slug: "dugme", title: "Düğme Dünyası", eyebrow: "Sedef, Ahşap & Metal" },
+    { slug: "tekstil-yardimci", title: "Tekstil Yardımcı Ürünleri", eyebrow: "Tela, Lastik & Cırt" },
   ];
 
   return (
@@ -187,11 +205,30 @@ export default async function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {featuredList.map((prod) => (
+          {featuredGrid.map((prod) => (
             <ProductCard key={prod.id} product={prod} />
           ))}
         </div>
       </section>
+
+      {/* 3.1 Kategori Vitrinleri — her kategoriden en fazla 4 ürün */}
+      {showcaseDefs.map((showcase) => {
+        const cat = allCats.find((c) => c.slug === showcase.slug);
+        if (!cat) return null;
+        const items = featuredList
+          .filter((p) => p.categoryId === cat.id && p.isActive !== false)
+          .sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured) || a.id - b.id)
+          .slice(0, 4);
+        return (
+          <CategoryShowcase
+            key={showcase.slug}
+            eyebrow={showcase.eyebrow}
+            title={showcase.title}
+            href={`/urunler?category=${showcase.slug}`}
+            products={items}
+          />
+        );
+      })}
 
       {/* 3.5 FAZ 8: Aktif Kampanya Şeridi */}
       <CampaignStrip />
