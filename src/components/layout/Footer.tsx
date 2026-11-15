@@ -98,7 +98,7 @@ export function Footer() {
             </div>
             <div>
               <h4 className="text-sm font-semibold text-white">Aynı Gün Hızlı Kargo</h4>
-              <p className="text-xs text-stone-400">15:00'e kadar verilen siparişlerde</p>
+              <p className="text-xs text-stone-400">15:00&apos;e kadar verilen siparişlerde</p>
             </div>
           </div>
         </div>
@@ -179,10 +179,7 @@ export function Footer() {
           <ul className="space-y-2 text-xs text-stone-400">
             <li><Link href="/hakkimizda" className="hover:text-amber-400 transition">Hakkımızda</Link></li>
             <li><Link href="/magazalarimiz" className="hover:text-amber-400 transition">Mağazalarımız & Kasa</Link></li>
-            <li><Link href="/pos" className="hover:text-amber-400 transition">Mağaza Web POS Terminali</Link></li>
-            <li><Link href="/admin" className="hover:text-amber-400 transition">Yönetim & WMS Paneli</Link></li>
             <li><Link href="/blog" className="hover:text-amber-400 transition">Dikiş & Malzeme Rehberi</Link></li>
-            <li><Link href="/mimari" className="hover:text-amber-400 transition">Sistem Mimarisi (FAZ 0)</Link></li>
           </ul>
         </div>
 
