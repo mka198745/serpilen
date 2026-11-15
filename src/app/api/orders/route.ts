@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { db } from "@/db";
+import { db, sqlite } from "@/db";
 import { orders, orderItems, orderStatusHistory, customers, loyaltyTransactions, posShifts, products } from "@/db/schema";
 import { adjustInventory } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
+import { normalizeOrderNumber } from "@/lib/order-number";
+import { claimOnlineOrderNumber } from "@/lib/order-number-server";
 // Sipariş yaşam döngüsü — geçerli durum geçişleri
 const ORDER_FLOW: Record<string, string[]> = {
   PENDING: ["PAID", "CANCELLED"],
@@ -46,9 +48,32 @@ export async function GET(request: Request) {
 
     // Tekil sipariş takibi (müşteri): sipariş no + telefon eşleşmesi
     if (orderNumber) {
-      const [ord] = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber.trim())).limit(1);
-      if (!ord || (phone && ord.customerPhone && ord.customerPhone.replace(/\s/g, "") !== phone.replace(/\s/g, ""))) {
+      const raw = orderNumber.trim();
+      const [exact] = await db.select().from(orders).where(eq(orders.orderNumber, raw)).limit(1);
+      let ord = exact;
+      if (!ord) {
+        // Türkçe İ veya Latin I ile yazılmış yeni numaraları aynı kayda yönlendir.
+        const normalized = normalizeOrderNumber(raw);
+        if (/^SIP\d{8,}$/.test(normalized)) {
+          [ord] = await db.select().from(orders).where(eq(orders.orderNumber, `SİP${normalized.slice(3)}`)).limit(1);
+        }
+      }
+      if (!ord) {
         return NextResponse.json({ success: false, error: "Sipariş bulunamadı. Numara/telefon kontrol edin." }, { status: 404 });
+      }
+      const staff = await requireStaff(request);
+      const phoneMatches = !!phone && !!ord.customerPhone &&
+        ord.customerPhone.replace(/\D/g, "") === phone.replace(/\D/g, "");
+      if (!staff.ok && phone && !phoneMatches) {
+        return NextResponse.json({ success: false, error: "Sipariş bulunamadı. Numara/telefon kontrol edin." }, { status: 404 });
+      }
+      if (!staff.ok && !phoneMatches) {
+        // Sıralı numaralar tahmin edilebilir: telefon doğrulanmadan kişisel bilgiler gösterilmez.
+        return NextResponse.json({ success: true, data: {
+          orderNumber: ord.orderNumber, status: ord.status,
+          statusLabel: ORDER_STATUS_LABELS[ord.status] || ord.status,
+          detailsRestricted: true,
+        } });
       }
       const items = await db.select().from(orderItems).where(eq(orderItems.orderId, ord.id));
       const history = await db.select().from(orderStatusHistory).where(eq(orderStatusHistory.orderId, ord.id));
@@ -108,10 +133,11 @@ export async function POST(request: Request) {
       spentPoints = 0,
       couponCode = null,
       applyCampaigns = true, // sunucu tarafı kural motoru
-      orderNumber: clientOrderNumberIn = null, // checkout'ta müşteriye gösterilen numara (online siparişler)
+      orderNumber: clientOrderNumberIn = null,
+      orderNumberToken = null,
     } = body;
 
-    const clientOrderNumber = typeof clientOrderNumberIn === "string" ? clientOrderNumberIn.trim().toUpperCase().slice(0, 40) : null;
+    const clientOrderNumber = typeof clientOrderNumberIn === "string" ? clientOrderNumberIn.trim().slice(0, 40) : null;
 
     let discountTotal = Number(discountTotalIn) || 0;
     let shippingTotal = Number(shippingTotalIn) || 0;
@@ -191,22 +217,12 @@ export async function POST(request: Request) {
       /* varsayılanlar */
     }
 
-    const generatedOrderNumber =
-      orderType === "POS"
+    // Numara ayırma ve sipariş kaydı tek işlemde yapılır; POS serisi değişmez.
+    const { orderNumber, __newOrder_id } = sqlite.transaction(() => {
+      const orderNumber = orderType === "POS"
         ? `POS-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`
-        : `OR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-
-    // İstemcinin gösterdiği sipariş numarası geçerli ve çakışmıyorsa AYNI NUMARA İLE kaydedilir
-    let orderNumber = generatedOrderNumber;
-    if (clientOrderNumber && /^[A-Z0-9-]{5,40}$/.test(clientOrderNumber)) {
-      const clash = await db.select({ id: orders.id }).from(orders).where(eq(orders.orderNumber, clientOrderNumber)).limit(1);
-      if (clash.length === 0) orderNumber = clientOrderNumber;
-    }
-
-    // 1. İç belge numarası olarak orderNumber kullanılır (ERP/fatura entegrasyonu kaldırıldı)
-
-    // 2. Insert Order
-    const [{ id: __newOrder_id }] = await db.insert(orders).values({
+        : claimOnlineOrderNumber(typeof orderNumberToken === "string" ? orderNumberToken : undefined, clientOrderNumber || undefined);
+      const [{ id: __newOrder_id }] = db.insert(orders).values({
         orderNumber,
         orderType,
         customerId: customerId ? Number(customerId) : null,
@@ -222,11 +238,13 @@ export async function POST(request: Request) {
         shippingTotal: String(shippingTotal),
         grandTotal: String(grandTotal),
         shippingAddress,
-        trackingNumber: orderType === "ONLINE_B2C" ? `YK-${Date.now().toString().slice(-8)}` : null,
-        carrier: orderType === "ONLINE_B2C" ? "Yurtiçi Kargo" : null,
+        trackingNumber: null,
+        carrier: null,
         posShiftId: posShiftId ? Number(posShiftId) : null,
         notes,
-      }).returning({ id: orders.id });
+      }).returning({ id: orders.id }).all();
+      return { orderNumber, __newOrder_id };
+    }).immediate();
     const [newOrder] = await db.select().from(orders).where(eq(orders.id, __newOrder_id));
 
     // 3. Insert Order Items & Deduct Inventory in Stock Ledger

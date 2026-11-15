@@ -71,6 +71,13 @@
       "when": 1794766826192,
       "tag": "0009_contact_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794767826192,
+      "tag": "0010_order_number_reservations",
+      "breakpoints": true
     }
   ]
 }

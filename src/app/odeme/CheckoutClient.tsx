@@ -43,8 +43,24 @@ export function CheckoutClient() {
   // /odeme açılışında bu siparişe özel numara üretilir; havale açıklamasına yazılır ve sipariş kaydı bu numarayla oluşturulur
   const [orderNumber, setOrderNumber] = useState<string>("");
   const [orderNumberCopied, setOrderNumberCopied] = useState(false);
+  const [orderNumberToken, setOrderNumberToken] = useState("");
+  const [orderNumberError, setOrderNumberError] = useState(false);
   React.useEffect(() => {
-    setOrderNumber(`OR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`);
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/orders/next-number", { method: "POST", cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.orderNumber || !data.token) throw new Error();
+        if (alive) {
+          setOrderNumber(data.orderNumber);
+          setOrderNumberToken(data.token);
+        }
+      } catch {
+        if (alive) setOrderNumberError(true);
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
   const copyOrderNumber = async () => {
@@ -125,13 +141,14 @@ export function CheckoutClient() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0 || !cartCfg.enabled || !anyPaymentMethod) return;
+    if (items.length === 0 || !cartCfg.enabled || !anyPaymentMethod || !orderNumberToken) return;
     setIsSubmitting(true);
 
     try {
       const payload = {
         orderType: "ONLINE_B2C",
-        orderNumber: orderNumber || undefined,
+        orderNumber,
+        orderNumberToken,
         customerName: formData.name,
         customerEmail: formData.email,
         customerPhone: formData.phone,
@@ -199,11 +216,18 @@ export function CheckoutClient() {
         <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-xs text-left space-y-3 font-sans text-xs">
           <div className="flex justify-between border-b border-stone-100 pb-2">
             <span className="text-stone-500">Sipariş Numarası:</span>
-            <span className="font-mono font-bold text-stone-900">{completedOrder.order.orderNumber}</span>
+            <span className="font-mono font-bold text-stone-900 select-all">{completedOrder.order.orderNumber}</span>
           </div>
+          <p className="text-[11px] leading-relaxed text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            Lütfen sipariş numaranızı not ediniz.{" "}
+            <Link href="/siparis-takip" className="font-bold underline underline-offset-2 hover:text-amber-950">
+              Sipariş Takip
+            </Link>{" "}
+            bölümünden sipariş numaranızı girerek siparişinizi takip edebilirsiniz.
+          </p>
           <div className="flex justify-between border-b border-stone-100 pb-2">
-            <span className="text-stone-500">Kargo Takip No:</span>
-            <span className="font-mono font-bold text-stone-900">{completedOrder.order.trackingNumber} (Yurtiçi Kargo)</span>
+            <span className="text-stone-500 shrink-0">Kargo Takip No:</span>
+            <span className="text-stone-600 font-medium text-right">İletişim numaramızdan size kargo takip numarası gönderilecektir.</span>
           </div>
           <div className="flex justify-between border-b border-stone-100 pb-2">
             <span className="text-stone-500">Toplam Tutar:</span>
@@ -337,10 +361,10 @@ export function CheckoutClient() {
                     <Hash className="w-4 h-4" /> Sipariş Numaranız
                   </p>
                   <p className="mt-1.5 text-2xl sm:text-3xl font-black font-mono tracking-[0.18em] text-stone-900 select-all leading-none">
-                    {orderNumber || "OR-…"}
+                    {orderNumber || "SİP…"}
                   </p>
                   <p className="mt-1.5 text-[11px] text-amber-900/90 font-medium">
-                    Bu numara bu sipariş size özeldir; siparişiniz tamamlandığında aynı numarayla kaydedilir.
+                    {orderNumberError ? "Sipariş numarası alınamadı. Lütfen sayfayı yenileyin." : "Bu numara bu siparişe özeldir; siparişiniz tamamlandığında aynı numarayla kaydedilir."}
                   </p>
                 </div>
                 <button
@@ -519,7 +543,7 @@ export function CheckoutClient() {
               )}
               <button
                 type="submit"
-                disabled={isSubmitting || !cartCfg.enabled || !anyPaymentMethod}
+                disabled={isSubmitting || !cartCfg.enabled || !anyPaymentMethod || !orderNumberToken}
                 className="w-full py-3.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <span>{isSubmitting ? "İşleniyor..." : "Siparişi Onayla & Öde"}</span>
