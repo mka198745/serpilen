@@ -17,8 +17,6 @@ import {
   ArrowRight,
   ShieldCheck,
   Truck,
-  MonitorCheck,
-  SlidersHorizontal,
   BookOpen,
   Star,
 } from "lucide-react";
@@ -199,55 +197,6 @@ export default async function HomePage() {
 
       {/* 3.5 FAZ 8: Aktif Kampanya Şeridi */}
       <CampaignStrip />
-
-      {/* 4. Multi-Channel Unified Management Callout */}
-      <section className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* POS Card */}
-          <div className="bg-gradient-to-br from-amber-900 to-amber-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-            <div className="space-y-3 relative z-10">
-              <div className="w-10 h-10 rounded-xl bg-amber-800 flex items-center justify-center text-amber-200">
-                <MonitorCheck className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold">Fiziki Mağaza Web POS</h3>
-              <p className="text-xs text-amber-200/90 leading-relaxed">
-                Barkod tabancasıyla anında okutma, nakit/kart/parçalı tahsilat, vardiya kasa mutabakatı ve termal fiş çıktısı.
-              </p>
-            </div>
-            <div className="pt-6 relative z-10">
-              <Link
-                href="/pos"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-amber-950 font-bold text-xs rounded-xl shadow-md hover:bg-amber-100 transition"
-              >
-                <span>POS Kasa Ekranını Aç</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-
-          {/* Admin & WMS Card */}
-          <div className="bg-gradient-to-br from-emerald-900 to-emerald-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-            <div className="space-y-3 relative z-10">
-              <div className="w-10 h-10 rounded-xl bg-emerald-800 flex items-center justify-center text-emerald-200">
-                <SlidersHorizontal className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold">Yönetim Paneli & WMS</h3>
-              <p className="text-xs text-emerald-200/90 leading-relaxed">
-                Çoklu depo stok defteri (Stock Ledger), satın alma siparişleri ve kural tabanlı AI asistanı.
-              </p>
-            </div>
-            <div className="pt-6 relative z-10">
-              <Link
-                href="/admin"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-emerald-950 font-bold text-xs rounded-xl shadow-md hover:bg-emerald-100 transition"
-              >
-                <span>Yönetim Masasını Aç</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* 5. Sewing & Craft Blog Guide Preview */}
       <section className="max-w-7xl mx-auto px-4">
