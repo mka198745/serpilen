@@ -168,7 +168,7 @@ export function Footer() {
             <li><Link href="/urunler?category=dugme" className="hover:text-amber-400 transition">Doğal Ahşap & Sedef Düğmeler</Link></li>
             <li><Link href="/urunler?category=kurdele-serit" className="hover:text-amber-400 transition">Saten & Grogren Kurdeleler</Link></li>
             <li><Link href="/urunler?category=orgu-hobi" className="hover:text-amber-400 transition">Alize & Nako Örgü İpleri</Link></li>
-            <li><Link href="/urunler?category=dikis-malzemeleri" className="hover:text-amber-400 transition">Prym Terzi Makasları & İğneler</Link></li>
+            <li><Link href="/urunler?category=canta-aksesuarlari" className="hover:text-amber-400 transition">Çanta Aksesuarları & Tokalar</Link></li>
             <li><Link href="/urunler?category=tekstil-yardimci" className="hover:text-amber-400 transition">Bez Tela & Lastik Çeşitleri</Link></li>
           </ul>
         </div>

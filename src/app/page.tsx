@@ -10,7 +10,6 @@ import {
   CircleDot,
   Ribbon,
   Sparkles,
-  Package,
   Layers,
   Handbag,
   Puzzle,
@@ -49,9 +48,8 @@ export default async function HomePage() {
     { name: "Düğme Dünyası", slug: "dugme", icon: CircleDot, count: "340+ Model", color: "from-emerald-500 to-emerald-700" },
     { name: "Kurdele & Şerit", slug: "kurdele-serit", icon: Ribbon, count: "90+ Renk", color: "from-rose-500 to-rose-700" },
     { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles, count: "65+ İplik", color: "from-purple-500 to-purple-700" },
-    { name: "Dikiş Malzemeleri", slug: "dikis-malzemeleri", icon: Package, count: "110+ Aparat", color: "from-orange-500 to-orange-700" },
-    { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, count: "45+ Ürün", color: "from-teal-500 to-teal-700" },
     { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, count: "Yeni", color: "from-fuchsia-500 to-fuchsia-700" },
+    { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, count: "45+ Ürün", color: "from-teal-500 to-teal-700" },
     { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, count: "Yeni", color: "from-indigo-500 to-indigo-700" },
   ];
 

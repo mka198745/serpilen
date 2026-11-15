@@ -26,6 +26,7 @@ import {
   CircleDot,
   Ribbon,
   Package,
+  Handbag,
   UserCircle2,
   LogOut,
   Settings,
@@ -60,7 +61,7 @@ export function Header() {
     { name: "Düğme Dünyası", slug: "dugme", icon: CircleDot },
     { name: "Kurdele & Şerit", slug: "kurdele-serit", icon: Ribbon },
     { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles },
-    { name: "Dikiş Malzemeleri", slug: "dikis-malzemeleri", icon: Package },
+    { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag },
     { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers },
   ];
 
