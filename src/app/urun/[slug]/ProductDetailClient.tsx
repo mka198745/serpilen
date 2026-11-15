@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Product, ProductVariant, Category, Brand } from "@/lib/types";
 import { useCart } from "@/context/CartContext";
 import { ReviewsQA } from "@/components/storefront/ReviewsQA";
@@ -14,6 +14,7 @@ import {
   Truck,
   RotateCcw,
   Play,
+  Images,
 } from "lucide-react";
 
 interface WarehouseStockInfo {
@@ -48,7 +49,9 @@ export function ProductDetailClient({
     variants.length > 0 ? variants[0] : null
   );
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState<"desc" | "specs" | "video">("desc");
+  const [activeTab, setActiveTab] = useState<"desc" | "specs">("desc");
+  const [showVideo, setShowVideo] = useState(false); // video, görsel alanında mı gösteriliyor?
+  const galleryRef = useRef<HTMLDivElement | null>(null);
   const [isAdded, setIsAdded] = useState(false);
 
   const FALLBACK_IMG = "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800";
@@ -65,6 +68,20 @@ export function ProductDetailClient({
   const video = parseVideoUrl(product.videoUrl);
   const hasVideo = (product.videoUrl || "").trim() !== "";
   const isPlayableVideo = video.kind !== "unknown";
+
+  /** Videoyu sayfanın üstündeki görsel alanında açar ve oraya kaydırır. */
+  const openVideo = () => {
+    if (!hasVideo) return;
+    setShowVideo(true);
+    requestAnimationFrame(() => {
+      galleryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const showImage = (url: string) => {
+    setShowVideo(false);
+    setActiveImage(url);
+  };
 
   const handleSelectVariant = (v: ProductVariant) => {
     setSelectedVariant(v);
@@ -93,30 +110,93 @@ export function ProductDetailClient({
       {/* Main Product Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Left: Gallery */}
-        <div className="lg:col-span-6 space-y-4">
+        <div className="lg:col-span-6 space-y-4" ref={galleryRef}>
           <div className="aspect-square bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-xs relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={activeImage}
-              alt={product.name}
-              className="w-full h-full object-contain object-center"
-            />
+            {showVideo && hasVideo ? (
+              /* Video modu: oynatıcı doğrudan ürün görselinin alanında */
+              <div className="absolute inset-0 bg-black flex items-center justify-center">
+                <div className="w-full aspect-video max-h-full">
+                  {isPlayableVideo ? (
+                    video.kind === "youtube" && video.mediaId ? (
+                      <YouTubePlayer
+                        videoId={video.mediaId}
+                        embedUrl={video.embedUrl}
+                        title={`${product.name} videosu`}
+                        watchUrl={video.watchUrl}
+                      />
+                    ) : video.kind === "file" ? (
+                      <video src={product.videoUrl || ""} controls autoPlay className="w-full h-full" />
+                    ) : (
+                      <iframe
+                        key={video.embedUrl}
+                        src={video.embedUrl}
+                        title={`${product.name} videosu`}
+                        className="w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allowFullScreen
+                      />
+                    )
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center text-white">
+                      <p className="text-xs text-white/80">Bu video site içinde oynatılamıyor.</p>
+                      <a
+                        href={video.watchUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 rounded-xl bg-white text-stone-900 text-xs font-bold"
+                      >
+                        Orijinal videoyu aç ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
 
-            <button
-              onClick={() => toggleWishlist(product.id)}
-              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 backdrop-blur-xs shadow-md text-gray-600 hover:text-rose-600 flex items-center justify-center transition"
-            >
-              <Heart className={`w-5 h-5 ${isFavorited ? "fill-rose-600 text-rose-600" : ""}`} />
-            </button>
+                <button
+                  onClick={() => setShowVideo(false)}
+                  className="absolute top-3 left-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/95 text-stone-800 text-[11px] font-bold shadow-md hover:bg-white transition"
+                >
+                  <Images className="w-3.5 h-3.5" /> Görseller
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={activeImage}
+                  alt={product.name}
+                  className="w-full h-full object-contain object-center"
+                />
+
+                {hasVideo && (
+                  <button
+                    onClick={openVideo}
+                    className="absolute inset-x-0 bottom-4 mx-auto w-max inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-stone-900/90 hover:bg-stone-900 text-white text-xs font-bold shadow-lg backdrop-blur-xs transition"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                      <Play className="w-3 h-3 fill-white" />
+                    </span>
+                    Tanıtım Videosunu İzle
+                  </button>
+                )}
+
+                <button
+                  onClick={() => toggleWishlist(product.id)}
+                  className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 backdrop-blur-xs shadow-md text-gray-600 hover:text-rose-600 flex items-center justify-center transition"
+                >
+                  <Heart className={`w-5 h-5 ${isFavorited ? "fill-rose-600 text-rose-600" : ""}`} />
+                </button>
+              </>
+            )}
           </div>
 
           <div className="flex gap-3 flex-wrap">
             {uniqueGallery.map((url) => {
-              const isActive = url === activeImage;
+              const isActive = !showVideo && url === activeImage;
               return (
                 <button
                   key={url}
-                  onClick={() => setActiveImage(url)}
+                  onClick={() => showImage(url)}
                   className={`w-20 h-20 rounded-xl border-2 overflow-hidden bg-gray-50 transition ${
                     isActive ? "border-amber-800 ring-2 ring-amber-800/30" : "border-gray-200 hover:border-gray-300"
                   }`}
@@ -128,8 +208,12 @@ export function ProductDetailClient({
             })}
             {hasVideo && (
               <button
-                onClick={() => setActiveTab("video")}
-                className="w-20 h-20 rounded-xl border-2 border-violet-300 bg-violet-950 flex flex-col items-center justify-center gap-1 text-white hover:bg-violet-900 transition"
+                onClick={openVideo}
+                className={`w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-white transition ${
+                  showVideo
+                    ? "border-amber-800 ring-2 ring-amber-800/30 bg-violet-900"
+                    : "border-violet-300 bg-violet-950 hover:bg-violet-900"
+                }`}
                 title="Ürün videosunu izle"
               >
                 <Play className="w-6 h-6 fill-white" />
@@ -305,12 +389,13 @@ export function ProductDetailClient({
           </button>
           {hasVideo && (
             <button
-              onClick={() => setActiveTab("video")}
+              onClick={openVideo}
               className={`pb-3 border-b-2 transition flex items-center gap-1.5 ${
-                activeTab === "video"
+                showVideo
                   ? "border-amber-800 text-amber-900"
                   : "border-transparent text-gray-500 hover:text-gray-800"
               }`}
+              title="Video, ürün görselleri alanında açılır"
             >
               <Play className="w-3.5 h-3.5" />
               Ürün Videosu
@@ -324,52 +409,6 @@ export function ProductDetailClient({
               <p className="whitespace-pre-line">
                 {product.description || product.shortDescription || "Detaylı açıklama bulunmamaktadır."}
               </p>
-            </div>
-          )}
-
-          {activeTab === "video" && hasVideo && (
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 space-y-3">
-              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <Play className="w-4 h-4 text-amber-800" />
-                {product.name} — Tanıtım Videosu
-              </h4>
-              {isPlayableVideo ? (
-                <div className="aspect-video rounded-xl overflow-hidden bg-black max-w-3xl">
-                  {video.kind === "youtube" && video.mediaId ? (
-                    <YouTubePlayer
-                      videoId={video.mediaId}
-                      embedUrl={video.embedUrl}
-                      title={`${product.name} videosu`}
-                      watchUrl={video.watchUrl}
-                    />
-                  ) : video.kind === "file" ? (
-                    <video src={product.videoUrl || ""} controls className="w-full h-full" />
-                  ) : (
-                    <iframe
-                      key={video.embedUrl}
-                      src={video.embedUrl}
-                      title={`${product.name} videosu`}
-                      className="w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      allowFullScreen
-                    />
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  Bu video site içinde oynatılamıyor — orijinal sayfasından izleyebilirsiniz.
-                </p>
-              )}
-              <a
-                href={video.watchUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm font-bold text-amber-800 hover:underline"
-              >
-                <Play className="w-4 h-4" />
-                Orijinal videoyu aç ↗
-              </a>
             </div>
           )}
 
