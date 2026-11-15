@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { Product, ProductVariant, Category, Brand } from "@/lib/types";
 import { useCart } from "@/context/CartContext";
 import { ReviewsQA } from "@/components/storefront/ReviewsQA";
@@ -14,12 +13,6 @@ import {
   ShieldCheck,
   Truck,
   RotateCcw,
-  Building2,
-  MapPin,
-  Share2,
-  Layers,
-  ChevronRight,
-  Sparkles,
   Play,
 } from "lucide-react";
 
@@ -48,7 +41,6 @@ export function ProductDetailClient({
   images,
   category,
   brand,
-  warehouseStocks,
 }: ProductDetailClientProps) {
   const { addToCart, wishlist, toggleWishlist, setIsCartOpen } = useCart();
 
@@ -56,7 +48,7 @@ export function ProductDetailClient({
     variants.length > 0 ? variants[0] : null
   );
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState<"desc" | "specs" | "stocks" | "video">("desc");
+  const [activeTab, setActiveTab] = useState<"desc" | "specs" | "video">("desc");
   const [isAdded, setIsAdded] = useState(false);
 
   const FALLBACK_IMG = "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800";
@@ -84,8 +76,6 @@ export function ProductDetailClient({
   const currentBarcode = selectedVariant?.barcode || product.barcode;
   const isFavorited = wishlist.includes(product.id);
 
-  const totalAvailableStock = warehouseStocks.reduce((acc, st) => acc + st.availableQty, 0);
-
   const handleAddToCart = () => {
     addToCart(product, selectedVariant, quantity);
     setIsAdded(true);
@@ -100,23 +90,6 @@ export function ProductDetailClient({
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-10">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-xs text-gray-500">
-        <Link href="/" className="hover:text-amber-800">Ana Sayfa</Link>
-        <ChevronRight className="w-3.5 h-3.5" />
-        <Link href="/urunler" className="hover:text-amber-800">Katalog</Link>
-        {category && (
-          <>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <Link href={`/urunler?category=${category.slug}`} className="hover:text-amber-800">
-              {category.name}
-            </Link>
-          </>
-        )}
-        <ChevronRight className="w-3.5 h-3.5" />
-        <span className="text-gray-900 font-semibold line-clamp-1">{product.name}</span>
-      </nav>
-
       {/* Main Product Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Left: Gallery */}
@@ -240,31 +213,6 @@ export function ProductDetailClient({
             </div>
           )}
 
-          {/* Multi-Warehouse Stock Indicator */}
-          <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200/80 space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse" />
-                Merkezi Stok Durumu: {totalAvailableStock} {product.unit} Kullanılabilir
-              </span>
-              <button
-                onClick={() => setActiveTab("stocks")}
-                className="text-emerald-700 underline font-semibold text-[11px]"
-              >
-                Depo Bazında İncele
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-[11px] text-emerald-800 pt-1">
-              {warehouseStocks.slice(0, 2).map((ws) => (
-                <div key={ws.warehouseId} className="bg-white/80 p-2 rounded-lg border border-emerald-200/50">
-                  <span className="font-semibold block">{ws.warehouseName}</span>
-                  <span className="text-gray-600">{ws.availableQty} {product.unit} hazır</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Quantity & Actions */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center gap-3">
@@ -354,16 +302,6 @@ export function ProductDetailClient({
             }`}
           >
             Teknik Özellikler
-          </button>
-          <button
-            onClick={() => setActiveTab("stocks")}
-            className={`pb-3 border-b-2 transition ${
-              activeTab === "stocks"
-                ? "border-amber-800 text-amber-900"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            Çoklu Depo Stokları ({warehouseStocks.length})
           </button>
           {hasVideo && (
             <button
@@ -464,29 +402,6 @@ export function ProductDetailClient({
             </div>
           )}
 
-          {activeTab === "stocks" && (
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 space-y-4">
-              <h4 className="text-sm font-bold text-gray-900">
-                Fiziki Mağaza & Depo Lokasyonları Stok Dağılımı
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {warehouseStocks.map((ws) => (
-                  <div key={ws.warehouseId} className="p-4 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-between">
-                    <div>
-                      <h5 className="font-bold text-sm text-gray-900">{ws.warehouseName}</h5>
-                      <p className="text-xs text-gray-500">Kod: {ws.warehouseCode} | Raf: {ws.locationCode}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-base font-black text-emerald-800 block">
-                        {ws.availableQty} {product.unit}
-                      </span>
-                      <span className="text-[10px] text-gray-400">Rezerve: {ws.reservedQty}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
