@@ -111,14 +111,6 @@ export function Header() {
                 </Link>
               </>
             )}
-            <Link
-              href="/mimari"
-              className="hidden lg:flex text-amber-200 hover:text-white items-center gap-1 transition"
-            >
-              <BookOpen className="w-3 h-3" />
-              <span>Mimari (FAZ 0)</span>
-            </Link>
-
             {/* Üye girişi / hesap alanı (sistem kapalıysa gizli) */}
             {!AUTH_ENABLED ? null : authLoading ? (
               <span className="w-28 h-5 rounded bg-white/10 animate-pulse" />

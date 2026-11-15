@@ -18,7 +18,6 @@ import {
   Tag,
   Sparkles,
   Brain,
-  BookOpen,
   Search,
   Plus,
   ArrowRightLeft,
@@ -1788,15 +1787,6 @@ export function AdminDashboardClient({
           </button>
           )}
 
-          <div className="pt-3 border-t border-stone-800">
-            <Link
-              href="/mimari"
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition"
-            >
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              <span>Mimari Doküman (FAZ 0)</span>
-            </Link>
-          </div>
         </nav>
 
         {/* User profile footer */}
