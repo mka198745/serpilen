@@ -60,6 +60,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShoppingCart,
+  Headset,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
@@ -69,6 +70,7 @@ import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
 import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
+import { SupportDesk } from "@/components/admin/SupportDesk";
 import {
   ADMIN_MODULES,
   ADMIN_MODULE_GROUPS,
@@ -142,6 +144,7 @@ export function AdminDashboardClient({
     | "coupons"
     | "ai"
     | "intelligence"
+    | "support"
     | "users"
     | "registeredCustomers"
     | "roleMatrix"
@@ -1603,6 +1606,20 @@ export function AdminDashboardClient({
           >
             <Brain className="w-4 h-4 text-violet-400" />
             <span>Intelligence Center</span>
+          </button>
+          )}
+
+          {canSee("support") && (
+          <button
+            onClick={() => setActiveTab("support")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "support"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Headset className="w-4 h-4 text-emerald-400" />
+            <span>Destek Masası</span>
           </button>
           )}
 
@@ -4117,6 +4134,9 @@ export function AdminDashboardClient({
 
         {activeTab === "ai" && <AiAssistantCenter products={products} />}
         {activeTab === "intelligence" && <IntelligenceCenter />}
+
+        {/* Destek Masası — İletişim formundan gelen mesajlar */}
+        {activeTab === "support" && <SupportDesk />}
 
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: KULLANICILAR & ROLLER */}

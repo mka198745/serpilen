@@ -64,6 +64,13 @@
       "when": 1794766075345,
       "tag": "0008_el_isi_urunler_kategorisi",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794766826192,
+      "tag": "0009_contact_messages",
+      "breakpoints": true
     }
   ]
 }

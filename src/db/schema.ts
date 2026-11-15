@@ -1054,3 +1054,23 @@ export const decisionOutcomes = sqliteTable("decision_outcomes", {
 }, (t) => [
   index("decision_outcomes_decision_idx").on(t.decisionId),
 ]);
+
+// ==========================================
+// DESTEK MASASI — "İletişim & Destek Masası" formundan gelen mesajlar
+// ==========================================
+export const contactMessages = sqliteTable("contact_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  phone: text("phone").notNull(),
+  email: text("email"),
+  subject: text("subject"),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("NEW"), // NEW | READ | ANSWERED
+  source: text("source").notNull().default("iletisim"),
+  createdBy: text("created_by"), // giriş yapmış üyenin e-postası (varsa)
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  readAt: integer("read_at", { mode: "timestamp" }),
+}, (t) => [
+  index("contact_messages_created_idx").on(t.createdAt),
+  index("contact_messages_status_idx").on(t.status),
+]);

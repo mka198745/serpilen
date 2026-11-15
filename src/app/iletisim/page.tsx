@@ -3,12 +3,50 @@
 import React, { useState } from "react";
 import { Mail, Phone, MapPin } from "lucide-react";
 
+const SUBJECT_OPTIONS = [
+  "Sipariş Takibi & Kargo",
+  "Ürün Teknik Bilgisi / İplik Seçimi",
+  "İade veya Değişim Talebi",
+  "Diğer",
+];
+
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    subject: SUBJECT_OPTIONS[0],
+    message: "",
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const setField = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    setForm((prev) => ({ ...prev, [key]: e.target.value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setSubmitted(true);
+        setForm({ name: "", phone: "", email: "", subject: SUBJECT_OPTIONS[0], message: "" });
+      } else {
+        setError(data?.error?.message || "Mesajınız gönderilemedi. Lütfen tekrar deneyin.");
+      }
+    } catch {
+      setError("Bağlantı hatası. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -64,45 +102,79 @@ export default function ContactPage() {
               <p className="text-xs text-emerald-800">
                 Müşteri hizmetleri ekibimiz en kısa sürede sizinle iletişime geçecektir.
               </p>
+              <button
+                type="button"
+                onClick={() => setSubmitted(false)}
+                className="mt-2 text-[11px] font-bold text-emerald-900 underline hover:no-underline"
+              >
+                Yeni mesaj gönder
+              </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-medium">
+                  {error}
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Adınız Soyadınız:</label>
-                  <input type="text" required className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
+                  <input
+                    type="text" required minLength={2} autoComplete="name"
+                    value={form.name} onChange={setField("name")}
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                  />
                 </div>
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Telefon / WhatsApp:</label>
-                  <input type="text" required className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
+                  <input
+                    type="tel" required minLength={6} autoComplete="tel"
+                    value={form.phone} onChange={setField("phone")}
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="block font-bold text-stone-700 mb-1">E-Posta Adresiniz:</label>
-                <input type="email" required className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
+                <input
+                  type="email" required autoComplete="email"
+                  value={form.email} onChange={setField("email")}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                />
               </div>
 
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Konu:</label>
-                <select className="w-full px-3 py-2 border border-stone-300 rounded-xl">
-                  <option>Sipariş Takibi & Kargo</option>
-                  <option>Ürün Teknik Bilgisi / İplik Seçimi</option>
-                  <option>İade veya Değişim Talebi</option>
+                <select
+                  value={form.subject} onChange={setField("subject")}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
+                >
+                  {SUBJECT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
                 </select>
               </div>
 
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Mesajınız:</label>
-                <textarea rows={4} required className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
+                <textarea
+                  rows={4} required minLength={5} maxLength={4000}
+                  value={form.message} onChange={setField("message")}
+                  className="w-full px-3 py-2 border border-stone-300 rounded-xl"
+                />
               </div>
 
               <button
-                type="submit"
-                className="py-3 px-6 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition"
+                type="submit" disabled={busy}
+                className="py-3 px-6 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition"
               >
-                Mesajı Gönder
+                {busy ? "Gönderiliyor…" : "Mesajı Gönder"}
               </button>
+              <p className="text-[11px] text-stone-400">
+                Mesajınız Destek Masasına iletilir; yönetim panelindeki Destek Masası ekranından takip edilir.
+              </p>
             </form>
           )}
         </div>
