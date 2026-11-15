@@ -14,6 +14,7 @@ import {
   Layers,
   Handbag,
   Puzzle,
+  Heart,
   ArrowRight,
   ShieldCheck,
   Truck,
@@ -52,6 +53,7 @@ export default async function HomePage() {
     { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, count: "Yeni", color: "from-fuchsia-500 to-fuchsia-700" },
     { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, count: "45+ Ürün", color: "from-teal-500 to-teal-700" },
     { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, count: "Yeni", color: "from-indigo-500 to-indigo-700" },
+    { name: "El İşi Ürünler", slug: "el-isi-urunler", icon: Heart, count: "El Emeği", color: "from-pink-500 to-pink-700" },
   ];
 
   // "Günün Öne Çıkan Ürünleri" yalnızca öne çıkanları gösterir (en fazla 8).
@@ -61,6 +63,7 @@ export default async function HomePage() {
 
   /** Anasayfa kategori vitrinleri — sıra kullanıcı isteğine göre sabittir. */
   const showcaseDefs = [
+    { slug: "el-isi-urunler", title: "El İşi Ürünler", eyebrow: "El Emeği" },
     { slug: "hobi-kitleri", title: "Hobi Kitleri", eyebrow: "Başlangıç Setleri" },
     { slug: "orgu-hobi", title: "Örgü & Hobi", eyebrow: "İplik, Şiş & Tığ" },
     { slug: "dikis-nakis", title: "Dikiş & Nakış", eyebrow: "İplik & İğne" },

@@ -101,6 +101,7 @@ export async function seedDatabase() {
     { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: "Handbag", description: "Çanta tokası, sapı, çıtçıt, mıknatıs kapama, metal çerçeve ve çanta aksesuarları", displayOrder: 6 },
     { name: "Tekstil Yardımcı Malzemeleri", slug: "tekstil-yardimci", icon: "Layers", description: "Tela, vatka, lastik, cırt cırt, kordon ve çıtçıtlar", displayOrder: 7 },
     { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: "Puzzle", description: "Nakış, punch, makrome, tığ işi ve DIY hobi başlangıç kitleri", displayOrder: 8 },
+    { name: "El İşi Ürünler", slug: "el-isi-urunler", icon: "Heart", description: "El emeği örgü, nakış, punch ve makrome ürünleri", displayOrder: 9 },
   ]).returning({ id: categories.id });
   const insertedCats = await db.select().from(categories).where(inArray(categories.id, __insertedCats_ids.map((r) => r.id))).orderBy(asc(categories.id));
 

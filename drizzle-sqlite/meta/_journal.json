@@ -57,6 +57,13 @@
       "when": 1794764886006,
       "tag": "0007_canta_aksesuarlari_kategorisi",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794766075345,
+      "tag": "0008_el_isi_urunler_kategorisi",
+      "breakpoints": true
     }
   ]
 }

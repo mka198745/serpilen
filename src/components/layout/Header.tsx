@@ -63,6 +63,7 @@ export function Header() {
     { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles },
     { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag },
     { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers },
+    { name: "El İşi Ürünler", slug: "el-isi-urunler", icon: Heart },
   ];
 
   const handleSearchSubmit = (e: React.FormEvent) => {

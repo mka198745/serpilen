@@ -50,6 +50,40 @@ interface DemoProduct {
 
 /** Kategori slug → demo ürünler (her kategoride en çok 4 ürün hedeflenir). */
 const DEMO: Record<string, DemoProduct[]> = {
+  "el-isi-urunler": [
+    {
+      name: "El Örgüsü Pamuklu Bebek Battaniyesi (100 x 100 cm)",
+      slug: "el-orgusu-pamuklu-bebek-battaniyesi-100x100",
+      sku: "ELI-BAT-100", buyPrice: "780.00", retailPrice: "1290.00", unit: "Adet", packageQty: 1,
+      shortDescription: "El emeği, %100 pamuklu, yumuşak bebek battaniyesi.",
+      description: "Elde tığ ile örülmüş, %100 pamuklu ip kullanılmış 100 x 100 cm bebek battaniyesi. Antialerjik, nefes alan dokusu ve sık iğne kenar bordürü ile hediye paketli gönderilir.",
+      tags: "el işi,bebek,battaniye,hediye",
+    },
+    {
+      name: "Nakış İşlemeli Keten Kırlent Kılıfı (45 x 45 cm)",
+      slug: "nakis-islemeli-keten-kirlent-kilifi-45x45",
+      sku: "ELI-KRL-45", buyPrice: "320.00", retailPrice: "549.00", unit: "Adet", packageQty: 1,
+      shortDescription: "Keten kumaş üzerine el nakışı kırlent kılıfı.",
+      description: "Doğal keten kumaş üzerine bitkisel motifli el nakışı işlenmiş 45 x 45 cm kırlent kılıfı. Gizli fermuarlı, iç yastık dahil değildir; elde yıkama önerilir.",
+      tags: "el işi,nakış,kırlent,ev tekstili",
+    },
+    {
+      name: "Makrome Duvar Süsü (Doğal Pamuk, 60 x 90 cm)",
+      slug: "makrome-duvar-susu-dogal-pamuk-60x90",
+      sku: "ELI-MKR-60", buyPrice: "260.00", retailPrice: "449.00", unit: "Adet", packageQty: 1,
+      shortDescription: "El yapımı makrome duvar panosu, ahşap çıta dahil.",
+      description: "3 mm doğal pamuk kordonla elde düğümlenmiş 60 x 90 cm makrome duvar süsü. Ceviz görünümlü ahşap çıta ve asma ipi dahildir; her ürün el yapımı olduğu için desen detayları hafif farklılık gösterir.",
+      tags: "el işi,makrome,dekorasyon,hediye",
+    },
+    {
+      name: "Punch Nakışlı Astarlı Çanta (El Yapımı)",
+      slug: "punch-nakisli-astarli-canta-el-yapimi",
+      sku: "ELI-CNT-01", buyPrice: "410.00", retailPrice: "699.00", unit: "Adet", packageQty: 1,
+      shortDescription: "Punch nakış tekniğiyle işlenmiş, astarlı omuz çantası.",
+      description: "Punch iğnesiyle işlenmiş yumuşak dokulu yüzey, iç astar ve cepler, ayarlanabilir saplı el yapımı çanta. 28 x 22 cm ölçülerinde, fermuarlı kapama.",
+      tags: "el işi,çanta,punch,hediye",
+    },
+  ],
   "hobi-kitleri": [
     {
       name: "Nakış Başlangıç Seti (Ahşap Kasnak + 12 İplik + İğne)",
