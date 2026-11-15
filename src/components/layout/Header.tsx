@@ -71,6 +71,9 @@ export function Header() {
     }
   };
 
+  /** Aktif sayfa vurgusu (alt yollar dahil). */
+  const isActive = (href: string) => pathname === href || !!pathname?.startsWith(`${href}/`);
+
   return (
     <header className="sticky top-0 z-40 bg-white shadow-xs">
       {/* 1. Announcement Bar (admin → Site Yönetimi → Header Ayarı) */}
@@ -201,14 +204,18 @@ export function Header() {
           <div className="flex items-center gap-3 md:gap-4 shrink-0">
             <Link
               href="/blog"
-              className="text-xs font-semibold text-gray-700 hover:text-amber-800 hidden md:block"
+              className={`text-xs font-semibold hidden md:block transition ${
+                isActive("/blog") ? "text-amber-800 font-bold" : "text-gray-700 hover:text-amber-800"
+              }`}
             >
               Dikiş Rehberi
             </Link>
 
             <Link
               href="/siparis-takip"
-              className="text-xs font-semibold text-gray-700 hover:text-amber-800 hidden md:block"
+              className={`text-xs font-semibold hidden md:block transition ${
+                isActive("/siparis-takip") ? "text-amber-800 font-bold" : "text-gray-700 hover:text-amber-800"
+              }`}
             >
               Sipariş Takip
             </Link>
@@ -246,6 +253,32 @@ export function Header() {
             </button>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* 2b. Mobil hızlı bağlantılar — masaüstünde gizli (md üstünde üst bardaki bağlantılar kullanılır) */}
+      <div className="md:hidden border-b border-gray-200 bg-stone-50">
+        <div className="grid grid-cols-2 divide-x divide-gray-200 text-[11px] font-bold">
+          <Link
+            href="/blog"
+            className={`flex items-center justify-center gap-1.5 py-2.5 transition ${
+              isActive("/blog") ? "bg-amber-100 text-amber-900" : "text-gray-700 active:bg-gray-100"
+            }`}
+            aria-current={isActive("/blog") ? "page" : undefined}
+          >
+            <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+            <span>Dikiş Rehberi</span>
+          </Link>
+          <Link
+            href="/siparis-takip"
+            className={`flex items-center justify-center gap-1.5 py-2.5 transition ${
+              isActive("/siparis-takip") ? "bg-amber-100 text-amber-900" : "text-gray-700 active:bg-gray-100"
+            }`}
+            aria-current={isActive("/siparis-takip") ? "page" : undefined}
+          >
+            <Package className="w-3.5 h-3.5 text-amber-700" />
+            <span>Sipariş Takip</span>
+          </Link>
         </div>
       </div>
 
