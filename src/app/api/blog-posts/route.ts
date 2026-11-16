@@ -37,7 +37,9 @@ function readSeo(body: Record<string, unknown>) {
 }
 
 /** GET /api/blog-posts — Tüm içerikleri listeler (yönetim paneli; taslaklar dahil). */
-export async function GET() {
+export async function GET(request: Request) {
+  const gate = await requireStaff(request);
+  if (!gate.ok) return gate.response;
   try {
     const rows = await db.select().from(blogPosts).orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id));
     return NextResponse.json({ success: true, data: rows });

@@ -32,8 +32,9 @@ import {
   Settings,
 } from "lucide-react";
 
-export function Header() {
-  const siteSettings = useSiteSettings();
+export function Header({ initialBlogEnabled = true }: { initialBlogEnabled?: boolean }) {
+  const siteSettings = useSiteSettings({ "site.blog.enabled": String(initialBlogEnabled) });
+  const blogEnabled = siteSettings["site.blog.enabled"] !== "false";
   const cartCfg = parseCartSettings(siteSettings);
   const brandName = siteSettings["site.brand_name"] || DEFAULT_SITE_SETTINGS["site.brand_name"];
   const brandParts = brandName.trim().split(/\s+/);
@@ -196,14 +197,14 @@ export function Header() {
 
           {/* User actions: Wishlist & Cart */}
           <div className="flex items-center gap-3 md:gap-4 shrink-0">
-            <Link
+            {blogEnabled && <Link
               href="/blog"
               className={`text-xs font-semibold hidden md:block transition ${
                 isActive("/blog") ? "text-amber-800 font-bold" : "text-gray-700 hover:text-amber-800"
               }`}
             >
               Dikiş Rehberi
-            </Link>
+            </Link>}
 
             <Link
               href="/siparis-takip"
@@ -252,8 +253,8 @@ export function Header() {
 
       {/* 2b. Mobil hızlı bağlantılar — masaüstünde gizli (md üstünde üst bardaki bağlantılar kullanılır) */}
       <div className="md:hidden border-b border-gray-200 bg-stone-50">
-        <div className="grid grid-cols-2 divide-x divide-gray-200 text-[11px] font-bold">
-          <Link
+        <div className={`grid ${blogEnabled ? "grid-cols-2 divide-x" : "grid-cols-1"} divide-gray-200 text-[11px] font-bold`}>
+          {blogEnabled && <Link
             href="/blog"
             className={`flex items-center justify-center gap-1.5 py-2.5 transition ${
               isActive("/blog") ? "bg-amber-100 text-amber-900" : "text-gray-700 active:bg-gray-100"
@@ -262,7 +263,7 @@ export function Header() {
           >
             <BookOpen className="w-3.5 h-3.5 text-amber-700" />
             <span>Dikiş Rehberi</span>
-          </Link>
+          </Link>}
           <Link
             href="/siparis-takip"
             className={`flex items-center justify-center gap-1.5 py-2.5 transition ${

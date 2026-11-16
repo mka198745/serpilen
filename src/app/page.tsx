@@ -5,6 +5,8 @@ import { products, productVariants, categories, brands, inventory, blogPosts } f
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { CategoryShowcase } from "@/components/storefront/CategoryShowcase";
 import { CampaignStrip } from "@/components/storefront/CampaignStrip";
+import { getSiteSettings } from "@/lib/site-settings";
+import { and, desc, eq, lte } from "drizzle-orm";
 import {
   Scissors,
   Sliders,
@@ -30,7 +32,12 @@ export default async function HomePage() {
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
   const allBrands = await db.select().from(brands);
-  const posts = await db.select().from(blogPosts).limit(3);
+  const blogEnabled = (await getSiteSettings())["site.blog.enabled"] !== "false";
+  const posts = blogEnabled
+    ? await db.select().from(blogPosts)
+        .where(and(eq(blogPosts.isPublished, true), lte(blogPosts.publishedAt, new Date())))
+        .orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id)).limit(3)
+    : [];
 
   const featuredList = allProds.map((p) => {
     const vars = allVars.filter((v) => v.productId === p.id);
@@ -237,7 +244,7 @@ export default async function HomePage() {
       <CampaignStrip />
 
       {/* 5. Sewing & Craft Blog Guide Preview */}
-      <section className="max-w-7xl mx-auto px-4">
+      {blogEnabled && <section className="max-w-7xl mx-auto px-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-2">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
@@ -257,6 +264,7 @@ export default async function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {posts.length === 0 && <p className="col-span-full text-sm text-stone-500">Henüz yayında içerik yok — yakında yeni rehberler eklenecek.</p>}
           {posts.map((post) => (
             <article
               key={post.id}
@@ -292,7 +300,7 @@ export default async function HomePage() {
             </article>
           ))}
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

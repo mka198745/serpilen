@@ -1,5 +1,7 @@
 /** Header/Footer ayar varsayılanları — istemci ve sunucu ortak kullanır (db importu yoktur). */
 export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
+  // Blog / Dikiş Rehberi
+  "site.blog.enabled": "true",
   // Header
   "site.header.announcement_enabled": "true",
   "site.header.announcement_text": "1.000 TL ve Üzeri Ücretsiz Kargo | Aynı Gün Hızlı Gönderim",
