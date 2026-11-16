@@ -5,6 +5,7 @@ import { products, productVariants, categories, brands, inventory, blogPosts } f
 import { ProductCard } from "@/components/storefront/ProductCard";
 import { CategoryShowcase } from "@/components/storefront/CategoryShowcase";
 import { CampaignStrip } from "@/components/storefront/CampaignStrip";
+import { HeroProductActions } from "@/components/storefront/HeroProductActions";
 import { getSiteSettings } from "@/lib/site-settings";
 import { and, desc, eq, lte } from "drizzle-orm";
 import {
@@ -32,7 +33,8 @@ export default async function HomePage() {
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
   const allBrands = await db.select().from(brands);
-  const blogEnabled = (await getSiteSettings())["site.blog.enabled"] !== "false";
+  const siteSettings = await getSiteSettings();
+  const blogEnabled = siteSettings["site.blog.enabled"] !== "false";
   const posts = blogEnabled
     ? await db.select().from(blogPosts)
         .where(and(eq(blogPosts.isPublished, true), lte(blogPosts.publishedAt, new Date())))
@@ -50,6 +52,11 @@ export default async function HomePage() {
       brandName: br?.name || "Serpilen Collection",
     };
   });
+
+  // Hero kartları yalnızca karşılık gelen aktif ürünler varsa gösterilir.
+  const heroProducts = ["GUT-SEW-100", "YKK-MET-ZIP"]
+    .map((sku) => featuredList.find((product) => product.sku === sku && product.isActive))
+    .filter((product): product is NonNullable<typeof product> => Boolean(product));
 
   const categoryIcons = [
     { name: "Dikiş & Nakış", slug: "dikis-nakis", icon: Scissors, count: "120+ Çeşit", color: "from-amber-500 to-amber-700" },
@@ -86,60 +93,29 @@ export default async function HomePage() {
       {/* 1. Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-amber-950 via-stone-900 to-stone-950 text-white py-12 md:py-20 px-4">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-          {/* Left: Vitrin Öne Çıkan vitrinler (sola yanaşık, iki kart) */}
-          <div className="lg:col-span-7">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Vitrin Kartı 1 — Gütermann */}
-              <div className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
-                <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80"
-                    alt="Gütermann Dikiş İplikleri"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex items-end p-4">
-                    <div>
-                      <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        Vitrin Öne Çıkan
-                      </span>
-                      <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">
-                        Gütermann Sew-All Dikiş İpliği Serisi
-                      </h3>
-                      <p className="text-stone-300 text-[11px]">Tüm renk kodlarıyla stokta</p>
+          {/* Vitrin ürünleri: butonlar gerçek ürün kaydını kullanır. */}
+          {heroProducts.length > 0 && <div className="lg:col-span-7">
+            <div className={`grid grid-cols-1 ${heroProducts.length > 1 ? "sm:grid-cols-2" : "sm:max-w-md"} gap-4`}>
+              {heroProducts.map((product) => (
+                <article key={product.id} className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
+                  <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.imageUrl || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80"} alt={product.name} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex items-end p-4">
+                      <div>
+                        <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Vitrin Öne Çıkan</span>
+                        <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">{product.name}</h3>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              {/* Vitrin Kartı 2 — YKK Metal Fermuar */}
-              <div className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
-                <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="https://images.unsplash.com/photo-1544441893-675973e31985?w=800&auto=format&fit=crop&q=80"
-                    alt="YKK Metal Dişli Fermuar"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex items-end p-4">
-                    <div>
-                      <span className="bg-sky-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        Vitrin Öne Çıkan
-                      </span>
-                      <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">
-                        YKK Metal Dişli Fermuar No.5
-                      </h3>
-                      <p className="text-stone-300 text-[11px]">3 finisaj, antik pirinç · stokta</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+                  <HeroProductActions product={product} initialCartEnabled={siteSettings["site.cart.enabled"] !== "false"} />
+                </article>
+              ))}
             </div>
-          </div>
+          </div>}
 
           {/* Right: Başlık */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className={`${heroProducts.length ? "lg:col-span-5" : "lg:col-span-12"} space-y-6`}>
             <h1 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-black tracking-tight leading-[1.1]">
               Dikiş, Nakış ve Hobi Dünyasında <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">
