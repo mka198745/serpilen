@@ -2,13 +2,13 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { openPrivacyPreferences, usePrivacyChoice } from "@/lib/privacy-preferences";
+import { openPrivacyPreferences, usePrivacyPreferences } from "@/lib/privacy-preferences";
 
 /** Third-party embeds are not mounted (or requested) before consent. */
 export function ExternalMediaGate({ children }: { children: ReactNode }) {
-  const choice = usePrivacyChoice();
+  const preferences = usePrivacyPreferences();
   const pathname = usePathname();
-  if (choice === "all" || pathname === "/admin" || pathname?.startsWith("/admin/")) return <>{children}</>;
+  if (preferences?.externalMedia || pathname === "/admin" || pathname?.startsWith("/admin/")) return <>{children}</>;
   return (
     <div className="flex h-full min-h-36 flex-col items-center justify-center gap-3 rounded-xl bg-stone-100 p-4 text-center text-stone-700">
       <p className="text-xs leading-relaxed">Bu içerik üçüncü taraf medya izni gerektirir.</p>

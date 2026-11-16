@@ -56,6 +56,9 @@ export default function KvkkPage() {
           Güvenli oturum, sepet ve çerez tercihinizin hatırlanması için zorunlu çerezler ve tarayıcı depolaması kullanılır. İsteğe bağlı üçüncü taraf medya izni verilirse YouTube ve diğer sağlayıcıların gömülü içerikleri yüklenir; bu sağlayıcılar çerez ve benzeri teknolojiler kullanabilir ve verileri kendi politikalarına göre işleyebilir.
         </p>
         <p className="text-xs text-stone-600 leading-relaxed">
+          Güvenlik çerezleri güvenli oturumun sürdürülmesi ve yetkisiz erişimin önlenmesi için zorunludur. Performans ve analiz tercihleri site kullanımının ölçülmesi; pazarlama ve kişiselleştirme tercihleri ise ilgi alanlarına uygun içerik veya reklamlar için kullanılabilecek isteğe bağlı kategorilerdir. Şu anda bu amaçlarla etkin bir analiz veya pazarlama aracı bulunmamaktadır.
+        </p>
+        <p className="text-xs text-stone-600 leading-relaxed">
           Tercihinizi sayfanın altındaki Çerez Tercihleri bağlantısından istediğiniz zaman değiştirebilirsiniz. İzni geri almak, gömülü içeriğin yeniden yüklenmesini durdurur; daha önce kaydedilmiş üçüncü taraf çerezlerini tarayıcınızın ayarlarından silebilirsiniz.
         </p>
       </section>
