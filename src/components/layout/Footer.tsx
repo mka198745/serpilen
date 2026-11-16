@@ -169,7 +169,7 @@ export function Footer({ initialBlogEnabled = true }: { initialBlogEnabled?: boo
           <h4 className="text-sm font-bold text-white uppercase tracking-wider">Kurumsal & Portal</h4>
           <ul className="space-y-2 text-xs text-stone-400">
             <li><Link href="/hakkimizda" className="hover:text-amber-400 transition">Hakkımızda</Link></li>
-            <li><Link href="/magazalarimiz" className="hover:text-amber-400 transition">Mağazalarımız & Kasa</Link></li>
+            <li><Link href="/magazalarimiz" className="hover:text-amber-400 transition">Mağazalarmız</Link></li>
             {blogEnabled && <li><Link href="/blog" className="hover:text-amber-400 transition">Dikiş & Malzeme Rehberi</Link></li>}
           </ul>
         </div>

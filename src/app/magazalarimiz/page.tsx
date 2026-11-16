@@ -1,6 +1,5 @@
 import React from "react";
-import Link from "next/link";
-import { MapPin, Phone, Clock, MonitorCheck } from "lucide-react";
+import { MapPin, Phone, Clock } from "lucide-react";
 
 export default function StoresPage() {
   return (
@@ -44,15 +43,6 @@ export default function StoresPage() {
             </p>
           </div>
 
-          <div className="pt-2 flex items-center gap-2">
-            <Link
-              href="/pos"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-lg text-xs font-bold transition"
-            >
-              <MonitorCheck className="w-3.5 h-3.5 text-amber-800" />
-              <span>Kasiyer POS Ekranı</span>
-            </Link>
-          </div>
         </div>
 
         {/* Merkez Depo */}
