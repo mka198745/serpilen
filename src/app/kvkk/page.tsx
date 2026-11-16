@@ -53,7 +53,10 @@ export default function KvkkPage() {
           <h2 className="text-lg font-black text-stone-900">4. Çerez (Cookie) Politikası</h2>
         </div>
         <p className="text-xs text-stone-600 leading-relaxed">
-          Sitemizde kullanıcı deneyimini iyileştirmek, sepet içeriklerini oturum boyunca muhafaza etmek ve güvenli oturum yönetimi sağlamak amacıyla zorunlu ve işlevsel çerezler kullanılmaktadır.
+          Güvenli oturum, sepet ve çerez tercihinizin hatırlanması için zorunlu çerezler ve tarayıcı depolaması kullanılır. İsteğe bağlı üçüncü taraf medya izni verilirse YouTube ve diğer sağlayıcıların gömülü içerikleri yüklenir; bu sağlayıcılar çerez ve benzeri teknolojiler kullanabilir ve verileri kendi politikalarına göre işleyebilir.
+        </p>
+        <p className="text-xs text-stone-600 leading-relaxed">
+          Tercihinizi sayfanın altındaki Çerez Tercihleri bağlantısından istediğiniz zaman değiştirebilirsiniz. İzni geri almak, gömülü içeriğin yeniden yüklenmesini durdurur; daha önce kaydedilmiş üçüncü taraf çerezlerini tarayıcınızın ayarlarından silebilirsiniz.
         </p>
       </section>
     </div>

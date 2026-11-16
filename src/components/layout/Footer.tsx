@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Scissors, Phone, Mail, MapPin, ShieldCheck, RefreshCw, CreditCard, Clock } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
+import { openPrivacyPreferences } from "@/lib/privacy-preferences";
 
 /* Marka ikonları (lucide bu sürümde marka ikonları içermiyor; alt bilgi için satır-ikon olarak çizilir) */
 const iconProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className: "w-4 h-4" };
@@ -191,6 +192,7 @@ export function Footer() {
             <li><Link href="/kvkk#mesafeli" className="hover:text-amber-400 transition">Mesafeli Satış Sözleşmesi</Link></li>
             <li><Link href="/kvkk#iade" className="hover:text-amber-400 transition">İptal, İade ve Değişim</Link></li>
             <li><Link href="/kvkk#cerez" className="hover:text-amber-400 transition">Çerez Politikası</Link></li>
+            <li><button type="button" onClick={openPrivacyPreferences} className="text-left hover:text-amber-400 transition">Çerez Tercihleri</button></li>
             <li><Link href="/iletisim" className="hover:text-amber-400 transition">İletişim & Harita</Link></li>
           </ul>
         </div>

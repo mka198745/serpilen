@@ -6,6 +6,7 @@ import { useCart } from "@/context/CartContext";
 import { ReviewsQA } from "@/components/storefront/ReviewsQA";
 import { parseVideoUrl } from "@/lib/video";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
+import { ExternalMediaGate } from "@/components/layout/ExternalMediaGate";
 import {
   ShoppingBag,
   Heart,
@@ -116,27 +117,18 @@ export function ProductDetailClient({
               /* Video modu: oynatıcı doğrudan ürün görselinin alanında */
               <div className="absolute inset-0 bg-black flex items-center justify-center">
                 <div className="w-full aspect-video max-h-full">
-                  {isPlayableVideo ? (
-                    video.kind === "youtube" && video.mediaId ? (
-                      <YouTubePlayer
-                        videoId={video.mediaId}
-                        embedUrl={video.embedUrl}
-                        title={`${product.name} videosu`}
-                        watchUrl={video.watchUrl}
-                      />
-                    ) : video.kind === "file" ? (
-                      <video src={product.videoUrl || ""} controls autoPlay className="w-full h-full" />
-                    ) : (
-                      <iframe
-                        key={video.embedUrl}
-                        src={video.embedUrl}
-                        title={`${product.name} videosu`}
-                        className="w-full h-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                        allowFullScreen
-                      />
-                    )
+                  {isPlayableVideo && !(video.kind === "file" && (product.videoUrl || "").startsWith("/uploads/")) ? (
+                    <ExternalMediaGate>
+                      {video.kind === "youtube" && video.mediaId ? (
+                        <YouTubePlayer videoId={video.mediaId} embedUrl={video.embedUrl} title={`${product.name} videosu`} watchUrl={video.watchUrl} />
+                      ) : video.kind === "file" ? (
+                        <video src={product.videoUrl || ""} controls autoPlay className="w-full h-full" />
+                      ) : (
+                        <iframe key={video.embedUrl} src={video.embedUrl} title={`${product.name} videosu`} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />
+                      )}
+                    </ExternalMediaGate>
+                  ) : isPlayableVideo ? (
+                    <video src={product.videoUrl || ""} controls autoPlay className="w-full h-full" />
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center text-white">
                       <p className="text-xs text-white/80">Bu video site içinde oynatılamıyor.</p>
