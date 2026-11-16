@@ -2597,6 +2597,7 @@ export function AdminDashboardClient({
                   <div>
                     <h3 className="font-bold text-sm text-stone-900">Yeni Depo Ekle</h3>
                     <p className="text-[11px] text-stone-400">Depo kodu addan otomatik üretilir (örn. Bursa Depo → BRD).</p>
+                    <p className="mt-1 text-[11px] text-stone-500">Aktif depo ve mağazalar <Link href="/magazalarimiz" target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-800 underline underline-offset-2">Mağazalarımız sayfasında</Link> gösterilir; pasif olanlar gizlenir.</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                     <div className="md:col-span-4">
