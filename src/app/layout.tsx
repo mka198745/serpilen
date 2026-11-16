@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { AuthModal } from "@/components/layout/AuthModal";
+import { PrivacyNotice } from "@/components/layout/PrivacyNotice";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://serpilencollection.com"),
@@ -75,6 +76,7 @@ export default function RootLayout({
             <CartDrawer />
             <AuthModal />
             <Footer />
+            <PrivacyNotice />
           </AuthProvider>
         </CartProvider>
       </body>
