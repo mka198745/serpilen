@@ -110,7 +110,6 @@ interface AdminDashboardClientProps {
     pendingOrdersCount: number;
     returnedOrdersCount: number;
     customersCount: number;
-    criticalStockCount: number;
   };
 }
 
@@ -1264,7 +1263,6 @@ export function AdminDashboardClient({
   const totalOrders = dashboardStats?.totalOrders ?? orders.length;
   const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").length;
   const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").length;
-  const criticalStockCount = dashboardStats?.criticalStockCount ?? inventoryList.filter((i) => i.isCritical).length;
   const channelRevenue = dashboardStats?.channelRevenue ?? clientChannel;
   const estimatedGrossProfit =
     dashboardStats?.grossProfit ??
@@ -1878,17 +1876,6 @@ export function AdminDashboardClient({
                   {(salesCount > 0 ? totalRevenue / salesCount : 0).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL
                 </div>
                 <div className="text-[11px] text-stone-500">Ciro ÷ satış adedi (iptaller hariç)</div>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-stone-500 uppercase">Kritik Stok Uyarısı</span>
-                <div className="text-2xl font-black text-rose-700">{criticalStockCount} Ürün</div>
-                <button
-                  onClick={() => setActiveTab("wms")}
-                  className="text-[11px] text-rose-600 hover:underline font-semibold block text-left"
-                >
-                  Stok Yönetimini Aç →
-                </button>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">

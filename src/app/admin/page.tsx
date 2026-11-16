@@ -165,7 +165,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     pendingOrdersCount: Number(pendingRow?.c ?? 0),
     returnedOrdersCount: Number(returnedRow?.c ?? 0),
     customersCount: allCustomers.length,
-    criticalStockCount: allInv.filter((i) => Math.max(0, i.physicalQty - i.reservedQty) <= i.reorderPoint).length,
   };
 
   return (
