@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { ArrowRight, Package } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { ProductCard } from "./ProductCard";
 
 type ShowcaseProduct = React.ComponentProps<typeof ProductCard>["product"];
@@ -15,12 +15,10 @@ interface CategoryShowcaseProps {
   products: ShowcaseProduct[];
 }
 
-/**
- * Anasayfa kategori vitrini: "Günün Öne Çıkan Ürünleri" ile aynı görsel dilde
- * başlık + 4'lü ürün ızgarası. Kategoride ürün yoksa boş durum gösterilir
- * (bölüm kaybolmaz, böylece anasayfa yapısı sabit kalır).
- */
+/** Ürünü olmayan kategori vitrini anasayfada gösterilmez. */
 export function CategoryShowcase({ eyebrow, title, href, products }: CategoryShowcaseProps) {
+  if (products.length === 0) return null;
+
   return (
     <section className="max-w-7xl mx-auto px-4">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-2">
@@ -37,23 +35,11 @@ export function CategoryShowcase({ eyebrow, title, href, products }: CategorySho
         </Link>
       </div>
 
-      {products.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 px-6 py-10 text-center">
-          <Package className="w-6 h-6 text-gray-300 mx-auto mb-2" />
-          <p className="text-sm font-semibold text-gray-500">
-            {title} kategorisinde henüz ürün yok
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Yeni ürünler eklendiğinde bu vitrin otomatik olarak dolar.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {products.map((product) => (
+          <ProductCard key={product.id} product={product} />
+        ))}
+      </div>
     </section>
   );
 }

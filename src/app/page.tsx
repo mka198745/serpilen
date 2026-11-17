@@ -59,16 +59,31 @@ export default async function HomePage() {
     .filter((product): product is NonNullable<typeof product> => Boolean(product));
 
   const categoryIcons = [
-    { name: "Dikiş & Nakış", slug: "dikis-nakis", icon: Scissors, count: "120+ Çeşit", color: "from-amber-500 to-amber-700" },
-    { name: "Fermuar Çeşitleri", slug: "fermuar", icon: Sliders, count: "85+ Çeşit", color: "from-sky-500 to-sky-700" },
-    { name: "Düğme Dünyası", slug: "dugme", icon: CircleDot, count: "340+ Model", color: "from-emerald-500 to-emerald-700" },
-    { name: "Kurdele & Şerit", slug: "kurdele-serit", icon: Ribbon, count: "90+ Renk", color: "from-rose-500 to-rose-700" },
-    { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles, count: "65+ İplik", color: "from-purple-500 to-purple-700" },
-    { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, count: "Yeni", color: "from-fuchsia-500 to-fuchsia-700" },
-    { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, count: "45+ Ürün", color: "from-teal-500 to-teal-700" },
-    { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, count: "Yeni", color: "from-indigo-500 to-indigo-700" },
-    { name: "El İşi Ürünler", slug: "el-isi-urunler", icon: Heart, count: "El Emeği", color: "from-pink-500 to-pink-700" },
+    { name: "Dikiş & Nakış", slug: "dikis-nakis", icon: Scissors, color: "from-amber-500 to-amber-700" },
+    { name: "Fermuar Çeşitleri", slug: "fermuar", icon: Sliders, color: "from-sky-500 to-sky-700" },
+    { name: "Düğme Dünyası", slug: "dugme", icon: CircleDot, color: "from-emerald-500 to-emerald-700" },
+    { name: "Kurdele & Şerit", slug: "kurdele-serit", icon: Ribbon, color: "from-rose-500 to-rose-700" },
+    { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles, color: "from-purple-500 to-purple-700" },
+    { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, color: "from-fuchsia-500 to-fuchsia-700" },
+    { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, color: "from-teal-500 to-teal-700" },
+    { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, color: "from-indigo-500 to-indigo-700" },
+    { name: "El İşi Ürünler", slug: "el-isi-urunler", icon: Heart, color: "from-pink-500 to-pink-700" },
   ];
+
+  // Yalnızca aktif kategorilerdeki aktif ürünler anasayfa kategorilerini görünür kılar.
+  const activeProductsByCategory = new Map<number, typeof featuredList>();
+  for (const product of featuredList) {
+    if (!product.isActive) continue;
+    const items = activeProductsByCategory.get(product.categoryId) ?? [];
+    items.push(product);
+    activeProductsByCategory.set(product.categoryId, items);
+  }
+  const availableCategories = new Map(
+    allCats
+      .filter((cat) => cat.isActive && (activeProductsByCategory.get(cat.id)?.length ?? 0) > 0)
+      .map((cat) => [cat.slug, cat]),
+  );
+  const visibleCategoryIcons = categoryIcons.filter((cat) => availableCategories.has(cat.slug));
 
   // "Günün Öne Çıkan Ürünleri" yalnızca öne çıkanları gösterir (en fazla 8).
   // Hiçbiri işaretli değilse ilk 8 ürün gösterilir; kategori vitrinleri tüm ürünleri kullanır.
@@ -127,7 +142,7 @@ export default async function HomePage() {
       </section>
 
       {/* 2. Mega Categories Grid */}
-      <section className="max-w-7xl mx-auto px-4">
+      {visibleCategoryIcons.length > 0 && <section className="max-w-7xl mx-auto px-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-2">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
@@ -147,8 +162,10 @@ export default async function HomePage() {
         </div>
 
         <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-3">
-          {categoryIcons.map((cat) => {
+          {visibleCategoryIcons.map((cat) => {
             const Icon = cat.icon;
+            const category = availableCategories.get(cat.slug)!;
+            const productCount = activeProductsByCategory.get(category.id)!.length;
             return (
               <Link
                 key={cat.slug}
@@ -163,12 +180,12 @@ export default async function HomePage() {
                 <h3 className="text-xs font-bold text-gray-900 group-hover:text-amber-800 transition line-clamp-1">
                   {cat.name}
                 </h3>
-                <span className="text-[10px] text-gray-400 mt-1">{cat.count}</span>
+                <span className="text-[10px] text-gray-400 mt-1">{productCount} Ürün</span>
               </Link>
             );
           })}
         </div>
-      </section>
+      </section>}
 
       {/* 3. Featured Products Grid */}
       <section className="max-w-7xl mx-auto px-4">
@@ -199,10 +216,9 @@ export default async function HomePage() {
 
       {/* 3.1 Kategori Vitrinleri — her kategoriden en fazla 4 ürün */}
       {showcaseDefs.map((showcase) => {
-        const cat = allCats.find((c) => c.slug === showcase.slug);
+        const cat = availableCategories.get(showcase.slug);
         if (!cat) return null;
-        const items = featuredList
-          .filter((p) => p.categoryId === cat.id && p.isActive !== false)
+        const items = [...(activeProductsByCategory.get(cat.id) ?? [])]
           .sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured) || a.id - b.id)
           .slice(0, 4);
         return (
