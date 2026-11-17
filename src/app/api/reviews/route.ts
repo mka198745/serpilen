@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { productReviews, products, orders, orderItems, auditLogs } from "@/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { requireProductFeedbackAccess } from "@/lib/product-feedback-auth";
+import { isValidReviewEmail, REVIEW_EMAIL_ERROR } from "@/lib/review-email";
 
 export const dynamic = "force-dynamic";
 const validId = (value: unknown) => Number.isSafeInteger(Number(value)) && Number(value) > 0;
@@ -65,6 +66,9 @@ export async function POST(request: Request) {
     }
     if (action !== "CREATE") return NextResponse.json({ success: false, error: "Geçersiz işlem." }, { status: 422 });
 
+    if (!isValidReviewEmail(body?.customerEmail)) {
+      return NextResponse.json({ success: false, error: REVIEW_EMAIL_ERROR }, { status: 422 });
+    }
     const name = String(body?.customerName ?? "").trim().slice(0, 80);
     const comment = String(body?.comment ?? "").trim().slice(0, 1500);
     const rating = Number(body?.rating);
@@ -74,7 +78,7 @@ export async function POST(request: Request) {
     const [product] = await db.select({ id: products.id, isActive: products.isActive }).from(products).where(eq(products.id, Number(body.productId)));
     if (!product || !product.isActive) return NextResponse.json({ success: false, error: "Ürün bulunamadı." }, { status: 404 });
 
-    const email = String(body?.customerEmail ?? "").trim().slice(0, 254).toLowerCase();
+    const email = body.customerEmail.trim().toLowerCase();
     let verified = false;
     if (email) {
       const myOrders = await db.select().from(orders);

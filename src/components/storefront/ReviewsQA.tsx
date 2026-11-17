@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Star, MessageSquareQuote, BadgeCheck, Send, HelpCircle } from "lucide-react";
+import { isValidReviewEmail, REVIEW_EMAIL_ERROR } from "@/lib/review-email";
 
 interface Review {
   id: number;
@@ -48,6 +49,9 @@ export function ReviewsQA({ productId }: { productId: number }) {
   const [rForm, setRForm] = useState({ customerName: "", customerEmail: "", rating: 5, title: "", comment: "" });
   const [rBusy, setRBusy] = useState(false);
   const [rMsg, setRMsg] = useState<string | null>(null);
+  const [rError, setRError] = useState(false);
+  const [emailError, setEmailError] = useState(false);
+  const emailErrorId = React.useId();
 
   // question form
   const [showQ, setShowQ] = useState(false);
@@ -78,20 +82,37 @@ export function ReviewsQA({ productId }: { productId: number }) {
 
   const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (rBusy) return;
+    if (!isValidReviewEmail(rForm.customerEmail)) {
+      setEmailError(true);
+      return;
+    }
+    setEmailError(false);
+    setRMsg(null);
     setRBusy(true);
-    const res = await fetch("/api/reviews", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId, ...rForm }),
-    }).then((r) => r.json());
-    setRBusy(false);
-    if (res.success) {
-      setRMsg(res.message || "Yorumunuz alındı.");
-      setRForm({ customerName: "", customerEmail: "", rating: 5, title: "", comment: "" });
-      setShowForm(false);
-      void load();
-    } else {
-      setRMsg(res.error || "Yorum gönderilemedi.");
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, ...rForm }),
+      }).then((r) => r.json());
+      if (res.success) {
+        setRError(false);
+        setRMsg(res.message || "Yorumunuz alındı.");
+        setRForm({ customerName: "", customerEmail: "", rating: 5, title: "", comment: "" });
+        setShowForm(false);
+        void load();
+      } else if (res.error === REVIEW_EMAIL_ERROR) {
+        setEmailError(true);
+      } else {
+        setRError(true);
+        setRMsg(res.error || "Yorum gönderilemedi.");
+      }
+    } catch {
+      setRError(true);
+      setRMsg("Yorum gönderilemedi. Lütfen tekrar deneyin.");
+    } finally {
+      setRBusy(false);
     }
   };
 
@@ -171,10 +192,30 @@ export function ReviewsQA({ productId }: { productId: number }) {
           <div className="md:col-span-2 space-y-3">
             {showForm && (
               <form onSubmit={submitReview} className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-2.5 text-xs">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 items-end gap-2">
                   <input required placeholder="Adınız Soyadınız" value={rForm.customerName} onChange={(e) => setRForm({ ...rForm, customerName: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
-                  <input type="email" placeholder="E-posta (doğrulanmış alıcı için)" value={rForm.customerEmail} onChange={(e) => setRForm({ ...rForm, customerEmail: e.target.value })} className="px-3 py-2 border border-stone-300 rounded-xl" />
+                  <label className="flex flex-col gap-1 text-stone-700 font-semibold">
+                    E-posta <span className="sr-only">(zorunlu)</span>
+                    <input
+                      required
+                      type="email"
+                      autoComplete="email"
+                      maxLength={254}
+                      placeholder="ornek@eposta.com"
+                      value={rForm.customerEmail}
+                      aria-invalid={emailError}
+                      aria-describedby={emailError ? emailErrorId : undefined}
+                      onInvalid={(e) => { e.preventDefault(); setEmailError(true); }}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setRForm({ ...rForm, customerEmail: value });
+                        if (emailError && isValidReviewEmail(value)) setEmailError(false);
+                      }}
+                      className={`px-3 py-2 border rounded-xl font-normal ${emailError ? "border-rose-500" : "border-stone-300"}`}
+                    />
+                  </label>
                 </div>
+                {emailError && <p id={emailErrorId} role="alert" className="text-xs font-semibold text-rose-700">{REVIEW_EMAIL_ERROR}</p>}
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-stone-700">Puanınız:</span>
                   {[1, 2, 3, 4, 5].map((i) => (
@@ -191,7 +232,7 @@ export function ReviewsQA({ productId }: { productId: number }) {
                 <p className="text-[10px] text-stone-400">Yorumlar moderasyon onayıyla yayınlanır.</p>
               </form>
             )}
-            {rMsg && <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">{rMsg}</p>}
+            {rMsg && <p role={rError ? "alert" : "status"} className={`text-xs font-semibold border rounded-xl px-3 py-2 ${rError ? "text-rose-700 bg-rose-50 border-rose-200" : "text-emerald-700 bg-emerald-50 border-emerald-200"}`}>{rMsg}</p>}
 
             {reviews.length === 0 && !showForm && <p className="text-xs text-stone-400 text-center py-6">Bu ürün için henüz onaylı yorum yok. İlk yorumu siz yazın!</p>}
             {reviews.map((r) => (

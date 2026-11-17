@@ -66,13 +66,18 @@ test("Yorum ve soru moderasyonu, mağaza görünürlüğü ve rol yetkileri", { 
       assert.equal((await post(`/api/${endpoint}`, { id: 1, action, ...body }, "CASHIER")).status, 403);
     }
 
-    const reviewResponse = await post("/api/reviews", { productId: 1, customerName: "Deniz", customerEmail: "deniz@example.test", rating: 5, comment: "Güzel ürün" });
+    for (const email of [undefined, "", "   ", "gecersiz", "a@b", "a..b@example.com", "a@example..com", "a@-example.com"]) {
+      const invalid = await post("/api/reviews", { productId: 1, customerName: "Deniz", customerEmail: email, rating: 5, comment: "Güzel ürün" });
+      assert.equal(invalid.status, 422, String(email));
+      assert.equal((await invalid.json()).error, "Doğru e-posta adresi giriniz.");
+    }
+    const reviewResponse = await post("/api/reviews", { productId: 1, customerName: "Deniz", customerEmail: "  DENIZ@example.test  ", rating: 5, comment: "Güzel ürün" });
     assert.equal(reviewResponse.status, 200);
     const reviewId = (await reviewResponse.json()).data.id;
     const questionResponse = await post("/api/questions", { productId: 1, askerName: "Deniz", question: "Hangi ölçü?" });
     assert.equal(questionResponse.status, 200);
     const questionId = (await questionResponse.json()).data.id;
-    assert.equal((await post("/api/reviews", { productId: 1, customerName: " ", comment: "Test", rating: 5 })).status, 422);
+    assert.equal((await post("/api/reviews", { productId: 1, customerName: " ", customerEmail: "test@example.com", comment: "Test", rating: 5 })).status, 422);
     assert.equal((await post("/api/questions", { productId: 999, askerName: "Test", question: "Soru?" })).status, 404);
     let publicReviews = await (await request("/api/reviews?productId=1")).json();
     assert.equal(publicReviews.stats.count, 0);
@@ -80,6 +85,7 @@ test("Yorum ve soru moderasyonu, mağaza görünürlüğü ve rol yetkileri", { 
     assert.equal((await (await request("/api/questions?productId=1")).json()).data.length, 0);
 
     let adminReviews = await (await request("/api/reviews?all=1", { role: "SUPER_ADMIN" })).json();
+    assert.equal(adminReviews.data.length, 1);
     assert.equal(adminReviews.data[0].status, "PENDING");
     assert.equal(adminReviews.data[0].product.name, "Test Ürün");
     assert.equal(adminReviews.data[0].customerEmail, "deniz@example.test");
@@ -114,7 +120,7 @@ test("Yorum ve soru moderasyonu, mağaza görünürlüğü ve rol yetkileri", { 
     assert.equal(adminQuestions.data.length, 0);
 
     // Denetim kaydı yazılamazsa moderasyon ve silme de geri alınır.
-    const review2 = await (await post("/api/reviews", { productId: 1, customerName: "Test", rating: 4, comment: "İkinci yorum" })).json();
+    const review2 = await (await post("/api/reviews", { productId: 1, customerName: "Test", customerEmail: "test@example.test", rating: 4, comment: "İkinci yorum" })).json();
     const question2 = await (await post("/api/questions", { productId: 1, askerName: "Test", question: "İkinci soru?" })).json();
     const inspectDb = new Database(dbPath);
     const auditActions = inspectDb.prepare("SELECT action FROM audit_logs").all().map(row => row.action);
