@@ -60,6 +60,7 @@ import {
   PanelLeftOpen,
   ShoppingCart,
   Headset,
+  MessageSquareQuote,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
@@ -71,6 +72,7 @@ import { ContentManagement } from "@/components/admin/ContentManagement";
 import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
 import { formatRegistrationDate } from "@/lib/registration-date";
 import { SupportDesk } from "@/components/admin/SupportDesk";
+import { ProductFeedback } from "@/components/admin/ProductFeedback";
 import { ZReportsPanel } from "@/components/admin/ZReportsPanel";
 import {
   ADMIN_MODULES,
@@ -145,6 +147,7 @@ export function AdminDashboardClient({
     | "ai"
     | "intelligence"
     | "support"
+    | "productFeedback"
     | "users"
     | "registeredCustomers"
     | "roleMatrix"
@@ -1620,6 +1623,18 @@ export function AdminDashboardClient({
           >
             <Headset className="w-4 h-4 text-emerald-400" />
             <span>Destek Masası</span>
+          </button>
+          )}
+
+          {matrixLoaded && canSee("productFeedback") && (
+          <button
+            onClick={() => setActiveTab("productFeedback")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "productFeedback" ? "bg-amber-700 text-white shadow-sm" : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <MessageSquareQuote className="w-4 h-4 text-amber-400" />
+            <span>Ürün Yorumları &amp; Soruları</span>
           </button>
           )}
 
@@ -4119,6 +4134,9 @@ export function AdminDashboardClient({
 
         {/* Destek Masası — İletişim formundan gelen mesajlar */}
         {activeTab === "support" && <SupportDesk />}
+
+        {/* Ürün yorumları ve soruları — rol matrisine göre moderasyon */}
+        {activeTab === "productFeedback" && matrixLoaded && canSee("productFeedback") && <ProductFeedback />}
 
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: KULLANICILAR & ROLLER */}

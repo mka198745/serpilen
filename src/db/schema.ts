@@ -541,7 +541,7 @@ export const productQuestions = sqliteTable("product_questions", {
   question: text("question").notNull(),
   answer: text("answer"),
   answeredBy: text("answered_by"),
-  status: text("status").notNull().default("OPEN"), // OPEN, ANSWERED, HIDDEN
+  status: text("status").notNull().default("OPEN"), // OPEN (onay bekliyor), APPROVED, ANSWERED, HIDDEN
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
 

@@ -54,6 +54,7 @@ export function ReviewsQA({ productId }: { productId: number }) {
   const [qForm, setQForm] = useState({ askerName: "", question: "" });
   const [qBusy, setQBusy] = useState(false);
   const [qMsg, setQMsg] = useState<string | null>(null);
+  const [qError, setQError] = useState(false);
 
   const load = React.useCallback(async () => {
     try {
@@ -72,7 +73,7 @@ export function ReviewsQA({ productId }: { productId: number }) {
   }, [productId]);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
   }, [load]);
 
   const submitReview = async (e: React.FormEvent) => {
@@ -104,10 +105,14 @@ export function ReviewsQA({ productId }: { productId: number }) {
     }).then((r) => r.json());
     setQBusy(false);
     if (res.success) {
+      setQError(false);
       setQMsg(res.message || "Sorunuz iletildi.");
       setQForm({ askerName: "", question: "" });
       setShowQ(false);
       void load();
+    } else {
+      setQError(true);
+      setQMsg(res.error || "Soru gönderilemedi.");
     }
   };
 
@@ -222,7 +227,7 @@ export function ReviewsQA({ productId }: { productId: number }) {
               </button>
             </form>
           )}
-          {qMsg && <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">{qMsg}</p>}
+          {qMsg && <p role={qError ? "alert" : "status"} className={`text-xs font-semibold border rounded-xl px-3 py-2 ${qError ? "text-rose-700 bg-rose-50 border-rose-200" : "text-emerald-700 bg-emerald-50 border-emerald-200"}`}>{qMsg}</p>}
 
           {questions.length === 0 && !showQ && (
             <p className="text-xs text-stone-400 text-center py-4">Henüz soru yok.</p>

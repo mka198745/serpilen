@@ -39,6 +39,7 @@ export const ADMIN_MODULES: AdminModule[] = [
   { key: "ai", label: "AI Yönetim Asistanı", group: "Operasyon" },
   { key: "intelligence", label: "Intelligence Center", group: "Operasyon" },
   { key: "support", label: "Destek Masası", group: "Operasyon" },
+  { key: "productFeedback", label: "Ürün Yorumları & Soruları", group: "Operasyon" },
 
   { key: "users", label: "Kullanıcılar & Roller", group: "Sistem (FAZ 1)" },
   { key: "registeredCustomers", label: "Kayıtlı Müşteriler", group: "Sistem (FAZ 1)" },
