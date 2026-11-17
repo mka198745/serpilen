@@ -69,6 +69,7 @@ import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
 import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
+import { formatRegistrationDate } from "@/lib/registration-date";
 import { SupportDesk } from "@/components/admin/SupportDesk";
 import { ZReportsPanel } from "@/components/admin/ZReportsPanel";
 import {
@@ -4213,7 +4214,7 @@ export function AdminDashboardClient({
                           </button>
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
-                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                          {formatRegistrationDate(u.createdAt)}
                         </td>
                         <td className="py-3 px-3 text-right">
                           <button
@@ -4329,7 +4330,7 @@ export function AdminDashboardClient({
                           </button>
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
-                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                          {formatRegistrationDate(u.createdAt)}
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
                           {u.lastLoginAt

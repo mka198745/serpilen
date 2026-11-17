@@ -126,7 +126,7 @@ export async function POST(request: Request) {
   // Boşta kalan en küçük ID atanır (silinen kayıtların ID'leri boşa düşmez).
   // Eşzamanlı oluşturmalarda PK çakışırsa bir kez yeniden hesaplanır.
   let created:
-    | { id: number; name: string; email: string; role: string; phone: string | null; isActive: boolean }
+    | { id: number; name: string; email: string; role: string; phone: string | null; isActive: boolean; createdAt: Date }
     | undefined;
   for (let attempt = 0; attempt < 2 && !created; attempt++) {
     const newId = await allocateUserId();
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
         .values({ id: newId, name, email, phone, role, passwordHash: hashPassword(password) })
         .returning({ id: users.id });
       [created] = await db
-        .select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive })
+        .select({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, isActive: users.isActive, createdAt: users.createdAt })
         .from(users)
         .where(eq(users.id, createdId));
     } catch {
@@ -159,7 +159,10 @@ export async function POST(request: Request) {
     details: `Yeni personel eklendi: ${name} (${role})`,
   });
 
-  return NextResponse.json({ success: true, data: { ...created, roleLabel: ROLE_LABELS[created.role] || created.role } });
+  return NextResponse.json({
+    success: true,
+    data: { ...created, createdAt: created.createdAt.toISOString(), roleLabel: ROLE_LABELS[created.role] || created.role },
+  });
 }
 
 /** PATCH /api/users — Rol, durum ve iletişim güncellemesi. */
