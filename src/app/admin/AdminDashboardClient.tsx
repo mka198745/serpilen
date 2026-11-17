@@ -402,10 +402,6 @@ export function AdminDashboardClient({
     }
   }, []);
 
-  React.useEffect(() => {
-    if (activeTab === "reports") void loadReport(reportDays);
-  }, [activeTab, reportDays, loadReport]);
-
   const ORDER_STATUS_LABELS: Record<string, string> = {
     PENDING: "Ödeme Bekliyor", PAID: "Ödendi", PREPARING: "Hazırlanıyor",
     READY_FOR_SHIPMENT: "Sevke Hazır", SHIPPED: "Kargoda", DELIVERED: "Teslim Edildi",
@@ -609,6 +605,11 @@ export function AdminDashboardClient({
   const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || DEFAULT_ROLE_MATRIX.SUPER_ADMIN;
   // dashboard herkese açık taban erişimdir
   const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] !== false;
+  const reportsAllowed = matrixLoaded && canSee("reports");
+
+  React.useEffect(() => {
+    if (activeTab === "reports" && reportsAllowed) void loadReport(reportDays);
+  }, [activeTab, reportDays, loadReport, reportsAllowed]);
 
   React.useEffect(() => {
     (async () => {
@@ -1901,9 +1902,6 @@ export function AdminDashboardClient({
                   <span className="text-2xl font-black text-sky-700">{customersCount}</span>
                   <span className="text-xs text-stone-400">müşteri</span>
                 </div>
-                <button onClick={() => setActiveTab("reports")} className="text-[11px] text-stone-500 hover:underline font-semibold block text-left">
-                  Detaylı Raporlar →
-                </button>
               </div>
             </div>
 
@@ -2994,7 +2992,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* FAZ 5 / TAB: RAPORLAR & ANALİTİK */}
         {/* ============================================================ */}
-        {activeTab === "reports" && (
+        {activeTab === "reports" && reportsAllowed && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
