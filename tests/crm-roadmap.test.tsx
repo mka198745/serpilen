@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CrmRoadmap } from "../src/components/admin/CrmRoadmap";
 import { CrmLatestUpdate } from "../src/components/admin/CrmLatestUpdate";
+import { CrmDemoNotice, isCrmPreviewDemo } from "../src/components/admin/CrmDemoNotice";
 import { CrmCustomerNotes } from "../src/components/admin/CrmCustomerNotes";
 import { CrmCustomerEdit } from "../src/components/admin/CrmCustomerEdit";
 import { CrmTimeline } from "../src/components/admin/CrmTimeline";
@@ -79,4 +80,13 @@ test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   assert.match(html, /Son geliştirme · Müşteri notlarında sayfalama/);
   assert.match(html, /Profili aç → Müşteri notları/);
   assert.match(html, /not düzenleme ve silme henüz yoktur/);
+});
+
+test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {
+  assert.equal(isCrmPreviewDemo({name:"[DEMO CRM] Deniz Örnek",email:"crm.demo.onizleme@example.test"}), true);
+  assert.equal(isCrmPreviewDemo({name:"Gerçek Müşteri",email:"crm.demo.onizleme@example.test"}), false);
+  assert.equal(isCrmPreviewDemo({name:"[DEMO CRM] Başka",email:"baska@example.test"}), false);
+  const html=renderToStaticMarkup(<CrmDemoNotice />);
+  assert.match(html,/gerçek ödeme, kargo veya stok hareketi değildir/);
+  assert.match(html,/özet ve raporlarına örnek tutar olarak yansıyabilir/);
 });
