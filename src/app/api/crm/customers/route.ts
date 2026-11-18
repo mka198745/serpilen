@@ -12,15 +12,23 @@ export async function GET(request: Request) {
   const search = (params.get("q") || "").trim();
   const pageText = params.get("page") || "1";
   const tagText = params.get("tag") || "";
-  if (search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText)))) {
-    return NextResponse.json({ success: false, error: "Geçersiz arama veya sayfa." }, { status: 422 });
+  const purchase = params.get("purchase") || "";
+  const membership = params.get("membership") || "";
+  if (search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership)) {
+    return NextResponse.json({ success: false, error: "Geçersiz arama, filtre veya sayfa." }, { status: 422 });
   }
   const page = Number(pageText), limit = 20;
   const term = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
   const where = `(? = '' OR c.name LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR CAST(c.id AS TEXT) = ?) AND (? = 0 OR EXISTS (SELECT 1 FROM crm_customer_tags ct WHERE ct.customer_id = c.id AND ct.tag_id = ?))`;
+  // Only fixed, allowlisted SQL fragments are added; user input remains bound.
+  const paid = `(SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED'))`;
+  const linked = `EXISTS (SELECT 1 FROM users u WHERE u.customer_id = c.id AND u.role = 'B2C_CUSTOMER')`;
+  const purchaseWhere: Record<string, string> = { none: `${paid} = 0`, once: `${paid} = 1`, repeat: `${paid} >= 2` };
+  const membershipWhere: Record<string, string> = { linked, unlinked: `NOT ${linked}` };
+  const filters = [where, purchaseWhere[purchase], membershipWhere[membership]].filter(Boolean).join(" AND ");
   const args = [search, term, term, term, search, Number(tagText), Number(tagText)];
   try {
-    const metrics = sqlite.prepare(`WITH filtered AS (SELECT c.id FROM customers c WHERE ${where}),
+    const metrics = sqlite.prepare(`WITH filtered AS (SELECT c.id FROM customers c WHERE ${filters}),
       paid AS (SELECT o.customer_id, COUNT(*) AS order_count, SUM(CAST(o.grand_total AS REAL)) AS amount
         FROM orders o JOIN filtered f ON f.id = o.customer_id
         WHERE o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED') GROUP BY o.customer_id)
@@ -36,7 +44,7 @@ export async function GET(request: Request) {
       (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) AS orderCount,
       (SELECT COALESCE(SUM(CAST(o.grand_total AS REAL)), 0) FROM orders o WHERE o.customer_id = c.id AND o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED')) AS paidOrderTotal,
       (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = c.id) AS lastOrderAt
-      FROM customers c WHERE ${where} ORDER BY c.id DESC LIMIT ? OFFSET ?`).all(...args, limit, (page - 1) * limit);
+      FROM customers c WHERE ${filters} ORDER BY c.id DESC LIMIT ? OFFSET ?`).all(...args, limit, (page - 1) * limit);
     return NextResponse.json({ success: true, data, metrics: { ...metrics, averagePaidOrder: metrics.paidOrderCount ? metrics.paidOrderTotal / metrics.paidOrderCount : null }, pagination: { page, limit, total } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM customer list failed", error);

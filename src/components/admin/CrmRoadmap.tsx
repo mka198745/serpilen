@@ -4,7 +4,7 @@ import React from "react";
 import { ClipboardList } from "lucide-react";
 
 const stages = [
-  { title: "Faz 1 · Çekirdek CRM", status: "Kodlanıyor · Kısmen hazır", done: "Müşteri özeti, oluşturma, arama, sayfalama ve düzenleme; etiketler, bağlı siparişler ve ürünleri, notlar, filtreli zaman çizelgesi, okuma/değiştirme yetkileri ve birleştirme ön incelemesi.", next: "Gerçek müşteri birleştirme işlemi, kayıt bazlı yetkiler, kapsamlı segmentasyon ve ödeme sağlayıcısı işlem geçmişi." },
+  { title: "Faz 1 · Çekirdek CRM", status: "Kodlanıyor · Kısmen hazır", done: "Müşteri özeti, oluşturma, arama, sayfalama ve düzenleme; etiket ve sipariş/üyelik temelli filtreler, bağlı siparişler ve ürünleri, notlar, filtreli zaman çizelgesi, okuma/değiştirme yetkileri ve birleştirme ön incelemesi.", next: "Gerçek müşteri birleştirme işlemi, kayıt bazlı yetkiler, kapsamlı segmentasyon ve ödeme sağlayıcısı işlem geçmişi." },
   { title: "Faz 2 · Müşteri analitiği", status: "Planlandı · Başlanmadı", done: "CRM 360 kapsamında henüz tamamlanmış bir teslim yok.", next: "RFM, müşteri yaşam döngüsü, davranış analizi, segmentasyon, raporlar ve elde tutma." },
   { title: "Faz 3 · İletişim ve otomasyon", status: "Planlandı · Başlanmadı", done: "CRM 360 kapsamında henüz tamamlanmış bir teslim yok.", next: "İzin geçmişi, iletişim merkezi, sağlayıcı entegrasyonları, destek ve otomasyonlar." },
   { title: "Faz 4 · Sadakat ve gelişmiş CRM", status: "Planlandı · Başlanmadı", done: "CRM 360 kapsamında henüz tamamlanmış bir teslim yok.", next: "Sadakat, VIP, geri bildirim, risk göstergeleri ve gelişmiş segmentler." },

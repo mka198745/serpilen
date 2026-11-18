@@ -27,6 +27,8 @@ export function CustomerCRM({ canWrite }: { canWrite: boolean }) {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [purchaseFilter, setPurchaseFilter] = useState("");
+  const [membershipFilter, setMembershipFilter] = useState("");
   const [availableTags, setAvailableTags] = useState<CrmTag[]>([]);
   const [tagError, setTagError] = useState("");
   const [page, setPage] = useState(1);
@@ -43,7 +45,7 @@ export function CustomerCRM({ canWrite }: { canWrite: boolean }) {
     const abort = new AbortController();
     async function load() {
       try {
-        const url = selected ? `/api/crm/customers/${selected}` : `/api/crm/customers?${new URLSearchParams({ q: query, page: String(page), tag: tagFilter })}`;
+        const url = selected ? `/api/crm/customers/${selected}` : `/api/crm/customers?${new URLSearchParams({ q: query, page: String(page), tag: tagFilter, purchase: purchaseFilter, membership: membershipFilter })}`;
         const res = await authFetch(url, { cache: "no-store", signal: abort.signal });
         const json = await res.json();
         if (!res.ok || !json.success) throw new Error(json.error || "Veriler yüklenemedi.");
@@ -56,7 +58,7 @@ export function CustomerCRM({ canWrite }: { canWrite: boolean }) {
     }
     void load();
     return () => abort.abort();
-  }, [page, query, selected, retry, tagFilter]);
+  }, [page, query, selected, retry, tagFilter, purchaseFilter, membershipFilter]);
 
   useEffect(() => {
     if (selected) return;
@@ -84,9 +86,12 @@ export function CustomerCRM({ canWrite }: { canWrite: boolean }) {
     {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error} <button className="underline font-bold ml-2" onClick={() => { startLoading(); setRetry(value => value + 1); }}>Tekrar dene</button></div>}
     {busy && <p role="status" className="text-sm text-stone-500">Yükleniyor…</p>}
     {!selected && !busy && !error && <>
-      {metrics && <CrmOverview metrics={metrics} filtered={!!(query || tagFilter)} />}
+      {metrics && <CrmOverview metrics={metrics} filtered={!!(query || tagFilter || purchaseFilter || membershipFilter)} />}
       {canWrite && <CrmCustomerCreate onCreated={open} />}
-      <div className={`${panel} p-4 flex flex-wrap gap-3 items-center`}><label htmlFor="crm-tag-filter" className="text-xs font-bold text-stone-700">Etikete göre filtrele</label><select id="crm-tag-filter" value={tagFilter} disabled={!!tagError} onChange={event => { startLoading(); setPage(1); setTagFilter(event.target.value); }} className="border border-stone-300 rounded-xl px-3 py-2 text-sm"><option value="">Tüm müşteriler</option>{availableTags.map(tag => <option key={tag.id} value={tag.id}>{tag.name} ({tag.customerCount ?? 0})</option>)}</select>{tagError && <p role="alert" className="text-xs text-rose-700">{tagError}</p>}</div>
+      <div className={`${panel} p-4 flex flex-wrap gap-3 items-center`}><label htmlFor="crm-tag-filter" className="text-xs font-bold text-stone-700">Etikete göre filtrele</label><select id="crm-tag-filter" value={tagFilter} disabled={!!tagError} onChange={event => { startLoading(); setPage(1); setTagFilter(event.target.value); }} className="border border-stone-300 rounded-xl px-3 py-2 text-sm"><option value="">Tüm müşteriler</option>{availableTags.map(tag => <option key={tag.id} value={tag.id}>{tag.name} ({tag.customerCount ?? 0})</option>)}</select>{tagError && <p role="alert" className="text-xs text-rose-700">{tagError}</p>}
+        <label htmlFor="crm-purchase-filter" className="text-xs font-bold text-stone-700">Ödenmiş sipariş</label><select id="crm-purchase-filter" value={purchaseFilter} onChange={event => { startLoading(); setPage(1); setPurchaseFilter(event.target.value); }} className="border border-stone-300 rounded-xl px-3 py-2 text-sm"><option value="">Tümü</option><option value="none">Ödenmiş siparişi yok</option><option value="once">Bir ödenmiş sipariş</option><option value="repeat">İki veya daha fazla ödenmiş sipariş</option></select>
+        <label htmlFor="crm-membership-filter" className="text-xs font-bold text-stone-700">Web üyeliği</label><select id="crm-membership-filter" value={membershipFilter} onChange={event => { startLoading(); setPage(1); setMembershipFilter(event.target.value); }} className="border border-stone-300 rounded-xl px-3 py-2 text-sm"><option value="">Tümü</option><option value="linked">Bağlı B2C üyeliği var</option><option value="unlinked">Bağlı B2C üyeliği yok</option></select>
+        <p className="w-full text-xs text-stone-500">Filtreler birlikte uygulanır ve tüm zamanları kapsar. Sipariş filtresi yalnızca karta bağlı, PAID ve iptal/iade olmayan siparişleri sayar; misafir siparişleri dahil değildir. Üyelik filtresi yalnız bağlı B2C hesaplarını dikkate alır.</p></div>
       <section className={`${panel} overflow-hidden`}><div className="p-4 flex flex-wrap gap-3 items-center justify-between"><div><h3 className="font-bold text-stone-900">Müşteriler</h3><p className="text-xs text-stone-500 mt-1">Ad, e-posta, telefon veya müşteri numarası ile arayın.</p></div><form className="flex gap-2" onSubmit={e => { e.preventDefault(); startLoading(); if (page === 1 && query === input.trim()) { setBusy(false); return; } setPage(1); setQuery(input.trim()); }}><label className="sr-only" htmlFor="crm-search">Müşteri ara</label><input id="crm-search" maxLength={100} value={input} onChange={e => setInput(e.target.value)} placeholder="Müşteri ara" className="px-3 py-2 border border-stone-200 rounded-xl text-sm w-48"/><button className={`${button} flex items-center gap-1`}><Search size={14}/> Ara</button></form></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-xs"><thead className="bg-stone-50 text-stone-500 border-y border-stone-100"><tr>{["Müşteri", "İletişim", "Tip / Segment", "Sipariş", "Ödenmiş sipariş tutarı", "Son sipariş", ""].map(x => <th className="p-3" key={x}>{x}</th>)}</tr></thead><tbody className="divide-y divide-stone-100">{rows.map(c => <tr key={c.id}><td className="p-3"><b>{c.name}</b><div className="text-stone-400">#{c.id} · {c.city || "Şehir belirtilmemiş"}</div></td><td className="p-3">{c.phone || "—"}<div className="text-stone-400">{c.email || "—"}</div></td><td className="p-3">{c.type}<div className="text-stone-400">{c.segment || "—"}</div></td><td className="p-3">{c.orderCount}</td><td className="p-3 font-semibold">{money(c.paidOrderTotal)}</td><td className="p-3">{date(c.lastOrderAt)}</td><td className="p-3"><button className={button} onClick={() => open(c.id)}>Profili aç</button></td></tr>)}{!rows.length && <tr><td colSpan={7} className="p-8 text-center text-stone-500">Müşteri bulunamadı.</td></tr>}</tbody></table></div>
         <div className="p-4 flex justify-between items-center gap-2"><span className="text-xs text-stone-500">Sayfa {page} · {total} kayıt</span><div className="flex gap-2"><button className={button} disabled={page <= 1} onClick={() => { startLoading(); setPage(page - 1); }} aria-label="Önceki sayfa"><ChevronLeft size={15}/></button><button className={button} disabled={page * 20 >= total} onClick={() => { startLoading(); setPage(page + 1); }} aria-label="Sonraki sayfa"><ChevronRight size={15}/></button></div></div></section><p className="text-xs text-stone-500">{note}</p>
