@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
 /** Yeni cari kart açar; web üyeliği oluşturmaz veya mevcut hesaplara bağlamaz. */
 export async function POST(request: Request) {
-  const gate = await requireCrmAccess(request);
+  const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
   const invalid = validateCrmWrite(request);
   if (invalid) return invalid;

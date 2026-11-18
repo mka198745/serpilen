@@ -39,6 +39,15 @@ test('CRM müşteri sorguları gerçek veriler, yetki, sayfalama ve audit ile ko
   assert.equal(json.data.timeline.filter(e=>e.kind==='ORDER_STATUS').length,1);
   assert.equal(json.data.timeline.find(e=>e.kind==='ORDER_STATUS').toStatus,'SHIPPED');
   assert.ok(json.data.timeline.some(e=>e.kind==='CUSTOMER_CREATED'));
+  assert.equal((await req('/api/crm/customers/1/timeline')).status,401);
+  assert.equal((await req('/api/crm/customers/1/timeline','CASHIER')).status,403);
+  assert.equal((await req('/api/crm/customers/1/timeline?from=2025-02-30','SUPER_ADMIN')).status,422);
+  assert.equal((await req('/api/crm/customers/1/timeline?kind=OTHER','SUPER_ADMIN')).status,422);
+  assert.equal((await req('/api/crm/customers/999/timeline','SUPER_ADMIN')).status,404);
+  let timeline=await (await req('/api/crm/customers/1/timeline?kind=ORDER_STATUS&channel=ONLINE_B2C&actor=Personel','SUPER_ADMIN')).json();
+  assert.equal(timeline.pagination.total,1);assert.equal(timeline.data[0].toStatus,'SHIPPED');
+  timeline=await (await req('/api/crm/customers/1/timeline?from=2000-01-01&to=2000-01-01','SUPER_ADMIN')).json();assert.equal(timeline.pagination.total,0);
+  assert.equal((await req('/api/crm/customers/1/timeline?from=2025-01-01&to=2024-01-01','SUPER_ADMIN')).status,422);
   const originalVersion=json.data.editVersion;
   const edit={name:'Güncel Müşteri',phone:'+90 555 123 45 67',email:' CRM.NEW@example.test ',city:'İzmir',address:'Yeni adres',companyName:'Firma',editVersion:originalVersion};
   assert.equal((await req('/api/crm/customers/1',undefined,'PATCH',edit)).status,401);

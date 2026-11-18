@@ -6,7 +6,7 @@ import { requireCrmAccess } from "@/lib/crm-access";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const gate = await requireCrmAccess(request);
+  const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");

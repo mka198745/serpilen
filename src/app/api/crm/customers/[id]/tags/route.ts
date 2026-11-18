@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 const validId = (x: string) => /^[1-9]\d{0,14}$/.test(x) && Number.isSafeInteger(Number(x));
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  const gate = await requireCrmAccess(request);
+  const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
   const invalid = validateCrmWrite(request);
   if (invalid) return invalid;

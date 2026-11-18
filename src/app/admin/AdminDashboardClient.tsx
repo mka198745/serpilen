@@ -3919,7 +3919,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* TAB 6: CRM */}
         {/* ============================================================ */}
-        {activeTab === "crm" && matrixLoaded && canSee("crm") && <CustomerCRM />}
+        {activeTab === "crm" && matrixLoaded && canSee("crm") && <CustomerCRM canWrite={canSee("crmWrite")} />}
 
         {/* ============================================================ */}
         {/* TAB 7: PURCHASING & SUPPLIERS */}

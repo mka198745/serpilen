@@ -31,6 +31,13 @@ test("CRM müşteri oluşturma ve etiket API'si: yetki, doğrulama ve bütünlü
     const db = new Database(dbPath);
     db.pragma("foreign_keys = ON");
     db.prepare("INSERT INTO customers (id,name,phone,email) VALUES (1,?,?,?)").run("Mevcut", "+90 (555) 123-45-67", "existing@example.test");
+    const order = db.prepare("INSERT INTO orders (order_number,customer_id,customer_name,grand_total) VALUES (?,?,?,?)");
+    for (let i = 1; i <= 21; i++) order.run(`TEST-${i}`, 1, "Mevcut", "100");
+    const guest = order.run("GUEST", null, "Mevcut", "100");
+    const item = db.prepare("INSERT INTO order_items (order_id,product_id,product_name,sku,unit_price,quantity,total_price) VALUES (?,?,?,?,?,?,?)");
+    item.run(21, 1, "Gerçek ürün", "SKU-1", "50", 2, "100");
+    item.run(guest.lastInsertRowid, 1, "Misafir ürün", "SKU-2", "100", 1, "100");
+    assert.ok(db.prepare("PRAGMA index_list('order_items')").all().some(index => index.name === 'order_items_order_idx'));
     const tokens = {};
     for (const role of ["SUPER_ADMIN", "STORE_MANAGER", "CASHIER", "B2C_CUSTOMER"]) {
       const user = db.prepare("INSERT INTO users (email,password_hash,name,role) VALUES (?,?,?,?)").run(`${role}@example.test`, "hash", role, role);
@@ -53,6 +60,21 @@ test("CRM müşteri oluşturma ve etiket API'si: yetki, doğrulama ve bütünlü
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
     const customer = { name: "Yeni Müşteri", phone: "555 999 1122", email: " NEW@example.test ", city: "Adana", address: "", companyName: "" };
+    assert.equal((await request("/api/crm/customers/1/orders")).status, 401);
+    assert.equal((await request("/api/crm/customers/1/orders", "CASHIER")).status, 403);
+    assert.equal((await request("/api/crm/customers/999/orders", "SUPER_ADMIN")).status, 404);
+    assert.equal((await request("/api/crm/customers/1/orders?page=0", "SUPER_ADMIN")).status, 422);
+    const orderPage = await (await request("/api/crm/customers/1/orders", "SUPER_ADMIN")).json();
+    assert.equal(orderPage.pagination.total, 21);
+    assert.equal(orderPage.data.length, 20);
+    assert.equal(orderPage.data.find(order => order.orderNumber === 'TEST-21').items[0].productName, 'Gerçek ürün');
+    assert.ok(!JSON.stringify(orderPage).includes('Misafir ürün'));
+    assert.equal((await (await request("/api/crm/customers/1/orders?page=2", "SUPER_ADMIN")).json()).data.length, 1);
+    const firstTimeline = await (await request("/api/crm/customers/1/timeline", "SUPER_ADMIN")).json();
+    assert.equal(firstTimeline.pagination.total, 22);
+    assert.equal(firstTimeline.data.length, 20);
+    assert.equal((await (await request("/api/crm/customers/1/timeline?page=2", "SUPER_ADMIN")).json()).data.length, 2);
+    assert.equal((await (await request("/api/crm/customers/1/timeline?kind=ORDER_CREATED", "SUPER_ADMIN")).json()).pagination.total, 21);
     for (const role of [undefined, "CASHIER", "B2C_CUSTOMER"]) {
       assert.equal((await request("/api/crm/customers", role, "POST", customer)).status, role ? 403 : 401);
       assert.equal((await request("/api/crm/tags", role)).status, role ? 403 : 401);
@@ -144,6 +166,13 @@ test("CRM müşteri oluşturma ve etiket API'si: yetki, doğrulama ve bütünlü
     assert.equal(limitVerify.prepare("SELECT COUNT(*) AS n FROM crm_customer_tags WHERE customer_id=?").get(id).n, 30);
     assert.equal(limitVerify.prepare("SELECT COUNT(*) AS n FROM crm_tags WHERE name='sınırı aşan'").get().n, 0);
     limitVerify.close();
+    assert.equal((await request("/api/role-matrix", "SUPER_ADMIN", "POST", { matrix: { STORE_MANAGER: { crm: true, crmWrite: false } } })).status, 200);
+    assert.equal((await request("/api/crm/customers", "STORE_MANAGER")).status, 200);
+    assert.equal((await request("/api/crm/customers", "STORE_MANAGER", "POST", { ...customer, phone: "5557778899", email: "another@example.test" })).status, 403);
+    assert.equal((await request(endpoint, "STORE_MANAGER", "POST", { action: "REMOVE", tagId })).status, 403);
+    assert.equal((await request(`/api/crm/customers/${id}/notes`, "STORE_MANAGER", "POST", { body: "not" })).status, 403);
+    const readOnly = await (await request(`/api/crm/customers/${id}`, "STORE_MANAGER")).json();
+    assert.equal((await request(`/api/crm/customers/${id}`, "STORE_MANAGER", "PATCH", { ...customer, editVersion: readOnly.data.editVersion })).status, 403);
     assert.equal((await request("/api/role-matrix", "SUPER_ADMIN", "POST", { matrix: { STORE_MANAGER: { crm: false } } })).status, 200);
     assert.equal((await request("/api/crm/customers", "STORE_MANAGER", "POST", customer)).status, 403);
     assert.equal((await request("/api/crm/tags", "STORE_MANAGER")).status, 403);

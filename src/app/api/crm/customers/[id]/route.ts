@@ -44,7 +44,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
 /** CRM kartını düzenler; bağlı hesap giriş bilgileri ve tarihî siparişler değiştirilmez. */
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
-  const gate = await requireCrmAccess(request);
+  const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
   const origin = request.headers.get("origin");
   if ((origin && origin !== publicBaseUrl(request)) || request.headers.get("sec-fetch-site") === "cross-site" || (!origin && !request.headers.get("authorization")?.startsWith("Bearer "))) {

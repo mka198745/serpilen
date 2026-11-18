@@ -332,7 +332,7 @@ export const orderItems = sqliteTable("order_items", {
   quantity: integer("quantity").notNull(),
   taxRate: integer("tax_rate").notNull().default(20),
   totalPrice: numeric("total_price").notNull(),
-});
+}, (table) => [index("order_items_order_idx").on(table.orderId, table.id)]);
 
 // SİPARİŞ DURUM GEÇMİŞİ (audit trail) — FAZ 4
 export const orderStatusHistory = sqliteTable("order_status_history", {
