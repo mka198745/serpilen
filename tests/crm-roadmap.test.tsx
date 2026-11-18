@@ -66,4 +66,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
   assert.match(html, /value="RETURN_CREATED"/);
   assert.match(html, /value="LOYALTY_TRANSACTION"/);
   assert.match(html, /UTC gün sınırlarına/);
+  assert.match(html, /Müşteri zaman çizelgesi/);
+  assert.match(html, /İade kayıtları/);
+  assert.match(html, /Sadakat puan hareketleri/);
+  assert.match(html, /Filtreleri temizle/);
+  assert.match(html, /crm-timeline/);
 });
