@@ -3,6 +3,7 @@ import { sqlite } from "@/db";
 import { requireCrmAccess } from "@/lib/crm-access";
 import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
 import { isValidReviewEmail } from "@/lib/review-email";
+import { crmEmailKey, hasCrmContactDuplicate } from "@/lib/crm-duplicates";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -74,13 +75,12 @@ export async function POST(request: Request) {
   }
   try {
     const create = sqlite.transaction(() => {
-      const duplicate = sqlite.prepare(`SELECT id FROM customers WHERE (? IS NOT NULL AND lower(trim(email)) = ?) OR replace(replace(replace(replace(replace(replace(phone,' ',''),'-',''),'(',''),')',''),'.',''),'+','') = ? LIMIT 1`).get(email, email, digits);
-      if (duplicate) return null;
+      if (hasCrmContactDuplicate(email ? crmEmailKey(email) : null, digits, 0)) return null;
       const result = sqlite.prepare(`INSERT INTO customers (name, phone, email, city, address, company_name, type, segment) VALUES (?,?,?,?,?,?, 'B2C', 'YENİ')`).run(name, phone, email, city, address, companyName);
       sqlite.prepare(`INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_CUSTOMER_CREATED', 'Customer', ?, 'CRM müşteri kartı oluşturuldu')`).run(String(gate.user.id), gate.user.name, String(result.lastInsertRowid));
       return Number(result.lastInsertRowid);
     });
-    const id = create();
+    const id = create.immediate();
     if (id === null) return NextResponse.json({ success: false, error: "Bu e-posta veya telefonla bir müşteri kartı mevcut. Önce mevcut kayıtları kontrol edin." }, { status: 409 });
     return NextResponse.json({ success: true, data: { id } }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

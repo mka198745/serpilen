@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { requireCrmAccess } from "@/lib/crm-access";
 import { isValidReviewEmail } from "@/lib/review-email";
+import { crmPhoneSql as phoneExpression } from "@/lib/crm-duplicates";
 
 export const dynamic = "force-dynamic";
 const validId = (value: string) => /^[1-9]\d{0,14}$/.test(value) && Number.isSafeInteger(Number(value));
-// Must match the expression index in migration 0017. No country-code inference.
-const phoneExpression = "replace(replace(replace(replace(replace(replace(phone,' ',''),'-',''),'(',''),')',''),'.',''),'+','')";
 
 /** Read-only candidate discovery; a match is not proof of identity. */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {

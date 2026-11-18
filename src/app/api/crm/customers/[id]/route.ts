@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { requireCrmAccess } from "@/lib/crm-access";
-import { publicBaseUrl } from "@/lib/auth";
+import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
+import { crmEmailKey, crmPhoneKey, hasCrmContactDuplicate } from "@/lib/crm-duplicates";
 import { customerEditVersion, type EditableCustomer } from "@/lib/crm-customer";
 import { isValidReviewEmail } from "@/lib/review-email";
 
@@ -46,40 +47,46 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const origin = request.headers.get("origin");
-  if ((origin && origin !== publicBaseUrl(request)) || request.headers.get("sec-fetch-site") === "cross-site" || (!origin && !request.headers.get("authorization")?.startsWith("Bearer "))) {
-    return NextResponse.json({ success: false, error: "İstek kaynağı doğrulanamadı." }, { status: 403 });
-  }
-  if (!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get("content-type") || "")) return NextResponse.json({ success: false, error: "Geçersiz istek türü." }, { status: 415 });
+  const invalid = validateCrmWrite(request);
+  if (invalid) return invalid;
   const { id: rawId } = await context.params;
   if (!validId(rawId)) return NextResponse.json({ success: false, error: "Geçersiz müşteri numarası." }, { status: 422 });
-  if (Number(request.headers.get("content-length") || 0) > 16384) return NextResponse.json({ success: false, error: "İstek çok büyük." }, { status: 413 });
-  const body = await request.json().catch(() => null);
+  const parsed = await readCrmJson(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value as Record<string, unknown> | null;
   const keys = ["name", "phone", "email", "city", "address", "companyName"] as const;
-  if (!body || typeof body !== "object" || Array.isArray(body) || !/^[a-f0-9]{64}$/.test(body.editVersion ?? "") || Object.keys(body).some(key => key !== "editVersion" && !keys.includes(key as typeof keys[number])) || keys.some(key => typeof body[key] !== "string")) {
+  if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.editVersion !== "string" || !/^[a-f0-9]{64}$/.test(body.editVersion) || Object.keys(body).some(key => key !== "editVersion" && !keys.includes(key as typeof keys[number])) || keys.some(key => typeof body[key] !== "string")) {
     return NextResponse.json({ success: false, error: "Geçersiz müşteri bilgileri." }, { status: 422 });
   }
+  const values = body as Record<typeof keys[number] | "editVersion", string>;
   try {
     const update = sqlite.transaction(() => {
       const current = sqlite.prepare(customerSelect).get(Number(rawId)) as (EditableCustomer & { id: number }) | undefined;
       if (!current) return { status: 404, error: "Müşteri bulunamadı." } as const;
-      if (customerEditVersion(current) !== body.editVersion) return { status: 409, error: "Müşteri bilgileri başka bir işlemle değişti. Profili yenileyip tekrar deneyin." } as const;
+      if (customerEditVersion(current) !== values.editVersion) return { status: 409, error: "Müşteri bilgileri başka bir işlemle değişti. Profili yenileyip tekrar deneyin." } as const;
       const input: EditableCustomer = {
-        name: body.name === current.name ? current.name : body.name.trim(),
-        phone: body.phone === current.phone ? current.phone : body.phone.trim(),
-        email: body.email === (current.email ?? "") ? current.email : body.email.trim().toLowerCase() || null,
-        city: body.city === (current.city ?? "") ? current.city : body.city.trim() || null,
-        address: body.address === (current.address ?? "") ? current.address : body.address.trim() || null,
-        companyName: body.companyName === (current.companyName ?? "") ? current.companyName : body.companyName.trim() || null,
+        name: values.name === current.name ? current.name : values.name.trim(),
+        phone: values.phone === current.phone ? current.phone : values.phone.trim(),
+        email: values.email === (current.email ?? "") ? current.email : values.email.trim().toLowerCase() || null,
+        city: values.city === (current.city ?? "") ? current.city : values.city.trim() || null,
+        address: values.address === (current.address ?? "") ? current.address : values.address.trim() || null,
+        companyName: values.companyName === (current.companyName ?? "") ? current.companyName : values.companyName.trim() || null,
       };
       const changed = keys.filter(key => current[key] !== input[key]);
       if ((changed.includes("name") && (!input.name || input.name.length > 120)) ||
-          (changed.includes("phone") && (!/^[+\d\s().-]+$/.test(input.phone) || input.phone.replace(/\D/g, "").length < 7 || input.phone.replace(/\D/g, "").length > 15)) ||
+          (changed.includes("phone") && (!/^\+?[\d ().-]+$/.test(input.phone) || input.phone.length > 40 || input.phone.replace(/\D/g, "").length < 7 || input.phone.replace(/\D/g, "").length > 15)) ||
           (changed.includes("email") && input.email !== null && !isValidReviewEmail(input.email)) ||
           (changed.includes("city") && (input.city?.length ?? 0) > 100) ||
           (changed.includes("address") && (input.address?.length ?? 0) > 500) ||
           (changed.includes("companyName") && (input.companyName?.length ?? 0) > 160)) {
         return { status: 422, error: "Ad, telefon veya diğer alanlar geçersiz. Telefon 7–15 rakam içermelidir; e-posta isteğe bağlıdır." } as const;
+      }
+      // Existing legacy duplicates do not block unrelated edits or a formatting-only change.
+      const emailKey = crmEmailKey(input.email), phoneKey = crmPhoneKey(input.phone);
+      const checkEmail = emailKey && emailKey !== crmEmailKey(current.email) ? emailKey : null;
+      const checkPhone = phoneKey !== crmPhoneKey(current.phone) ? phoneKey : null;
+      if ((checkEmail || checkPhone) && hasCrmContactDuplicate(checkEmail, checkPhone, Number(rawId))) {
+        return { status: 409, error: "Bu e-posta veya telefonla başka bir müşteri kartı mevcut. Önce mevcut kayıtları kontrol edin." } as const;
       }
       if (changed.length) {
         sqlite.prepare("UPDATE customers SET name=@name, phone=@phone, email=@email, city=@city, address=@address, company_name=@companyName WHERE id=@id").run({ ...input, id: Number(rawId) });
@@ -87,7 +94,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       }
       return { status: 200, customer: sqlite.prepare(customerSelect).get(Number(rawId)) as EditableCustomer & { id: number } } as const;
     });
-    const result = update();
+    const result = update.immediate();
     if (result.status !== 200) return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     return NextResponse.json({ success: true, data: { customer: result.customer, editVersion: customerEditVersion(result.customer) } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
