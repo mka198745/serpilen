@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { requireCrmAccess } from "@/lib/crm-access";
+import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
+import { isValidReviewEmail } from "@/lib/review-email";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -9,13 +11,14 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const search = (params.get("q") || "").trim();
   const pageText = params.get("page") || "1";
-  if (search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText)) {
+  const tagText = params.get("tag") || "";
+  if (search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText)))) {
     return NextResponse.json({ success: false, error: "Geçersiz arama veya sayfa." }, { status: 422 });
   }
   const page = Number(pageText), limit = 20;
   const term = `%${search.replace(/[\\%_]/g, "\\$&")}%`;
-  const where = `(? = '' OR c.name LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR CAST(c.id AS TEXT) = ?)`;
-  const args = [search, term, term, term, search];
+  const where = `(? = '' OR c.name LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR CAST(c.id AS TEXT) = ?) AND (? = 0 OR EXISTS (SELECT 1 FROM crm_customer_tags ct WHERE ct.customer_id = c.id AND ct.tag_id = ?))`;
+  const args = [search, term, term, term, search, Number(tagText), Number(tagText)];
   try {
     const total = (sqlite.prepare(`SELECT COUNT(*) AS n FROM customers c WHERE ${where}`).get(...args) as { n: number }).n;
     const data = sqlite.prepare(`SELECT c.id, c.name, c.email, c.phone, c.type, c.segment, c.city, c.loyalty_points AS loyaltyPoints, c.created_at AS createdAt,
@@ -27,5 +30,42 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("CRM customer list failed", error);
     return NextResponse.json({ success: false, error: "Müşteriler yüklenemedi." }, { status: 500 });
+  }
+}
+
+/** Yeni cari kart açar; web üyeliği oluşturmaz veya mevcut hesaplara bağlamaz. */
+export async function POST(request: Request) {
+  const gate = await requireCrmAccess(request);
+  if (!gate.ok) return gate.response;
+  const invalid = validateCrmWrite(request);
+  if (invalid) return invalid;
+  const parsed = await readCrmJson(request);
+  if (!parsed.ok) return parsed.response;
+  const input = parsed.value as Record<string, unknown> | null;
+  const allowed = ["name", "phone", "email", "city", "address", "companyName"] as const;
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => !allowed.includes(key as typeof allowed[number])) || allowed.some(key => typeof input[key] !== "string")) {
+    return NextResponse.json({ success: false, error: "Geçersiz müşteri bilgileri." }, { status: 422 });
+  }
+  const values = input as Record<typeof allowed[number], string>;
+  const name = values.name.trim(), phone = values.phone.trim(), email = values.email.trim().toLowerCase() || null;
+  const city = values.city.trim() || null, address = values.address.trim() || null, companyName = values.companyName.trim() || null;
+  const digits = phone.replace(/\D/g, "");
+  if (!name || name.length > 120 || !/^\+?[\d ().-]+$/.test(phone) || phone.length > 40 || digits.length < 7 || digits.length > 15 || (email && !isValidReviewEmail(email)) || (city?.length ?? 0) > 100 || (address?.length ?? 0) > 500 || (companyName?.length ?? 0) > 160) {
+    return NextResponse.json({ success: false, error: "Ad ve 7–15 rakamlı telefon zorunludur; e-posta varsa geçerli olmalıdır." }, { status: 422 });
+  }
+  try {
+    const create = sqlite.transaction(() => {
+      const duplicate = sqlite.prepare(`SELECT id FROM customers WHERE (? IS NOT NULL AND lower(trim(email)) = ?) OR replace(replace(replace(replace(replace(replace(phone,' ',''),'-',''),'(',''),')',''),'.',''),'+','') = ? LIMIT 1`).get(email, email, digits);
+      if (duplicate) return null;
+      const result = sqlite.prepare(`INSERT INTO customers (name, phone, email, city, address, company_name, type, segment) VALUES (?,?,?,?,?,?, 'B2C', 'YENİ')`).run(name, phone, email, city, address, companyName);
+      sqlite.prepare(`INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_CUSTOMER_CREATED', 'Customer', ?, 'CRM müşteri kartı oluşturuldu')`).run(String(gate.user.id), gate.user.name, String(result.lastInsertRowid));
+      return Number(result.lastInsertRowid);
+    });
+    const id = create();
+    if (id === null) return NextResponse.json({ success: false, error: "Bu e-posta veya telefonla bir müşteri kartı mevcut. Önce mevcut kayıtları kontrol edin." }, { status: 409 });
+    return NextResponse.json({ success: true, data: { id } }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    console.error("CRM customer creation failed", error);
+    return NextResponse.json({ success: false, error: "Müşteri kartı oluşturulamadı." }, { status: 500 });
   }
 }

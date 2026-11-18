@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, index, primaryKey } from "drizzle-orm/sqlite-core";
 
 // ==========================================
 // 1. KULLANICILAR & ROLLER
@@ -85,6 +85,19 @@ export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
   createdByName: text("created_by_name").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 }, (table) => [index("crm_customer_notes_customer_idx").on(table.customerId, table.createdAt, table.id)]);
+
+export const crmTags = sqliteTable("crm_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+});
+
+export const crmCustomerTags = sqliteTable("crm_customer_tags", {
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  tagId: integer("tag_id").notNull().references(() => crmTags.id, { onDelete: "restrict" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [primaryKey({ columns: [table.customerId, table.tagId] }), index("crm_customer_tags_tag_idx").on(table.tagId, table.customerId)]);
 
 // ==========================================
 // 3. KATEGORİLER & MARKALAR

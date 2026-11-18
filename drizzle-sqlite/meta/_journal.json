@@ -99,6 +99,13 @@
       "when": 1794770826192,
       "tag": "0013_crm_timeline_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794771826192,
+      "tag": "0014_crm_tags",
+      "breakpoints": true
     }
   ]
 }

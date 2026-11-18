@@ -21,6 +21,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const orders = sqlite.prepare(`SELECT id, order_number AS orderNumber, order_type AS orderType, status, payment_status AS paymentStatus, payment_method AS paymentMethod, grand_total AS grandTotal, created_at AS createdAt FROM orders WHERE customer_id = ? ORDER BY created_at DESC, id DESC LIMIT 100`).all(id);
     const summary = sqlite.prepare(`SELECT COUNT(*) AS orderCount, COALESCE(SUM(CASE WHEN payment_status = 'PAID' AND status NOT IN ('CANCELLED','REFUNDED','RETURNED') THEN CAST(grand_total AS REAL) ELSE 0 END), 0) AS paidOrderTotal, MIN(created_at) AS firstOrderAt, MAX(created_at) AS lastOrderAt FROM orders WHERE customer_id = ?`).get(id);
     const notes = sqlite.prepare(`SELECT id, body, created_by_name AS createdByName, created_at AS createdAt FROM crm_customer_notes WHERE customer_id = ? ORDER BY created_at DESC, id DESC LIMIT 50`).all(id);
+    const tags = sqlite.prepare("SELECT t.id,t.name FROM crm_tags t JOIN crm_customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=? ORDER BY t.name COLLATE NOCASE").all(id);
     const timeline = sqlite.prepare(`
       SELECT * FROM (
         SELECT 'CUSTOMER_CREATED' AS kind, c.id AS eventId, c.created_at AS occurredAt, NULL AS orderNumber, NULL AS channel, NULL AS actor, NULL AS fromStatus, NULL AS toStatus FROM customers c WHERE c.id = @id
@@ -34,7 +35,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         SELECT 'PROFILE_UPDATED', a.id, a.created_at, NULL, NULL, a.user_name, NULL, NULL FROM audit_logs a WHERE a.entity = 'Customer' AND a.entity_id = @rawId AND a.action = 'CRM_CUSTOMER_UPDATED'
       ) ORDER BY occurredAt DESC, kind ASC, eventId DESC LIMIT 100`).all({ id, rawId });
     sqlite.prepare(`INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_CUSTOMER_VIEW', 'Customer', ?, 'CRM profil görüntüleme')`).run(String(gate.user.id), gate.user.name, rawId);
-    return NextResponse.json({ success: true, data: { customer, editVersion: customerEditVersion(customer), orders, summary, notes, timeline } }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ success: true, data: { customer, editVersion: customerEditVersion(customer), orders, summary, notes, tags, timeline } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM customer detail failed", error);
     return NextResponse.json({ success: false, error: "Müşteri profili yüklenemedi." }, { status: 500 });
