@@ -76,6 +76,16 @@ export const customers = sqliteTable("customers", {
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
 
+// Personel tarafından eklenen, müşteriye bağlı değiştirilemeyen CRM notları.
+export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  body: text("body").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [index("crm_customer_notes_customer_idx").on(table.customerId, table.createdAt, table.id)]);
+
 // ==========================================
 // 3. KATEGORİLER & MARKALAR
 // ==========================================
