@@ -20,13 +20,24 @@ export async function GET(request: Request) {
   const where = `(? = '' OR c.name LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR CAST(c.id AS TEXT) = ?) AND (? = 0 OR EXISTS (SELECT 1 FROM crm_customer_tags ct WHERE ct.customer_id = c.id AND ct.tag_id = ?))`;
   const args = [search, term, term, term, search, Number(tagText), Number(tagText)];
   try {
-    const total = (sqlite.prepare(`SELECT COUNT(*) AS n FROM customers c WHERE ${where}`).get(...args) as { n: number }).n;
+    const metrics = sqlite.prepare(`WITH filtered AS (SELECT c.id FROM customers c WHERE ${where}),
+      paid AS (SELECT o.customer_id, COUNT(*) AS order_count, SUM(CAST(o.grand_total AS REAL)) AS amount
+        FROM orders o JOIN filtered f ON f.id = o.customer_id
+        WHERE o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED') GROUP BY o.customer_id)
+      SELECT COUNT(*) AS customerCount,
+        COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.customer_id = f.id AND u.role = 'B2C_CUSTOMER') THEN 1 ELSE 0 END),0) AS registeredCount,
+        COALESCE(SUM(CASE WHEN p.order_count > 0 THEN 1 ELSE 0 END),0) AS paidCustomers,
+        COALESCE(SUM(CASE WHEN p.order_count > 1 THEN 1 ELSE 0 END),0) AS repeatCustomers,
+        COALESCE(SUM(p.order_count),0) AS paidOrderCount,
+        COALESCE(SUM(p.amount),0) AS paidOrderTotal
+      FROM filtered f LEFT JOIN paid p ON p.customer_id = f.id`).get(...args) as { customerCount: number; registeredCount: number; paidCustomers: number; repeatCustomers: number; paidOrderCount: number; paidOrderTotal: number };
+    const total = metrics.customerCount;
     const data = sqlite.prepare(`SELECT c.id, c.name, c.email, c.phone, c.type, c.segment, c.city, c.loyalty_points AS loyaltyPoints, c.created_at AS createdAt,
       (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) AS orderCount,
       (SELECT COALESCE(SUM(CAST(o.grand_total AS REAL)), 0) FROM orders o WHERE o.customer_id = c.id AND o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED')) AS paidOrderTotal,
       (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = c.id) AS lastOrderAt
       FROM customers c WHERE ${where} ORDER BY c.id DESC LIMIT ? OFFSET ?`).all(...args, limit, (page - 1) * limit);
-    return NextResponse.json({ success: true, data, pagination: { page, limit, total } }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ success: true, data, metrics: { ...metrics, averagePaidOrder: metrics.paidOrderCount ? metrics.paidOrderTotal / metrics.paidOrderCount : null }, pagination: { page, limit, total } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM customer list failed", error);
     return NextResponse.json({ success: false, error: "Müşteriler yüklenemedi." }, { status: 500 });

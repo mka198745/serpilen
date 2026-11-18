@@ -24,15 +24,17 @@ test('CRM müşteri sorguları gerçek veriler, yetki, sayfalama ve audit ile ko
   db.exec("INSERT INTO order_status_history (order_id,from_status,to_status,changed_by) VALUES (1,NULL,'PAID','System'), (1,'PAID','SHIPPED','Personel'), (4,'PAID','SHIPPED','System')");
   const tokens={};const addUser=db.prepare('INSERT INTO users (email,password_hash,name,role) VALUES (?,?,?,?)');const addSession=db.prepare('INSERT INTO admin_sessions (user_id,jti,expires_at) VALUES (?,?,?)');
   for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER','B2C_CUSTOMER']) {const id=addUser.run(`${role}@example.test`,'hash',role,role).lastInsertRowid;const token=crypto.randomBytes(32).toString('hex');tokens[role]=token;addSession.run(id,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);}
-  db.prepare("UPDATE users SET customer_id=1 WHERE role='B2C_CUSTOMER'").run();db.close();
+  db.prepare("UPDATE users SET customer_id=1 WHERE role='B2C_CUSTOMER'").run();
+  db.prepare("INSERT INTO users (email,password_hash,name,role,customer_id) VALUES ('second-account@example.test','hash','Üye','B2C_CUSTOMER',1)").run();db.close();
   const port=await freePort();server=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...process.env,DATABASE_URL:`sqlite:${dbPath}`,PORT:String(port),NODE_ENV:'production'},stdio:'ignore'});const base=`http://127.0.0.1:${port}`;
   let ready=false;for(let i=0;i<100;i++){if(server.exitCode!==null) throw new Error('Sunucu kapandı');try{await fetch(base+'/api/crm/customers');ready=true;break;}catch{await delay(100);}}assert.ok(ready);
   const req=(p,role,method='GET',body)=>fetch(base+p,{method,headers:{...(role?{Authorization:`Bearer ${tokens[role]}`} : {}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   for(const p of ['/api/crm/customers','/api/crm/customers/1']){assert.equal((await req(p)).status,401);assert.equal((await req(p,'CASHIER')).status,403);assert.equal((await req(p,'B2C_CUSTOMER')).status,403);assert.equal((await req(p,'STORE_MANAGER')).status,200);}
   let res=await req('/api/crm/customers','SUPER_ADMIN');assert.match(res.headers.get('cache-control'),/no-store/);let json=await res.json();assert.equal(json.pagination.total,23);assert.equal(json.data.length,20);
+  assert.equal(json.metrics.customerCount,23);assert.equal(json.metrics.registeredCount,1);assert.equal(json.metrics.paidCustomers,1);assert.equal(json.metrics.repeatCustomers,0);assert.equal(json.metrics.paidOrderCount,1);assert.equal(json.metrics.paidOrderTotal,100);assert.equal(json.metrics.averagePaidOrder,100);
   json=await (await req('/api/crm/customers?page=2','SUPER_ADMIN')).json();assert.equal(json.data.length,3);assert.equal(json.data.find(x=>x.id===1).orderCount,3);assert.equal(json.data.find(x=>x.id===1).paidOrderTotal,100);
   json=await (await req('/api/crm/customers?q=crm1%40example.test','SUPER_ADMIN')).json();assert.equal(json.pagination.total,1);assert.equal(json.data[0].id,1);
-  json=await (await req('/api/crm/customers?q=%25','SUPER_ADMIN')).json();assert.equal(json.pagination.total,0);
+  json=await (await req('/api/crm/customers?q=%25','SUPER_ADMIN')).json();assert.equal(json.pagination.total,0);assert.equal(json.metrics.customerCount,0);assert.equal(json.metrics.averagePaidOrder,null);
   assert.equal((await req('/api/crm/customers?page=0','SUPER_ADMIN')).status,422);assert.equal((await req('/api/crm/customers/abc','SUPER_ADMIN')).status,422);assert.equal((await req('/api/crm/customers/999','SUPER_ADMIN')).status,404);
   json=await (await req('/api/crm/customers/1','SUPER_ADMIN')).json();assert.equal(json.data.orders.length,3);assert.equal(json.data.summary.orderCount,3);assert.equal(json.data.summary.paidOrderTotal,100);assert.ok(!json.data.orders.some(o=>o.orderNumber==='GUEST'));assert.deepEqual(json.data.notes,[]);
   assert.equal(json.data.timeline.filter(e=>e.kind==='ORDER_CREATED').length,3);

@@ -24,7 +24,7 @@ export const users = sqliteTable("users", {
   passwordChangedAt: integer("password_changed_at", { mode: "timestamp" }),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("users_customer_role_idx").on(table.customerId, table.role)]);
 
 // OTURUM (SESSION) YÖNETİMİ — token iptali (revocation) ve cihaz takibi
 export const adminSessions = sqliteTable("admin_sessions", {

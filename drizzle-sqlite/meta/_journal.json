@@ -113,6 +113,13 @@
       "when": 1794772826192,
       "tag": "0015_crm_order_items_index",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794773826192,
+      "tag": "0016_crm_users_customer_index",
+      "breakpoints": true
     }
   ]
 }

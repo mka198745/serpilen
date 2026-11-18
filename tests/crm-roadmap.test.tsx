@@ -15,7 +15,7 @@ test("CRM yol haritası gerçek durumu ve tüm aşamaları gösterir", () => {
   assert.match(html, /Faz 1 kısmen hazır/);
   for (const phase of ["Faz 1", "Faz 2", "Faz 3", "Faz 4", "Faz 5"]) assert.ok(html.includes(phase));
   assert.match(html, /Planlandı · Başlanmadı/);
-  assert.match(html, /Müşteri oluşturma, arama, sayfalama ve düzenleme/);
+  assert.match(html, /Müşteri özeti, oluşturma, arama, sayfalama ve düzenleme/);
   assert.match(html, /filtreli zaman çizelgesi/);
 });
 
