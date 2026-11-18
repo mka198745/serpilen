@@ -74,7 +74,10 @@ export const customers = sqliteTable("customers", {
   city: text("city"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [
+  index("customers_crm_normalized_email_idx").on(sql`lower(trim(${table.email}))`),
+  index("customers_crm_normalized_phone_idx").on(sql`replace(replace(replace(replace(replace(replace(${table.phone},' ',''),'-',''),'(',''),')',''),'.',''),'+','')`),
+]);
 
 // Personel tarafından eklenen, müşteriye bağlı değiştirilemeyen CRM notları.
 export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
