@@ -6,6 +6,7 @@ import { CrmRoadmap } from "../src/components/admin/CrmRoadmap";
 import { CrmCustomerNotes } from "../src/components/admin/CrmCustomerNotes";
 import { CrmCustomerEdit } from "../src/components/admin/CrmCustomerEdit";
 import { CrmTimeline } from "../src/components/admin/CrmTimeline";
+import { CrmTimelineExplorer } from "../src/components/admin/CrmTimelineExplorer";
 import { CrmCustomerTags } from "../src/components/admin/CrmCustomerTags";
 import { CrmCustomerCreate } from "../src/components/admin/CrmCustomerCreate";
 
@@ -33,7 +34,7 @@ test("Müşteri düzenleme ayrımı ve zaman çizelgesi mevcut verileri doğru a
   assert.match(editHtml, /Düzenle/);
   const timelineHtml = renderToStaticMarkup(<CrmTimeline events={[{ kind: "ORDER_STATUS", eventId: 1, occurredAt: 1700000000, orderNumber: "#X", channel: "POS", actor: "Personel", fromStatus: "PAID", toStatus: "SHIPPED" }]} />);
   assert.match(timelineHtml, /PAID → SHIPPED/);
-  assert.match(timelineHtml, /misafir siparişleri gösterilmez/);
+  assert.match(timelineHtml, /Misafir siparişleri ve kaydedilmemiş hareketler gösterilmez/);
 });
 
 test("Salt okunur CRM'de değiştirme kontrolleri gösterilmez", () => {
@@ -45,4 +46,24 @@ test("Salt okunur CRM'de değiştirme kontrolleri gösterilmez", () => {
   assert.doesNotMatch(notes, /Not ekle/);
   assert.doesNotMatch(edit, /Düzenle/);
   assert.match(renderToStaticMarkup(<CrmCustomerCreate onCreated={() => {}} />), /Müşteri ekle/);
+});
+
+test("İade ve sadakat hareketleri kaynak alanlarını güvenli ve açık gösterir", () => {
+  const events = [
+    { kind: "RETURN_CREATED" as const, eventId: 1, occurredAt: 1735689600, orderNumber: "A-1", channel: "ONLINE_B2C", actor: "Personel", fromStatus: null, toStatus: null, returnNumber: "IAD-1", returnStatus: "REFUNDED" },
+    { kind: "LOYALTY_TRANSACTION" as const, eventId: 2, occurredAt: 1735689600, orderNumber: null, channel: null, actor: null, fromStatus: null, toStatus: null, loyaltyType: "<script>", points: -40 },
+  ];
+  const html = renderToStaticMarkup(<CrmTimeline events={events} />);
+  assert.match(html, /Güncel durum: REFUNDED/);
+  assert.match(html, /ödeme sağlayıcısı iadesi değildir/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /-40 puan/);
+});
+
+test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
+  const html = renderToStaticMarkup(<CrmTimelineExplorer customerId={1} refresh={0} />);
+  assert.match(html, /value="RETURN_CREATED"/);
+  assert.match(html, /value="LOYALTY_TRANSACTION"/);
+  assert.match(html, /UTC gün sınırlarına/);
 });

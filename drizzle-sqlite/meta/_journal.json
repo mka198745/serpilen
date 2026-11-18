@@ -127,6 +127,13 @@
       "when": 1794774826192,
       "tag": "0017_crm_duplicate_candidate_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794775826192,
+      "tag": "0018_crm_timeline_transaction_indexes",
+      "breakpoints": true
     }
   ]
 }

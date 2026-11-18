@@ -362,7 +362,7 @@ export const orderReturns = sqliteTable("order_returns", {
   createdBy: text("created_by").default("Müşteri Hizmetleri"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
   resolvedAt: integer("resolved_at", { mode: "timestamp" }),
-});
+}, (table) => [index("order_returns_order_created_idx").on(table.orderId, table.createdAt, table.id)]);
 
 export const orderReturnItems = sqliteTable("order_return_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -591,7 +591,7 @@ export const loyaltyTransactions = sqliteTable("loyalty_transactions", {
   description: text("description"),
   orderId: integer("order_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("loyalty_transactions_customer_created_idx").on(table.customerId, table.createdAt, table.id)]);
 
 // ==========================================
 // 10. CMS: BLOG & KURUMSAL İÇERİK
