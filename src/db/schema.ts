@@ -330,7 +330,7 @@ export const orderStatusHistory = sqliteTable("order_status_history", {
   note: text("note"),
   changedBy: text("changed_by").default("Sistem"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("order_status_history_order_created_idx").on(table.orderId, table.createdAt, table.id)]);
 
 // İADELER (RMA) — FAZ 4
 export const orderReturns = sqliteTable("order_returns", {
@@ -618,7 +618,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   details: text("details"),
   ipAddress: text("ip_address").default("127.0.0.1"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("audit_logs_crm_entity_idx").on(table.entity, table.entityId, table.action, table.createdAt, table.id)]);
 
 // ==========================================
 // 12. COMMERCE INTELLIGENCE ENGINE — FAZ 1 (TEMEL ZEKÂ)

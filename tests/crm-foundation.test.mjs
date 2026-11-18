@@ -21,8 +21,10 @@ test('CRM müşteri sorguları gerçek veriler, yetki, sayfalama ve audit ile ko
   for(let i=1;i<=23;i++) addCustomer.run(i===1?'Özel Müşteri':`Müşteri ${i}`,`555000${i}`,`crm${i}@example.test`,'Adana');
   const order=db.prepare(`INSERT INTO orders (order_number, customer_id, customer_name, status, payment_status, grand_total) VALUES (?,?,?,?,?,?)`);
   order.run('ORD-1',1,'Özel Müşteri','PAID','PAID','100');order.run('ORD-2',1,'Özel Müşteri','CANCELLED','PAID','50');order.run('ORD-3',1,'Özel Müşteri','PENDING','PENDING','40');order.run('GUEST',null,'Özel Müşteri','PAID','PAID','999');
+  db.exec("INSERT INTO order_status_history (order_id,from_status,to_status,changed_by) VALUES (1,NULL,'PAID','System'), (1,'PAID','SHIPPED','Personel'), (4,'PAID','SHIPPED','System')");
   const tokens={};const addUser=db.prepare('INSERT INTO users (email,password_hash,name,role) VALUES (?,?,?,?)');const addSession=db.prepare('INSERT INTO admin_sessions (user_id,jti,expires_at) VALUES (?,?,?)');
-  for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER','B2C_CUSTOMER']) {const id=addUser.run(`${role}@example.test`,'hash',role,role).lastInsertRowid;const token=crypto.randomBytes(32).toString('hex');tokens[role]=token;addSession.run(id,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);}db.close();
+  for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER','B2C_CUSTOMER']) {const id=addUser.run(`${role}@example.test`,'hash',role,role).lastInsertRowid;const token=crypto.randomBytes(32).toString('hex');tokens[role]=token;addSession.run(id,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);}
+  db.prepare("UPDATE users SET customer_id=1 WHERE role='B2C_CUSTOMER'").run();db.close();
   const port=await freePort();server=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...process.env,DATABASE_URL:`sqlite:${dbPath}`,PORT:String(port),NODE_ENV:'production'},stdio:'ignore'});const base=`http://127.0.0.1:${port}`;
   let ready=false;for(let i=0;i<100;i++){if(server.exitCode!==null) throw new Error('Sunucu kapandı');try{await fetch(base+'/api/crm/customers');ready=true;break;}catch{await delay(100);}}assert.ok(ready);
   const req=(p,role,method='GET',body)=>fetch(base+p,{method,headers:{...(role?{Authorization:`Bearer ${tokens[role]}`} : {}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -33,6 +35,26 @@ test('CRM müşteri sorguları gerçek veriler, yetki, sayfalama ve audit ile ko
   json=await (await req('/api/crm/customers?q=%25','SUPER_ADMIN')).json();assert.equal(json.pagination.total,0);
   assert.equal((await req('/api/crm/customers?page=0','SUPER_ADMIN')).status,422);assert.equal((await req('/api/crm/customers/abc','SUPER_ADMIN')).status,422);assert.equal((await req('/api/crm/customers/999','SUPER_ADMIN')).status,404);
   json=await (await req('/api/crm/customers/1','SUPER_ADMIN')).json();assert.equal(json.data.orders.length,3);assert.equal(json.data.summary.orderCount,3);assert.equal(json.data.summary.paidOrderTotal,100);assert.ok(!json.data.orders.some(o=>o.orderNumber==='GUEST'));assert.deepEqual(json.data.notes,[]);
+  assert.equal(json.data.timeline.filter(e=>e.kind==='ORDER_CREATED').length,3);
+  assert.equal(json.data.timeline.filter(e=>e.kind==='ORDER_STATUS').length,1);
+  assert.equal(json.data.timeline.find(e=>e.kind==='ORDER_STATUS').toStatus,'SHIPPED');
+  assert.ok(json.data.timeline.some(e=>e.kind==='CUSTOMER_CREATED'));
+  const originalVersion=json.data.editVersion;
+  const edit={name:'Güncel Müşteri',phone:'+90 555 123 45 67',email:' CRM.NEW@example.test ',city:'İzmir',address:'Yeni adres',companyName:'Firma',editVersion:originalVersion};
+  assert.equal((await req('/api/crm/customers/1',undefined,'PATCH',edit)).status,401);
+  assert.equal((await req('/api/crm/customers/1','CASHIER','PATCH',edit)).status,403);
+  assert.equal((await req('/api/crm/customers/1','B2C_CUSTOMER','PATCH',edit)).status,403);
+  assert.equal((await req('/api/crm/customers/1','SUPER_ADMIN','PATCH',{...edit,email:'a@b'})).status,422);
+  assert.equal((await req('/api/crm/customers/1','SUPER_ADMIN','PATCH',{...edit,phone:'123'})).status,422);
+  assert.equal((await req('/api/crm/customers/1','SUPER_ADMIN','PATCH',{...edit,loyaltyPoints:999})).status,422);
+  assert.equal((await fetch(base+'/api/crm/customers/1',{method:'PATCH',headers:{Authorization:`Bearer ${tokens.SUPER_ADMIN}`,'Content-Type':'application/json',Origin:'https://saldirgan.example'},body:JSON.stringify(edit)})).status,403);
+  let edited=await req('/api/crm/customers/1','SUPER_ADMIN','PATCH',edit);assert.equal(edited.status,200);let editData=(await edited.json()).data;assert.equal(editData.customer.email,'crm.new@example.test');assert.notEqual(editData.editVersion,originalVersion);
+  assert.equal((await req('/api/crm/customers/1','SUPER_ADMIN','PATCH',edit)).status,409);
+  assert.equal((await req('/api/crm/customers/999','SUPER_ADMIN','PATCH',edit)).status,404);
+  const snap=new Database(dbPath,{readonly:true});assert.equal(snap.prepare('SELECT customer_name FROM orders WHERE id=1').get().customer_name,'Özel Müşteri');assert.equal(snap.prepare("SELECT email FROM users WHERE role='B2C_CUSTOMER'").get().email,'B2C_CUSTOMER@example.test');assert.equal(snap.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='CRM_CUSTOMER_UPDATED' AND entity_id='1'").get().n,1);snap.close();
+  const failEdit=new Database(dbPath);failEdit.exec("CREATE TRIGGER fail_crm_edit BEFORE INSERT ON audit_logs WHEN NEW.action = 'CRM_CUSTOMER_UPDATED' BEGIN SELECT RAISE(ABORT,'audit failed'); END");failEdit.close();
+  assert.equal((await req('/api/crm/customers/1','SUPER_ADMIN','PATCH',{...edit,editVersion:editData.editVersion,name:'Geri alınmalı',email:'crm.new@example.test'})).status,500);
+  const failEditCheck=new Database(dbPath);assert.equal(failEditCheck.prepare('SELECT name FROM customers WHERE id=1').get().name,'Güncel Müşteri');failEditCheck.exec('DROP TRIGGER fail_crm_edit');failEditCheck.close();
   const notes='/api/crm/customers/1/notes';
   assert.equal((await req(notes,undefined,'POST',{body:'izinsiz'})).status,401);
   assert.equal((await req(notes,'CASHIER','POST',{body:'izinsiz'})).status,403);
@@ -42,11 +64,11 @@ test('CRM müşteri sorguları gerçek veriler, yetki, sayfalama ve audit ile ko
   assert.equal((await req('/api/crm/customers/999/notes','SUPER_ADMIN','POST',{body:'not'})).status,404);
   assert.equal((await fetch(base+notes,{method:'POST',headers:{Authorization:`Bearer ${tokens.SUPER_ADMIN}`,'Content-Type':'application/json',Origin:'https://saldirgan.example'},body:JSON.stringify({body:'sahte'})})).status,403);
   const saved=await req(notes,'SUPER_ADMIN','POST',{body:'  Müşteri takip notu  '});assert.equal(saved.status,201);assert.equal((await saved.json()).data.body,'Müşteri takip notu');
-  json=await (await req('/api/crm/customers/1','SUPER_ADMIN')).json();assert.equal(json.data.notes.length,1);assert.equal(json.data.notes[0].createdByName,'SUPER_ADMIN');
+  json=await (await req('/api/crm/customers/1','SUPER_ADMIN')).json();assert.equal(json.data.notes.length,1);assert.equal(json.data.notes[0].createdByName,'SUPER_ADMIN');assert.ok(json.data.timeline.some(e=>e.kind==='PROFILE_UPDATED'));assert.ok(json.data.timeline.some(e=>e.kind==='NOTE_CREATED'));assert.ok(!JSON.stringify(json.data.timeline).includes('Müşteri takip notu'));
   const rollback=new Database(dbPath);rollback.exec("CREATE TRIGGER fail_crm_note_audit BEFORE INSERT ON audit_logs WHEN NEW.action = 'CRM_NOTE_CREATED' BEGIN SELECT RAISE(ABORT,'audit failed'); END");rollback.close();
   assert.equal((await req(notes,'SUPER_ADMIN','POST',{body:'kaydedilmemeli'})).status,500);
   const rollbackVerify=new Database(dbPath);assert.equal(rollbackVerify.prepare('SELECT COUNT(*) AS n FROM crm_customer_notes').get().n,1);rollbackVerify.exec('DROP TRIGGER fail_crm_note_audit');rollbackVerify.close();
-  assert.equal((await req('/api/role-matrix','SUPER_ADMIN','POST',{matrix:{STORE_MANAGER:{crm:false}}})).status,200);assert.equal((await req('/api/crm/customers','STORE_MANAGER')).status,403);assert.equal((await req('/api/crm/customers/1','STORE_MANAGER')).status,403);assert.equal((await req(notes,'STORE_MANAGER','POST',{body:'izinsiz'})).status,403);
+  assert.equal((await req('/api/role-matrix','SUPER_ADMIN','POST',{matrix:{STORE_MANAGER:{crm:false}}})).status,200);assert.equal((await req('/api/crm/customers','STORE_MANAGER')).status,403);assert.equal((await req('/api/crm/customers/1','STORE_MANAGER')).status,403);assert.equal((await req(notes,'STORE_MANAGER','POST',{body:'izinsiz'})).status,403);assert.equal((await req('/api/crm/customers/1','STORE_MANAGER','PATCH',{...edit,editVersion:editData.editVersion})).status,403);
   const verify=new Database(dbPath,{readonly:true});assert.ok(verify.prepare("SELECT COUNT(*) AS n FROM audit_logs WHERE action='CRM_CUSTOMER_VIEW' AND entity_id='1'").get().n>=1);verify.close();
  } finally {if(server && server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}fs.rmSync(dir,{recursive:true,force:true});}
 });

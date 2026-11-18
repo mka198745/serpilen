@@ -5,7 +5,7 @@ import { authFetch } from "@/lib/client-auth";
 
 export type CrmNote = { id: number; body: string; createdByName: string; createdAt: number };
 
-export function CrmCustomerNotes({ customerId, initialNotes }: { customerId: number; initialNotes: CrmNote[] }) {
+export function CrmCustomerNotes({ customerId, initialNotes, onCreated }: { customerId: number; initialNotes: CrmNote[]; onCreated?: () => void }) {
   const [notes, setNotes] = useState(initialNotes);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,7 @@ export function CrmCustomerNotes({ customerId, initialNotes }: { customerId: num
       const result = await res.json();
       if (!res.ok || !result.success) throw new Error(typeof result.error === "string" ? result.error : "Not kaydedilemedi.");
       setNotes(previous => [result.data, ...previous].slice(0, 50));
-      setBody(""); setMessage("Not kaydedildi.");
+      setBody(""); setMessage("Not kaydedildi."); onCreated?.();
     } catch (err) { setError(err instanceof Error ? err.message : "Not kaydedilemedi."); }
     finally { setBusy(false); }
   }
