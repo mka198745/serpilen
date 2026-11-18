@@ -3,11 +3,14 @@ import Link from "next/link";
 import { db } from "@/db";
 import { blogPosts } from "@/db/schema";
 import { and, desc, eq, lte } from "drizzle-orm";
+import { notFound } from "next/navigation";
+import { getSiteSettings } from "@/lib/site-settings";
 import { BookOpen, Calendar, User, ArrowRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function BlogListPage() {
+  if ((await getSiteSettings())["site.blog.enabled"] === "false") notFound();
   const now = new Date();
   const posts = await db.select().from(blogPosts).where(and(eq(blogPosts.isPublished, true), lte(blogPosts.publishedAt, now))).orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id));
 

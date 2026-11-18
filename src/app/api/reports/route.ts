@@ -16,6 +16,7 @@ import {
 import { desc, eq } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 export const dynamic = "force-dynamic";
 
 function toCsv(headers: string[], rows: (string | number)[][]) {
@@ -33,6 +34,14 @@ export async function GET(request: Request) {
   if (!__gate.ok) return __gate.response;
 
   try {
+    const matrix = await readRoleMatrix();
+    if (!roleCanAccessModule(matrix, __gate.user.role, "reports")) {
+      return NextResponse.json(
+        { success: false, error: { code: "FORBIDDEN", message: "Raporlar için yetkiniz bulunmuyor." } },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const days = Number(searchParams.get("days") || 30);
     const format = searchParams.get("format"); // csv

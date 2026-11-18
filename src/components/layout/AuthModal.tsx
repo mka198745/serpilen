@@ -1,33 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useAuth, isGuardedPath, type LoginStage } from "@/context/AuthContext";
+import React, { useState } from "react";
+import { useAuth, isGuardedPath } from "@/context/AuthContext";
 import { X, LogIn, UserPlus, Mail, Lock, User, Phone, MapPin } from "lucide-react";
-
-/** İstemci sürüm etiketi — önbellekte eski sürüm kalıp kalmadığını gösterir. */
-const CLIENT_BUILD = "ui-5";
-
-const STAGE_LABELS: Record<LoginStage["id"], string> = {
-  storage: "Depolama",
-  api: "Sunucu",
-  cookie: "Çerez oturumu",
-  token: "Token oturumu",
-};
-
-function testCookieWrite(): boolean {
-  try {
-    document.cookie = "ipek_t=1; path=/; max-age=60";
-    return document.cookie.includes("ipek_t=1");
-  } catch {
-    return false;
-  }
-}
-
-interface DiagInfo {
-  serverBuild: string;
-  hasSessionCookie: boolean;
-  proto: string | null;
-}
 
 export function AuthModal() {
   const { user, cookieless, modalOpen, modalTab, setModalTab, closeAuth, login, register, postLoginNext, openGuarded } = useAuth();
@@ -35,27 +10,6 @@ export function AuthModal() {
   const [regForm, setRegForm] = useState({ name: "", email: "", phone: "", city: "", password: "", password2: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stages, setStages] = useState<LoginStage[]>([]);
-  const [diag, setDiag] = useState<DiagInfo | "loading" | "error">("loading");
-  const [cookieWritable, setCookieWritable] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!modalOpen) return;
-    setStages([]);
-    setError(null);
-    setCookieWritable(testCookieWrite());
-    setDiag("loading");
-    fetch("/api/auth/diag", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) =>
-        setDiag({
-          serverBuild: String(d?.data?.build || "?"),
-          hasSessionCookie: !!d?.data?.hasSessionCookie,
-          proto: d?.data?.proto ?? null,
-        })
-      )
-      .catch(() => setDiag("error"));
-  }, [modalOpen]);
 
   if (!modalOpen) return null;
 
@@ -68,19 +22,12 @@ export function AuthModal() {
     }
   };
 
-  const pushStage = (s: LoginStage) =>
-    setStages((prev) => {
-      const rest = prev.filter((p) => p.id !== s.id);
-      return [...rest, s];
-    });
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setStages([]);
     setBusy(true);
     try {
-      const r = await login(loginForm.email.trim(), loginForm.password, pushStage);
+      const r = await login(loginForm.email.trim(), loginForm.password);
       if (r.success) {
         closeAuth();
         goAfterAuth();
@@ -99,7 +46,6 @@ export function AuthModal() {
       setError("Şifreler eşleşmiyor.");
       return;
     }
-    setStages([]);
     setBusy(true);
     try {
       const r = await register({
@@ -108,7 +54,7 @@ export function AuthModal() {
         phone: regForm.phone.trim(),
         city: regForm.city.trim() || undefined,
         password: regForm.password,
-      }, pushStage);
+      });
       if (r.success) {
         closeAuth();
         goAfterAuth();
@@ -157,26 +103,6 @@ export function AuthModal() {
             {error}
           </div>
         )}
-
-        {/* Tanı kutusu: sürümler + giriş adımları */}
-        <div className="mx-5 mt-3 p-3 rounded-xl bg-stone-50 border border-stone-200 font-mono text-[11px] leading-relaxed text-stone-600">
-          <p className="font-bold text-stone-500 mb-1">TANI</p>
-          <p>
-            İstemci: {CLIENT_BUILD} · Sunucu:{" "}
-            {diag === "loading" ? "…" : diag === "error" ? "ulaşılamadı" : `${diag.serverBuild} (proto:${diag.proto || "?"})`}
-          </p>
-          <p>
-            Çerez yazma: {cookieWritable === null ? "…" : cookieWritable ? "açık ✓" : "engelli ✗"}
-            {diag !== "loading" && diag !== "error" && (
-              <> · Sunucu çerez görüyor: {diag.hasSessionCookie ? "evet ✓" : "hayır ✗"}</>
-            )}
-          </p>
-          {stages.map((s) => (
-            <p key={s.id}>
-              {STAGE_LABELS[s.id]}: {s.ok ? "✓" : "✗"} {s.detail}
-            </p>
-          ))}
-        </div>
 
         {user && postLoginNext && cookieless ? (
           <div className="p-5 space-y-3">
@@ -230,26 +156,6 @@ export function AuthModal() {
             >
               {busy ? "Giriş yapılıyor…" : "Giriş Yap"}
             </button>
-            <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-3">
-              <p className="text-[11px] font-bold text-stone-500 mb-2">Test hesapları (tıklayınca doldurur):</p>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: "Süper Admin", email: "admin@serpilencollection.com", password: "Admin123!" },
-                  { label: "Kasiyer", email: "kasiyer@serpilencollection.com", password: "Kasiyer123!" },
-                  { label: "Depo", email: "depo@serpilencollection.com", password: "Depo123!" },
-                ].map((a) => (
-                  <button
-                    key={a.email}
-                    type="button"
-                    onClick={() => { setLoginForm({ email: a.email, password: a.password }); setError(null); }}
-                    className="px-2.5 py-1.5 rounded-lg bg-white border border-stone-200 hover:border-amber-500 text-[11px] font-semibold text-stone-700 transition text-left"
-                  >
-                    {a.label}
-                    <span className="block font-mono text-[10px] text-stone-400">{a.email}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
             <p className="text-center text-[11px] text-stone-500">
               Hesabınız yok mu?{" "}
               <button type="button" onClick={() => { setModalTab("register"); setError(null); }} className="text-amber-800 font-bold hover:underline">

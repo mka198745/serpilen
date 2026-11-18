@@ -3,22 +3,24 @@ import Link from "next/link";
 import { db } from "@/db";
 import { products, productVariants, categories, brands, inventory, blogPosts } from "@/db/schema";
 import { ProductCard } from "@/components/storefront/ProductCard";
+import { CategoryShowcase } from "@/components/storefront/CategoryShowcase";
 import { CampaignStrip } from "@/components/storefront/CampaignStrip";
+import { HeroProductActions } from "@/components/storefront/HeroProductActions";
+import { getSiteSettings } from "@/lib/site-settings";
+import { and, desc, eq, lte } from "drizzle-orm";
 import {
   Scissors,
   Sliders,
   CircleDot,
   Ribbon,
   Sparkles,
-  Package,
   Layers,
   Handbag,
   Puzzle,
+  Heart,
   ArrowRight,
   ShieldCheck,
   Truck,
-  MonitorCheck,
-  SlidersHorizontal,
   BookOpen,
   Star,
 } from "lucide-react";
@@ -31,7 +33,13 @@ export default async function HomePage() {
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
   const allBrands = await db.select().from(brands);
-  const posts = await db.select().from(blogPosts).limit(3);
+  const siteSettings = await getSiteSettings();
+  const blogEnabled = siteSettings["site.blog.enabled"] !== "false";
+  const posts = blogEnabled
+    ? await db.select().from(blogPosts)
+        .where(and(eq(blogPosts.isPublished, true), lte(blogPosts.publishedAt, new Date())))
+        .orderBy(desc(blogPosts.publishedAt), desc(blogPosts.id)).limit(3)
+    : [];
 
   const featuredList = allProds.map((p) => {
     const vars = allVars.filter((v) => v.productId === p.id);
@@ -45,16 +53,54 @@ export default async function HomePage() {
     };
   });
 
+  // Hero kartları yalnızca karşılık gelen aktif ürünler varsa gösterilir.
+  const heroProducts = ["GUT-SEW-100", "YKK-MET-ZIP"]
+    .map((sku) => featuredList.find((product) => product.sku === sku && product.isActive))
+    .filter((product): product is NonNullable<typeof product> => Boolean(product));
+
   const categoryIcons = [
-    { name: "Dikiş & Nakış", slug: "dikis-nakis", icon: Scissors, count: "120+ Çeşit", color: "from-amber-500 to-amber-700" },
-    { name: "Fermuar Çeşitleri", slug: "fermuar", icon: Sliders, count: "85+ Çeşit", color: "from-sky-500 to-sky-700" },
-    { name: "Düğme Dünyası", slug: "dugme", icon: CircleDot, count: "340+ Model", color: "from-emerald-500 to-emerald-700" },
-    { name: "Kurdele & Şerit", slug: "kurdele-serit", icon: Ribbon, count: "90+ Renk", color: "from-rose-500 to-rose-700" },
-    { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles, count: "65+ İplik", color: "from-purple-500 to-purple-700" },
-    { name: "Dikiş Malzemeleri", slug: "dikis-malzemeleri", icon: Package, count: "110+ Aparat", color: "from-orange-500 to-orange-700" },
-    { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, count: "45+ Ürün", color: "from-teal-500 to-teal-700" },
-    { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, count: "Yeni", color: "from-fuchsia-500 to-fuchsia-700" },
-    { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, count: "Yeni", color: "from-indigo-500 to-indigo-700" },
+    { name: "Dikiş & Nakış", slug: "dikis-nakis", icon: Scissors, color: "from-amber-500 to-amber-700" },
+    { name: "Fermuar Çeşitleri", slug: "fermuar", icon: Sliders, color: "from-sky-500 to-sky-700" },
+    { name: "Düğme Dünyası", slug: "dugme", icon: CircleDot, color: "from-emerald-500 to-emerald-700" },
+    { name: "Kurdele & Şerit", slug: "kurdele-serit", icon: Ribbon, color: "from-rose-500 to-rose-700" },
+    { name: "Örgü & Hobi", slug: "orgu-hobi", icon: Sparkles, color: "from-purple-500 to-purple-700" },
+    { name: "Çanta Aksesuarları", slug: "canta-aksesuarlari", icon: Handbag, color: "from-fuchsia-500 to-fuchsia-700" },
+    { name: "Tekstil Yardımcı", slug: "tekstil-yardimci", icon: Layers, color: "from-teal-500 to-teal-700" },
+    { name: "Hobi Kitleri", slug: "hobi-kitleri", icon: Puzzle, color: "from-indigo-500 to-indigo-700" },
+    { name: "El İşi Ürünler", slug: "el-isi-urunler", icon: Heart, color: "from-pink-500 to-pink-700" },
+  ];
+
+  // Yalnızca aktif kategorilerdeki aktif ürünler anasayfa kategorilerini görünür kılar.
+  const activeProductsByCategory = new Map<number, typeof featuredList>();
+  for (const product of featuredList) {
+    if (!product.isActive) continue;
+    const items = activeProductsByCategory.get(product.categoryId) ?? [];
+    items.push(product);
+    activeProductsByCategory.set(product.categoryId, items);
+  }
+  const availableCategories = new Map(
+    allCats
+      .filter((cat) => cat.isActive && (activeProductsByCategory.get(cat.id)?.length ?? 0) > 0)
+      .map((cat) => [cat.slug, cat]),
+  );
+  const visibleCategoryIcons = categoryIcons.filter((cat) => availableCategories.has(cat.slug));
+
+  // "Günün Öne Çıkan Ürünleri" yalnızca öne çıkanları gösterir (en fazla 8).
+  // Hiçbiri işaretli değilse ilk 8 ürün gösterilir; kategori vitrinleri tüm ürünleri kullanır.
+  const featuredFlagged = featuredList.filter((p) => p.isFeatured);
+  const featuredGrid = (featuredFlagged.length > 0 ? featuredFlagged : featuredList).slice(0, 8);
+
+  /** Anasayfa kategori vitrinleri — sıra kullanıcı isteğine göre sabittir. */
+  const showcaseDefs = [
+    { slug: "el-isi-urunler", title: "El İşi Ürünler", eyebrow: "El Emeği" },
+    { slug: "hobi-kitleri", title: "Hobi Kitleri", eyebrow: "Başlangıç Setleri" },
+    { slug: "orgu-hobi", title: "Örgü & Hobi", eyebrow: "İplik, Şiş & Tığ" },
+    { slug: "dikis-nakis", title: "Dikiş & Nakış", eyebrow: "İplik & İğne" },
+    { slug: "canta-aksesuarlari", title: "Çanta Aksesuarları", eyebrow: "Toka, Sap & Çıtçıt" },
+    { slug: "fermuar", title: "Fermuar Çeşitleri", eyebrow: "Metal, Spiral & Gizli" },
+    { slug: "kurdele-serit", title: "Kurdele & Şerit", eyebrow: "Saten, Grogren & Jüt" },
+    { slug: "dugme", title: "Düğme Dünyası", eyebrow: "Sedef, Ahşap & Metal" },
+    { slug: "tekstil-yardimci", title: "Tekstil Yardımcı Ürünleri", eyebrow: "Tela, Lastik & Cırt" },
   ];
 
   return (
@@ -62,60 +108,29 @@ export default async function HomePage() {
       {/* 1. Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-amber-950 via-stone-900 to-stone-950 text-white py-12 md:py-20 px-4">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-          {/* Left: Vitrin Öne Çıkan vitrinler (sola yanaşık, iki kart) */}
-          <div className="lg:col-span-7">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Vitrin Kartı 1 — Gütermann */}
-              <div className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
-                <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80"
-                    alt="Gütermann Dikiş İplikleri"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex items-end p-4">
-                    <div>
-                      <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        Vitrin Öne Çıkan
-                      </span>
-                      <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">
-                        Gütermann Sew-All Dikiş İpliği Serisi
-                      </h3>
-                      <p className="text-stone-300 text-[11px]">Tüm renk kodlarıyla stokta</p>
+          {/* Vitrin ürünleri: butonlar gerçek ürün kaydını kullanır. */}
+          {heroProducts.length > 0 && <div className="lg:col-span-7">
+            <div className={`grid grid-cols-1 ${heroProducts.length > 1 ? "sm:grid-cols-2" : "sm:max-w-md"} gap-4`}>
+              {heroProducts.map((product) => (
+                <article key={product.id} className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
+                  <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.imageUrl || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80"} alt={product.name} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex items-end p-4">
+                      <div>
+                        <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Vitrin Öne Çıkan</span>
+                        <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">{product.name}</h3>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-
-              {/* Vitrin Kartı 2 — YKK Metal Fermuar */}
-              <div className="relative bg-stone-900/90 rounded-3xl p-3 border border-stone-800 shadow-2xl backdrop-blur-md">
-                <div className="relative aspect-4/5 sm:aspect-4/3 rounded-2xl overflow-hidden border border-stone-700/60">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="https://images.unsplash.com/photo-1544441893-675973e31985?w=800&auto=format&fit=crop&q=80"
-                    alt="YKK Metal Dişli Fermuar"
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex items-end p-4">
-                    <div>
-                      <span className="bg-sky-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                        Vitrin Öne Çıkan
-                      </span>
-                      <h3 className="text-white font-bold text-sm sm:text-base mt-1 leading-snug">
-                        YKK Metal Dişli Fermuar No.5
-                      </h3>
-                      <p className="text-stone-300 text-[11px]">3 finisaj, antik pirinç · stokta</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+                  <HeroProductActions product={product} initialCartEnabled={siteSettings["site.cart.enabled"] !== "false"} />
+                </article>
+              ))}
             </div>
-          </div>
+          </div>}
 
           {/* Right: Başlık */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className={`${heroProducts.length ? "lg:col-span-5" : "lg:col-span-12"} space-y-6`}>
             <h1 className="text-3xl sm:text-4xl md:text-5xl xl:text-6xl font-black tracking-tight leading-[1.1]">
               Dikiş, Nakış ve Hobi Dünyasında <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">
@@ -127,7 +142,7 @@ export default async function HomePage() {
       </section>
 
       {/* 2. Mega Categories Grid */}
-      <section className="max-w-7xl mx-auto px-4">
+      {visibleCategoryIcons.length > 0 && <section className="max-w-7xl mx-auto px-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-2">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
@@ -147,8 +162,10 @@ export default async function HomePage() {
         </div>
 
         <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-3">
-          {categoryIcons.map((cat) => {
+          {visibleCategoryIcons.map((cat) => {
             const Icon = cat.icon;
+            const category = availableCategories.get(cat.slug)!;
+            const productCount = activeProductsByCategory.get(category.id)!.length;
             return (
               <Link
                 key={cat.slug}
@@ -163,12 +180,12 @@ export default async function HomePage() {
                 <h3 className="text-xs font-bold text-gray-900 group-hover:text-amber-800 transition line-clamp-1">
                   {cat.name}
                 </h3>
-                <span className="text-[10px] text-gray-400 mt-1">{cat.count}</span>
+                <span className="text-[10px] text-gray-400 mt-1">{productCount} Ürün</span>
               </Link>
             );
           })}
         </div>
-      </section>
+      </section>}
 
       {/* 3. Featured Products Grid */}
       <section className="max-w-7xl mx-auto px-4">
@@ -191,66 +208,35 @@ export default async function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {featuredList.map((prod) => (
+          {featuredGrid.map((prod) => (
             <ProductCard key={prod.id} product={prod} />
           ))}
         </div>
       </section>
 
+      {/* 3.1 Kategori Vitrinleri — her kategoriden en fazla 4 ürün */}
+      {showcaseDefs.map((showcase) => {
+        const cat = availableCategories.get(showcase.slug);
+        if (!cat) return null;
+        const items = [...(activeProductsByCategory.get(cat.id) ?? [])]
+          .sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured) || a.id - b.id)
+          .slice(0, 4);
+        return (
+          <CategoryShowcase
+            key={showcase.slug}
+            eyebrow={showcase.eyebrow}
+            title={showcase.title}
+            href={`/urunler?category=${showcase.slug}`}
+            products={items}
+          />
+        );
+      })}
+
       {/* 3.5 FAZ 8: Aktif Kampanya Şeridi */}
       <CampaignStrip />
 
-      {/* 4. Multi-Channel Unified Management Callout */}
-      <section className="max-w-7xl mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* POS Card */}
-          <div className="bg-gradient-to-br from-amber-900 to-amber-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-            <div className="space-y-3 relative z-10">
-              <div className="w-10 h-10 rounded-xl bg-amber-800 flex items-center justify-center text-amber-200">
-                <MonitorCheck className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold">Fiziki Mağaza Web POS</h3>
-              <p className="text-xs text-amber-200/90 leading-relaxed">
-                Barkod tabancasıyla anında okutma, nakit/kart/parçalı tahsilat, vardiya kasa mutabakatı ve termal fiş çıktısı.
-              </p>
-            </div>
-            <div className="pt-6 relative z-10">
-              <Link
-                href="/pos"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-amber-950 font-bold text-xs rounded-xl shadow-md hover:bg-amber-100 transition"
-              >
-                <span>POS Kasa Ekranını Aç</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-
-          {/* Admin & WMS Card */}
-          <div className="bg-gradient-to-br from-emerald-900 to-emerald-950 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-            <div className="space-y-3 relative z-10">
-              <div className="w-10 h-10 rounded-xl bg-emerald-800 flex items-center justify-center text-emerald-200">
-                <SlidersHorizontal className="w-5 h-5" />
-              </div>
-              <h3 className="text-xl font-bold">Yönetim Paneli & WMS</h3>
-              <p className="text-xs text-emerald-200/90 leading-relaxed">
-                Çoklu depo stok defteri (Stock Ledger), satın alma siparişleri ve kural tabanlı AI asistanı.
-              </p>
-            </div>
-            <div className="pt-6 relative z-10">
-              <Link
-                href="/admin"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-emerald-950 font-bold text-xs rounded-xl shadow-md hover:bg-emerald-100 transition"
-              >
-                <span>Yönetim Masasını Aç</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* 5. Sewing & Craft Blog Guide Preview */}
-      <section className="max-w-7xl mx-auto px-4">
+      {blogEnabled && <section className="max-w-7xl mx-auto px-4">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-2">
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
@@ -270,6 +256,7 @@ export default async function HomePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {posts.length === 0 && <p className="col-span-full text-sm text-stone-500">Henüz yayında içerik yok — yakında yeni rehberler eklenecek.</p>}
           {posts.map((post) => (
             <article
               key={post.id}
@@ -305,7 +292,7 @@ export default async function HomePage() {
             </article>
           ))}
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

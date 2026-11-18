@@ -18,7 +18,6 @@ import {
   Tag,
   Sparkles,
   Brain,
-  BookOpen,
   Search,
   Plus,
   ArrowRightLeft,
@@ -60,6 +59,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShoppingCart,
+  Headset,
+  MessageSquareQuote,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
@@ -69,6 +70,11 @@ import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
 import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
+import { formatRegistrationDate } from "@/lib/registration-date";
+import { SupportDesk } from "@/components/admin/SupportDesk";
+import { ProductFeedback } from "@/components/admin/ProductFeedback";
+import { CustomerCRM } from "@/components/admin/CustomerCRM";
+import { ZReportsPanel } from "@/components/admin/ZReportsPanel";
 import {
   ADMIN_MODULES,
   ADMIN_MODULE_GROUPS,
@@ -88,7 +94,6 @@ interface AdminDashboardClientProps {
   inventory: any[];
   ledger: any[];
   orders: any[];
-  customers: any[];
   suppliers: any[];
   purchaseOrders: any[];
   coupons: any[];
@@ -108,7 +113,6 @@ interface AdminDashboardClientProps {
     pendingOrdersCount: number;
     returnedOrdersCount: number;
     customersCount: number;
-    criticalStockCount: number;
   };
 }
 
@@ -123,7 +127,6 @@ export function AdminDashboardClient({
   inventory: initialInventory,
   ledger: initialLedger,
   orders: initialOrders,
-  customers: initialCustomers,
   suppliers: initialSuppliers,
   purchaseOrders: initialPOs,
   coupons: initialCoupons,
@@ -142,6 +145,8 @@ export function AdminDashboardClient({
     | "coupons"
     | "ai"
     | "intelligence"
+    | "support"
+    | "productFeedback"
     | "users"
     | "registeredCustomers"
     | "roleMatrix"
@@ -225,7 +230,6 @@ export function AdminDashboardClient({
   const [inventoryList, setInventoryList] = useState(initialInventory);
   const [ledger, setLedger] = useState(initialLedger);
   const [orders, setOrders] = useState(initialOrders);
-  const [customers] = useState(initialCustomers);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
   const [coupons, setCoupons] = useState(initialCoupons);
 
@@ -262,7 +266,7 @@ export function AdminDashboardClient({
   /* --- FAZ 5: Raporlama Motoru --- */
   const [reportData, setReportData] = useState<any | null>(null);
   const [reportDays, setReportDays] = useState(30);
-  const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance">("sales");
+  const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance" | "zreports">("sales");
   const [reportBusy, setReportBusy] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -398,10 +402,6 @@ export function AdminDashboardClient({
       setReportBusy(false);
     }
   }, []);
-
-  React.useEffect(() => {
-    if (activeTab === "reports") void loadReport(reportDays);
-  }, [activeTab, reportDays, loadReport]);
 
   const ORDER_STATUS_LABELS: Record<string, string> = {
     PENDING: "Ödeme Bekliyor", PAID: "Ödendi", PREPARING: "Hazırlanıyor",
@@ -606,6 +606,11 @@ export function AdminDashboardClient({
   const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || DEFAULT_ROLE_MATRIX.SUPER_ADMIN;
   // dashboard herkese açık taban erişimdir
   const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] !== false;
+  const reportsAllowed = matrixLoaded && canSee("reports");
+
+  React.useEffect(() => {
+    if (activeTab === "reports" && reportsAllowed) void loadReport(reportDays);
+  }, [activeTab, reportDays, loadReport, reportsAllowed]);
 
   React.useEffect(() => {
     (async () => {
@@ -1261,7 +1266,6 @@ export function AdminDashboardClient({
   const totalOrders = dashboardStats?.totalOrders ?? orders.length;
   const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").length;
   const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").length;
-  const criticalStockCount = dashboardStats?.criticalStockCount ?? inventoryList.filter((i) => i.isCritical).length;
   const channelRevenue = dashboardStats?.channelRevenue ?? clientChannel;
   const estimatedGrossProfit =
     dashboardStats?.grossProfit ??
@@ -1276,7 +1280,7 @@ export function AdminDashboardClient({
       }, 0);
   const pendingOrdersCount = dashboardStats?.pendingOrdersCount ?? orders.filter((o) => ["PAID", "PREPARING", "READY_FOR_SHIPMENT"].includes(o.status)).length;
   const returnedOrdersCount = dashboardStats?.returnedOrdersCount ?? orders.filter((o) => ["RETURN_REQUESTED", "RETURNED", "REFUNDED"].includes(o.status)).length;
-  const customersCount = dashboardStats?.customersCount ?? customers.length;
+  const customersCount = dashboardStats?.customersCount ?? 0;
   const monthGrowth = dashboardStats ? dashboardStats.monthGrowth : null;
   // Kanal kartındaki mağaza adı: veritabanındaki mağaza/merkez deposundan alınır
   const storeName =
@@ -1606,6 +1610,32 @@ export function AdminDashboardClient({
           </button>
           )}
 
+          {canSee("support") && (
+          <button
+            onClick={() => setActiveTab("support")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "support"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Headset className="w-4 h-4 text-emerald-400" />
+            <span>Destek Masası</span>
+          </button>
+          )}
+
+          {matrixLoaded && canSee("productFeedback") && (
+          <button
+            onClick={() => setActiveTab("productFeedback")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "productFeedback" ? "bg-amber-700 text-white shadow-sm" : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <MessageSquareQuote className="w-4 h-4 text-amber-400" />
+            <span>Ürün Yorumları &amp; Soruları</span>
+          </button>
+          )}
+
           {(canSee("users") || canSee("registeredCustomers") || canSee("roleMatrix") || canSee("audit")) && (
             <div className="pt-3 border-t border-stone-800">
               <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
@@ -1770,15 +1800,6 @@ export function AdminDashboardClient({
           </button>
           )}
 
-          <div className="pt-3 border-t border-stone-800">
-            <Link
-              href="/mimari"
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition"
-            >
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              <span>Mimari Doküman (FAZ 0)</span>
-            </Link>
-          </div>
         </nav>
 
         {/* User profile footer */}
@@ -1873,17 +1894,6 @@ export function AdminDashboardClient({
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-stone-500 uppercase">Kritik Stok Uyarısı</span>
-                <div className="text-2xl font-black text-rose-700">{criticalStockCount} Ürün</div>
-                <button
-                  onClick={() => setActiveTab("wms")}
-                  className="text-[11px] text-rose-600 hover:underline font-semibold block text-left"
-                >
-                  Stok Yönetimini Aç →
-                </button>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
                 <span className="text-xs font-bold text-stone-500 uppercase">Brüt Kâr (Tahmini)</span>
                 <div className="text-2xl font-black text-emerald-800">{estimatedGrossProfit.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</div>
                 <div className="text-[11px] text-stone-500">Ciro − satılan malın maliyeti</div>
@@ -1905,9 +1915,6 @@ export function AdminDashboardClient({
                   <span className="text-2xl font-black text-sky-700">{customersCount}</span>
                   <span className="text-xs text-stone-400">müşteri</span>
                 </div>
-                <button onClick={() => setActiveTab("reports")} className="text-[11px] text-stone-500 hover:underline font-semibold block text-left">
-                  Detaylı Raporlar →
-                </button>
               </div>
             </div>
 
@@ -2589,6 +2596,7 @@ export function AdminDashboardClient({
                   <div>
                     <h3 className="font-bold text-sm text-stone-900">Yeni Depo Ekle</h3>
                     <p className="text-[11px] text-stone-400">Depo kodu addan otomatik üretilir (örn. Bursa Depo → BRD).</p>
+                    <p className="mt-1 text-[11px] text-stone-500">Aktif depo ve mağazalar <Link href="/magazalarimiz" target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-800 underline underline-offset-2">Mağazalarımız sayfasında</Link> gösterilir; pasif olanlar gizlenir.</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                     <div className="md:col-span-4">
@@ -2997,7 +3005,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* FAZ 5 / TAB: RAPORLAR & ANALİTİK */}
         {/* ============================================================ */}
-        {activeTab === "reports" && (
+        {activeTab === "reports" && reportsAllowed && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -3025,6 +3033,7 @@ export function AdminDashboardClient({
                 { id: "stock" as const, label: "Stok", icon: BoxesIcon },
                 { id: "customers" as const, label: "Müşteri", icon: Users },
                 { id: "finance" as const, label: "Finansal", icon: Wallet },
+                { id: "zreports" as const, label: "Gün Sonu & Z-Raporları", icon: Receipt },
               ].map((t) => {
                 const Icon = t.icon;
                 return (
@@ -3042,7 +3051,8 @@ export function AdminDashboardClient({
               })}
               <button
                 onClick={downloadReportCsv}
-                disabled={csvBusy}
+                disabled={csvBusy || reportSubTab === "zreports"}
+                title={reportSubTab === "zreports" ? "Z raporları CSV olarak dışa aktarılmaz" : undefined}
                 className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-stone-900 text-white hover:bg-black disabled:opacity-60 transition ml-auto"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -3220,6 +3230,8 @@ export function AdminDashboardClient({
                 </div>
               </div>
             )}
+
+            {reportSubTab === "zreports" && <ZReportsPanel />}
 
             {reportData && reportSubTab === "finance" && (
               <div className="space-y-4">
@@ -3907,63 +3919,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* TAB 6: CRM */}
         {/* ============================================================ */}
-        {activeTab === "crm" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-stone-900">Müşteri CRM 360</h2>
-                <p className="text-xs text-stone-500">
-                  Perakende sadakat puanları, segmentasyon ve satın alma geçmişi tek ekranda.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr>
-                      <th className="py-3 px-3">Müşteri / Şirket</th>
-                      <th className="py-3 px-3">Tip</th>
-                      <th className="py-3 px-3">İletişim</th>
-                      <th className="py-3 px-3">Sadakat Puanı</th>
-                      <th className="py-3 px-3">Segment</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {customers.map((c) => (
-                      <tr key={c.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 px-3">
-                          <span className="font-bold text-stone-900 block">{c.name}</span>
-                          {c.companyName && (
-                            <span className="text-[10px] text-stone-500">{c.companyName}</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900">
-                            Perakende
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-stone-600">
-                          <div>{c.phone}</div>
-                          <div className="text-[10px] text-stone-400">{c.email}</div>
-                        </td>
-                        <td className="py-3 px-3 font-bold text-amber-800">
-                          {c.loyaltyPoints} Puan
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="bg-stone-100 text-stone-700 px-2 py-0.5 rounded font-bold text-[10px]">
-                            {c.segment}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === "crm" && matrixLoaded && canSee("crm") && <CustomerCRM canWrite={canSee("crmWrite")} />}
 
         {/* ============================================================ */}
         {/* TAB 7: PURCHASING & SUPPLIERS */}
@@ -4118,6 +4074,12 @@ export function AdminDashboardClient({
         {activeTab === "ai" && <AiAssistantCenter products={products} />}
         {activeTab === "intelligence" && <IntelligenceCenter />}
 
+        {/* Destek Masası — İletişim formundan gelen mesajlar */}
+        {activeTab === "support" && <SupportDesk />}
+
+        {/* Ürün yorumları ve soruları — rol matrisine göre moderasyon */}
+        {activeTab === "productFeedback" && matrixLoaded && canSee("productFeedback") && <ProductFeedback />}
+
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: KULLANICILAR & ROLLER */}
         {/* ============================================================ */}
@@ -4210,7 +4172,7 @@ export function AdminDashboardClient({
                           </button>
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
-                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                          {formatRegistrationDate(u.createdAt)}
                         </td>
                         <td className="py-3 px-3 text-right">
                           <button
@@ -4326,7 +4288,7 @@ export function AdminDashboardClient({
                           </button>
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
-                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                          {formatRegistrationDate(u.createdAt)}
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
                           {u.lastLoginAt

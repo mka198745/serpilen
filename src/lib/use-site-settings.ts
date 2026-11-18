@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { DEFAULT_SITE_SETTINGS } from "./site-settings-shared";
 
 /** Vitrin bileşenleri için ortak ayar hook'u — /api/site-settings'i okur, admin kaydedince "site-settings-updated" ile tazelenir. */
-export function useSiteSettings(): Record<string, string> {
-  const [settings, setSettings] = useState<Record<string, string>>(DEFAULT_SITE_SETTINGS);
+export function useSiteSettings(initialSettings?: Record<string, string>): Record<string, string> {
+  const [settings, setSettings] = useState<Record<string, string>>(() => ({ ...DEFAULT_SITE_SETTINGS, ...initialSettings }));
   useEffect(() => {
     const load = () =>
       fetch("/api/site-settings", { cache: "no-store" })

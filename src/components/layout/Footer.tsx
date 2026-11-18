@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { Scissors, Phone, Mail, MapPin, ShieldCheck, RefreshCw, CreditCard, Clock } from "lucide-react";
 import { DEFAULT_SITE_SETTINGS } from "@/lib/site-settings-shared";
+import { openPrivacyPreferences } from "@/lib/privacy-preferences";
+import { useSiteSettings } from "@/lib/use-site-settings";
 
 /* Marka ikonları (lucide bu sürümde marka ikonları içermiyor; alt bilgi için satır-ikon olarak çizilir) */
 const iconProps = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className: "w-4 h-4" };
@@ -26,20 +28,9 @@ const LinkedInIcon = () => (
   <svg {...iconProps}><path d="M6.5 10.2V18.5" /><circle cx="6.5" cy="6" r="1.2" fill="currentColor" stroke="none" /><path d="M11.4 18.5v-5.3a3.1 3.1 0 0 1 6.2 0v5.3" /></svg>
 );
 
-export function Footer() {
-  const [siteSettings, setSiteSettings] = useState<Record<string, string>>(DEFAULT_SITE_SETTINGS);
-  useEffect(() => {
-    const load = () =>
-      fetch("/api/site-settings", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d?.success && d.data) setSiteSettings({ ...DEFAULT_SITE_SETTINGS, ...d.data });
-        })
-        .catch(() => {});
-    load();
-    window.addEventListener("site-settings-updated", load);
-    return () => window.removeEventListener("site-settings-updated", load);
-  }, []);
+export function Footer({ initialBlogEnabled = true }: { initialBlogEnabled?: boolean }) {
+  const siteSettings = useSiteSettings({ "site.blog.enabled": String(initialBlogEnabled) });
+  const blogEnabled = siteSettings["site.blog.enabled"] !== "false";
   const brandName = siteSettings["site.brand_name"] || DEFAULT_SITE_SETTINGS["site.brand_name"];
   const brandParts = brandName.trim().split(/\s+/);
   const brandLast = brandParts.length > 1 ? brandParts[brandParts.length - 1] : "";
@@ -98,7 +89,7 @@ export function Footer() {
             </div>
             <div>
               <h4 className="text-sm font-semibold text-white">Aynı Gün Hızlı Kargo</h4>
-              <p className="text-xs text-stone-400">15:00'e kadar verilen siparişlerde</p>
+              <p className="text-xs text-stone-400">15:00&apos;e kadar verilen siparişlerde</p>
             </div>
           </div>
         </div>
@@ -168,7 +159,7 @@ export function Footer() {
             <li><Link href="/urunler?category=dugme" className="hover:text-amber-400 transition">Doğal Ahşap & Sedef Düğmeler</Link></li>
             <li><Link href="/urunler?category=kurdele-serit" className="hover:text-amber-400 transition">Saten & Grogren Kurdeleler</Link></li>
             <li><Link href="/urunler?category=orgu-hobi" className="hover:text-amber-400 transition">Alize & Nako Örgü İpleri</Link></li>
-            <li><Link href="/urunler?category=dikis-malzemeleri" className="hover:text-amber-400 transition">Prym Terzi Makasları & İğneler</Link></li>
+            <li><Link href="/urunler?category=canta-aksesuarlari" className="hover:text-amber-400 transition">Çanta Aksesuarları & Tokalar</Link></li>
             <li><Link href="/urunler?category=tekstil-yardimci" className="hover:text-amber-400 transition">Bez Tela & Lastik Çeşitleri</Link></li>
           </ul>
         </div>
@@ -178,11 +169,8 @@ export function Footer() {
           <h4 className="text-sm font-bold text-white uppercase tracking-wider">Kurumsal & Portal</h4>
           <ul className="space-y-2 text-xs text-stone-400">
             <li><Link href="/hakkimizda" className="hover:text-amber-400 transition">Hakkımızda</Link></li>
-            <li><Link href="/magazalarimiz" className="hover:text-amber-400 transition">Mağazalarımız & Kasa</Link></li>
-            <li><Link href="/pos" className="hover:text-amber-400 transition">Mağaza Web POS Terminali</Link></li>
-            <li><Link href="/admin" className="hover:text-amber-400 transition">Yönetim & WMS Paneli</Link></li>
-            <li><Link href="/blog" className="hover:text-amber-400 transition">Dikiş & Malzeme Rehberi</Link></li>
-            <li><Link href="/mimari" className="hover:text-amber-400 transition">Sistem Mimarisi (FAZ 0)</Link></li>
+            <li><Link href="/magazalarimiz" className="hover:text-amber-400 transition">Mağazalarmız</Link></li>
+            {blogEnabled && <li><Link href="/blog" className="hover:text-amber-400 transition">Dikiş & Malzeme Rehberi</Link></li>}
           </ul>
         </div>
 
@@ -194,6 +182,7 @@ export function Footer() {
             <li><Link href="/kvkk#mesafeli" className="hover:text-amber-400 transition">Mesafeli Satış Sözleşmesi</Link></li>
             <li><Link href="/kvkk#iade" className="hover:text-amber-400 transition">İptal, İade ve Değişim</Link></li>
             <li><Link href="/kvkk#cerez" className="hover:text-amber-400 transition">Çerez Politikası</Link></li>
+            <li><button type="button" onClick={openPrivacyPreferences} className="text-left hover:text-amber-400 transition">Çerez Tercihleri</button></li>
             <li><Link href="/iletisim" className="hover:text-amber-400 transition">İletişim & Harita</Link></li>
           </ul>
         </div>

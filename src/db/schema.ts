@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, index, primaryKey } from "drizzle-orm/sqlite-core";
 
 // ==========================================
 // 1. KULLANICILAR & ROLLER
@@ -24,7 +24,7 @@ export const users = sqliteTable("users", {
   passwordChangedAt: integer("password_changed_at", { mode: "timestamp" }),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("users_customer_role_idx").on(table.customerId, table.role)]);
 
 // OTURUM (SESSION) YÖNETİMİ — token iptali (revocation) ve cihaz takibi
 export const adminSessions = sqliteTable("admin_sessions", {
@@ -74,7 +74,33 @@ export const customers = sqliteTable("customers", {
   city: text("city"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [
+  index("customers_crm_normalized_email_idx").on(sql`lower(trim(${table.email}))`),
+  index("customers_crm_normalized_phone_idx").on(sql`replace(replace(replace(replace(replace(replace(${table.phone},' ',''),'-',''),'(',''),')',''),'.',''),'+','')`),
+]);
+
+// Personel tarafından eklenen, müşteriye bağlı değiştirilemeyen CRM notları.
+export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  body: text("body").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [index("crm_customer_notes_customer_idx").on(table.customerId, table.createdAt, table.id)]);
+
+export const crmTags = sqliteTable("crm_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
+
+export const crmCustomerTags = sqliteTable("crm_customer_tags", {
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  tagId: integer("tag_id").notNull().references(() => crmTags.id, { onDelete: "restrict" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [primaryKey({ columns: [table.customerId, table.tagId] }), index("crm_customer_tags_tag_idx").on(table.tagId, table.customerId)]);
 
 // ==========================================
 // 3. KATEGORİLER & MARKALAR
@@ -294,7 +320,7 @@ export const orders = sqliteTable("orders", {
   posShiftId: integer("pos_shift_id"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("orders_customer_created_idx").on(table.customerId, table.createdAt, table.id)]);
 
 export const orderItems = sqliteTable("order_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -309,7 +335,7 @@ export const orderItems = sqliteTable("order_items", {
   quantity: integer("quantity").notNull(),
   taxRate: integer("tax_rate").notNull().default(20),
   totalPrice: numeric("total_price").notNull(),
-});
+}, (table) => [index("order_items_order_idx").on(table.orderId, table.id)]);
 
 // SİPARİŞ DURUM GEÇMİŞİ (audit trail) — FAZ 4
 export const orderStatusHistory = sqliteTable("order_status_history", {
@@ -320,7 +346,7 @@ export const orderStatusHistory = sqliteTable("order_status_history", {
   note: text("note"),
   changedBy: text("changed_by").default("Sistem"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("order_status_history_order_created_idx").on(table.orderId, table.createdAt, table.id)]);
 
 // İADELER (RMA) — FAZ 4
 export const orderReturns = sqliteTable("order_returns", {
@@ -336,7 +362,7 @@ export const orderReturns = sqliteTable("order_returns", {
   createdBy: text("created_by").default("Müşteri Hizmetleri"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
   resolvedAt: integer("resolved_at", { mode: "timestamp" }),
-});
+}, (table) => [index("order_returns_order_created_idx").on(table.orderId, table.createdAt, table.id)]);
 
 export const orderReturnItems = sqliteTable("order_return_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -541,7 +567,7 @@ export const productQuestions = sqliteTable("product_questions", {
   question: text("question").notNull(),
   answer: text("answer"),
   answeredBy: text("answered_by"),
-  status: text("status").notNull().default("OPEN"), // OPEN, ANSWERED, HIDDEN
+  status: text("status").notNull().default("OPEN"), // OPEN (onay bekliyor), APPROVED, ANSWERED, HIDDEN
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
 
@@ -565,7 +591,7 @@ export const loyaltyTransactions = sqliteTable("loyalty_transactions", {
   description: text("description"),
   orderId: integer("order_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("loyalty_transactions_customer_created_idx").on(table.customerId, table.createdAt, table.id)]);
 
 // ==========================================
 // 10. CMS: BLOG & KURUMSAL İÇERİK
@@ -608,7 +634,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   details: text("details"),
   ipAddress: text("ip_address").default("127.0.0.1"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("audit_logs_crm_entity_idx").on(table.entity, table.entityId, table.action, table.createdAt, table.id)]);
 
 // ==========================================
 // 12. COMMERCE INTELLIGENCE ENGINE — FAZ 1 (TEMEL ZEKÂ)
@@ -1053,4 +1079,24 @@ export const decisionOutcomes = sqliteTable("decision_outcomes", {
   measuredAt: integer("measured_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 }, (t) => [
   index("decision_outcomes_decision_idx").on(t.decisionId),
+]);
+
+// ==========================================
+// DESTEK MASASI — "İletişim & Destek Masası" formundan gelen mesajlar
+// ==========================================
+export const contactMessages = sqliteTable("contact_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  phone: text("phone").notNull(),
+  email: text("email"),
+  subject: text("subject"),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("NEW"), // NEW | READ | ANSWERED
+  source: text("source").notNull().default("iletisim"),
+  createdBy: text("created_by"), // giriş yapmış üyenin e-postası (varsa)
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  readAt: integer("read_at", { mode: "timestamp" }),
+}, (t) => [
+  index("contact_messages_created_idx").on(t.createdAt),
+  index("contact_messages_status_idx").on(t.status),
 ]);

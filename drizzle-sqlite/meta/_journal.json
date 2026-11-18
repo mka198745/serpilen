@@ -50,6 +50,90 @@
       "when": 1794597030461,
       "tag": "0006_decision_intelligence_faz3",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794764886006,
+      "tag": "0007_canta_aksesuarlari_kategorisi",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794766075345,
+      "tag": "0008_el_isi_urunler_kategorisi",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794766826192,
+      "tag": "0009_contact_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794767826192,
+      "tag": "0010_order_number_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794768826192,
+      "tag": "0011_crm_order_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794769826192,
+      "tag": "0012_crm_customer_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794770826192,
+      "tag": "0013_crm_timeline_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794771826192,
+      "tag": "0014_crm_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1794772826192,
+      "tag": "0015_crm_order_items_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794773826192,
+      "tag": "0016_crm_users_customer_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1794774826192,
+      "tag": "0017_crm_duplicate_candidate_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794775826192,
+      "tag": "0018_crm_timeline_transaction_indexes",
+      "breakpoints": true
     }
   ]
 }
