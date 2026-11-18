@@ -294,7 +294,7 @@ export const orders = sqliteTable("orders", {
   posShiftId: integer("pos_shift_id"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("orders_customer_created_idx").on(table.customerId, table.createdAt, table.id)]);
 
 export const orderItems = sqliteTable("order_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),

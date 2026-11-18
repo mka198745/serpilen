@@ -50,7 +50,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const allLedger = await db.select().from(inventoryLedger).orderBy(desc(inventoryLedger.id)).limit(30);
   const allOrders = await db.select().from(orders).orderBy(desc(orders.id)).limit(50);
   const allOrderItems = await db.select().from(orderItems);
-  const allCustomers = await db.select().from(customers).orderBy(desc(customers.id));
+  const [customerCount] = await db.select({ value: count() }).from(customers);
   const allSuppliers = await db.select().from(suppliers).orderBy(desc(suppliers.id));
   const allPOs = await db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.id));
   const allCoupons = await db.select().from(coupons);
@@ -164,7 +164,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     monthGrowth, // null => önceki ay verisi yok
     pendingOrdersCount: Number(pendingRow?.c ?? 0),
     returnedOrdersCount: Number(returnedRow?.c ?? 0),
-    customersCount: allCustomers.length,
+    customersCount: customerCount.value,
   };
 
   return (
@@ -178,7 +178,6 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       inventory={enrichedInventory}
       ledger={allLedger}
       orders={enrichedOrders}
-      customers={allCustomers}
       suppliers={allSuppliers}
       purchaseOrders={allPOs}
       coupons={allCoupons}

@@ -73,6 +73,7 @@ import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
 import { formatRegistrationDate } from "@/lib/registration-date";
 import { SupportDesk } from "@/components/admin/SupportDesk";
 import { ProductFeedback } from "@/components/admin/ProductFeedback";
+import { CustomerCRM } from "@/components/admin/CustomerCRM";
 import { ZReportsPanel } from "@/components/admin/ZReportsPanel";
 import {
   ADMIN_MODULES,
@@ -93,7 +94,6 @@ interface AdminDashboardClientProps {
   inventory: any[];
   ledger: any[];
   orders: any[];
-  customers: any[];
   suppliers: any[];
   purchaseOrders: any[];
   coupons: any[];
@@ -127,7 +127,6 @@ export function AdminDashboardClient({
   inventory: initialInventory,
   ledger: initialLedger,
   orders: initialOrders,
-  customers: initialCustomers,
   suppliers: initialSuppliers,
   purchaseOrders: initialPOs,
   coupons: initialCoupons,
@@ -231,7 +230,6 @@ export function AdminDashboardClient({
   const [inventoryList, setInventoryList] = useState(initialInventory);
   const [ledger, setLedger] = useState(initialLedger);
   const [orders, setOrders] = useState(initialOrders);
-  const [customers] = useState(initialCustomers);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
   const [coupons, setCoupons] = useState(initialCoupons);
 
@@ -1282,7 +1280,7 @@ export function AdminDashboardClient({
       }, 0);
   const pendingOrdersCount = dashboardStats?.pendingOrdersCount ?? orders.filter((o) => ["PAID", "PREPARING", "READY_FOR_SHIPMENT"].includes(o.status)).length;
   const returnedOrdersCount = dashboardStats?.returnedOrdersCount ?? orders.filter((o) => ["RETURN_REQUESTED", "RETURNED", "REFUNDED"].includes(o.status)).length;
-  const customersCount = dashboardStats?.customersCount ?? customers.length;
+  const customersCount = dashboardStats?.customersCount ?? 0;
   const monthGrowth = dashboardStats ? dashboardStats.monthGrowth : null;
   // Kanal kartındaki mağaza adı: veritabanındaki mağaza/merkez deposundan alınır
   const storeName =
@@ -3921,63 +3919,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* TAB 6: CRM */}
         {/* ============================================================ */}
-        {activeTab === "crm" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-stone-900">Müşteri CRM 360</h2>
-                <p className="text-xs text-stone-500">
-                  Perakende sadakat puanları, segmentasyon ve satın alma geçmişi tek ekranda.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr>
-                      <th className="py-3 px-3">Müşteri / Şirket</th>
-                      <th className="py-3 px-3">Tip</th>
-                      <th className="py-3 px-3">İletişim</th>
-                      <th className="py-3 px-3">Sadakat Puanı</th>
-                      <th className="py-3 px-3">Segment</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {customers.map((c) => (
-                      <tr key={c.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 px-3">
-                          <span className="font-bold text-stone-900 block">{c.name}</span>
-                          {c.companyName && (
-                            <span className="text-[10px] text-stone-500">{c.companyName}</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900">
-                            Perakende
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-stone-600">
-                          <div>{c.phone}</div>
-                          <div className="text-[10px] text-stone-400">{c.email}</div>
-                        </td>
-                        <td className="py-3 px-3 font-bold text-amber-800">
-                          {c.loyaltyPoints} Puan
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="bg-stone-100 text-stone-700 px-2 py-0.5 rounded font-bold text-[10px]">
-                            {c.segment}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === "crm" && matrixLoaded && canSee("crm") && <CustomerCRM />}
 
         {/* ============================================================ */}
         {/* TAB 7: PURCHASING & SUPPLIERS */}

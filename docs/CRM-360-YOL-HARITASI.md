@@ -1,0 +1,21 @@
+# CRM 360 — mimari ve aşamalı yol haritası
+
+## Mevcut yapı (inceleme)
+Next.js 16, React 19, Drizzle ve WAL modunda SQLite/better-sqlite3 kullanılır. `customers` cari kartları; `users.customer_id` bağlı web hesaplarını; `orders.customer_id`, `order_items`, `order_status_history`, `order_returns` ve `loyalty_transactions` mevcut işlem kayıtlarını tutar. Misafir siparişlerinde müşteri kimliği olmayabilir; isim/e-posta benzerliğinden otomatik eşleştirme güvenli değildir. Mevcut panel CRM'i yalnızca SSR'den gelen müşteri listesidir; müşteri verileri eskiden bütün personelin panel HTML'ine dahil ediliyordu. Rol matrisi yalnız modül erişimini ifade eder, işlem/kayıt bazlı yetki değildir. Diğer eski panel sekmeleri ve API'leri de kendi yetki ve veri minimizasyonu bakımından ayrıca incelenmelidir.
+
+Ödeme sağlayıcı işlem defteri, doğrulanmış onay geçmişi, birleştirme defteri, davranış olayı ve temsilci ataması bu çalışma kapsamında var sayılmamaktadır. Siparişteki ödeme durumu bağımsız ödeme işlemi veya banka mutabakatı değildir. Mevcut segment etiketi otomatik/kanıtlanmış müşteri skoru değildir. Mevcut verilerle churn, kârlılık, gelecek CLV, rıza ve davranış analitiği uydurulamaz.
+
+## İlk teslim — çekirdek temel (Faz 1 tamamı değil)
+- Yeni CRM sorgu API'si oturum + sunucu tarafında `crm` rol matrisiyle korunur, müşteri listesi sunucuda sayfalanır, arama parametreli sorgularla yapılır. Genel admin SSR artık tüm müşteri kartlarını taşımaz. Bununla birlikte diğer mevcut panel sekmeleri ve API'leri sipariş müşteri bilgilerini gösterebileceğinden genel sistemde PII izolasyonu henüz tamamlanmış değildir.
+- Müşteri profili ve sipariş listesi yalnız `customer_id` ilişkisini kullanır; eşleşmeyen misafir siparişleri kendiliğinden birleştirilmez. Sipariş ödeme durumu ve tutarı kaynak sipariş alanlarıdır. Gösterilen ödenmiş sipariş tutarı iptal/iade durumundaki siparişleri dışlar; kısmi iadeler düşülmediğinden net gelir, kâr veya gerçek CLV değildir.
+- Profil görünümü audit kaydına müşteri ID'si ve yetkili kullanıcıyı yazar. Yazma, dışa aktarma, birleştirme veya pazarlama gönderimi henüz sunulmaz. Yalnız mevcut CRM modül erişimi vardır; kayıt bazlı veya işlem bazlı yetki henüz uygulanmadı.
+- `0011_crm_order_index` müşteri sipariş sorguları için yalnızca bir indeks ekler; veri değiştirmez. Üretim ölçek testleri ve diğer indeks ihtiyaçları sonraki adımlardadır; mevcut SQLite tek-yazarlı mimari enterprise ölçeği garanti etmez.
+
+## Plan ve bağımlılıklar
+1. **Faz 1 devamı:** tek müşteri kimliği ve hesap/kanal bağlantıları için veri envanteri, yinelenen kayıt adaylarının insan onayıyla tespiti; transaction ve audit korumalı müşteri düzenleme, not ve etiket şeması; güvenli birleştirme önizleme/denetim ve referans kontrolleri; kayıt/işlem bazlı izinler; tam sayfalı sipariş ve durum tarihçesi; indeksler ve migration/rollback testi. Rıza ayrı modellenmeden pazarlama yapılmaz.
+2. **Faz 2:** iş ve tarih aralığı tanımlı RFM/yaşam döngüsü, kaynakları açıkça belgelenmiş raporlar ve retention; olay toplama ancak hukuki dayanak ve uygun izinlerden sonra. Tahminler gözlemlenen değerlerden ayrı işaretlenir.
+3. **Faz 3:** adapter tabanlı iletişim, yalnız sağlayıcı kurulduğunda gönderim, izin ve işlem/kampanya ayrımı, idempotent outbox + retry, destek ve otomasyon yönetimi.
+4. **Faz 4:** işlemsel sadakat defteri, geri bildirim ve incelenebilir risk göstergeleri; otomatik cezalandırma yok.
+5. **Faz 5:** yetki kısıtlı, izlenebilir AI önerileri; güven, zaman aralığı ve doğrulanmış veri sınırları açık olmalı; kontrolsüz SQL erişimi yok.
+
+Her aşamada migration'ın mevcut canlı veriye etkisi ve yedek/geri dönüş, KVKK değerlendirmesi, audit, testler ve operasyonel izleme ayrıca tamamlanmalıdır. Mevcut barındırma sunucusunda build yapılmaz; canlıya yeni migration ve hazır paket ancak ayrıca doğrulanıp kullanıcı yönlendirmesiyle uygulanır.
