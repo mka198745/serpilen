@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CrmRoadmap } from "../src/components/admin/CrmRoadmap";
 import { CrmLatestUpdate } from "../src/components/admin/CrmLatestUpdate";
 import { CrmDemoNotice, isCrmPreviewDemo } from "../src/components/admin/CrmDemoNotice";
+import { CrmCustomerSegmentFilters, emptySegmentFilters } from "../src/components/admin/CrmCustomerSegmentFilters";
 import { CrmCustomerNotes } from "../src/components/admin/CrmCustomerNotes";
 import { CrmCustomerEdit } from "../src/components/admin/CrmCustomerEdit";
 import { CrmTimeline } from "../src/components/admin/CrmTimeline";
@@ -77,9 +78,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Müşteri notlarında sayfalama/);
-  assert.match(html, /Profili aç → Müşteri notları/);
-  assert.match(html, /not düzenleme ve silme henüz yoktur/);
+  assert.match(html, /Son geliştirme · Şehir ve kayıt tarihiyle filtreleme/);
+  assert.match(html, /Şehir ve müşteri kayıt tarihi/);
+  assert.match(html, /tarih aralığı UTC günlerine göredir/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {
@@ -89,4 +90,14 @@ test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşle�
   const html=renderToStaticMarkup(<CrmDemoNotice />);
   assert.match(html,/gerçek ödeme, kargo veya stok hareketi değildir/);
   assert.match(html,/özet ve raporlarına örnek tutar olarak yansıyabilir/);
+});
+
+test("Şehir ve müşteri kayıt tarihi filtreleri panelde bulunur", () => {
+  const html=renderToStaticMarkup(<CrmCustomerSegmentFilters draft={emptySegmentFilters} onChange={()=>{}} onApply={()=>{}} onClear={()=>{}} error="" />);
+  assert.match(html, /Şehir ve müşteri kayıt tarihi/);
+  assert.match(html, /crm-city-filter/);
+  assert.match(html, /crm-created-from/);
+  assert.match(html, /crm-created-to/);
+  assert.match(html, /büyük\/küçük harfe duyarlı/);
+  assert.match(html, /UTC gün sınırlarına/);
 });

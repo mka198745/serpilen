@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { requireCrmAccess } from "@/lib/crm-access";
+import { crmUtcDayStart } from "@/lib/crm-date";
 
 export const dynamic = "force-dynamic";
 const kinds = ["CUSTOMER_CREATED", "ORDER_CREATED", "ORDER_STATUS", "NOTE_CREATED", "PROFILE_UPDATED", "RETURN_CREATED", "LOYALTY_TRANSACTION"];
-function dateStart(value: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const time = Date.parse(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== value) return null;
-  return time / 1000;
-}
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request);
   if (!gate.ok) return gate.response;
@@ -17,7 +12,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const params = new URL(request.url).searchParams;
   const pageText = params.get("page") || "1", kind = params.get("kind") || "", channel = params.get("channel") || "", actor = (params.get("actor") || "").trim();
   const from = params.get("from") || "", to = params.get("to") || "";
-  const fromTime = from ? dateStart(from) : null, toTime = to ? dateStart(to) : null;
+  const fromTime = from ? crmUtcDayStart(from) : null, toTime = to ? crmUtcDayStart(to) : null;
   if (!/^[1-9]\d{0,14}$/.test(id) || !Number.isSafeInteger(Number(id)) || !/^[1-9]\d{0,5}$/.test(pageText) || (kind && !kinds.includes(kind)) || !["", "POS", "ONLINE_B2C"].includes(channel) || actor.length > 100 || (from && fromTime === null) || (to && toTime === null) || (fromTime !== null && toTime !== null && fromTime > toTime)) {
     return NextResponse.json({ success: false, error: "Geçersiz zaman çizelgesi filtresi." }, { status: 422 });
   }

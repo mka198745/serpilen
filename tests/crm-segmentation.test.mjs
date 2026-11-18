@@ -28,6 +28,10 @@ test('Temel segment filtreleri yetki, birleşim, tanım ve sayfalamayı korur', 
     const db = new Database(dbPath);
     const addCustomer = db.prepare('INSERT INTO customers (id,name,phone) VALUES (?,?,?)');
     for (let id = 1; id <= 25; id++) addCustomer.run(id, `Müşteri ${id}`, `555000${String(id).padStart(4, '0')}`);
+    db.prepare("UPDATE customers SET city=' Adana ',created_at=1735689600 WHERE id=1").run();
+    db.prepare("UPDATE customers SET city='Adana',created_at=1735775999 WHERE id=2").run();
+    db.prepare("UPDATE customers SET city='ADANA',created_at=1735776000 WHERE id=3").run();
+    db.prepare("UPDATE customers SET city='İzmir',created_at=1735776001 WHERE id=4").run();
     const addUser = db.prepare('INSERT INTO users (email,password_hash,name,role,customer_id) VALUES (?,?,?,?,?)');
     const admin = addUser.run('admin@example.test', 'hash', 'admin', 'SUPER_ADMIN', null).lastInsertRowid;
     const cashier = addUser.run('cashier@example.test', 'hash', 'cashier', 'CASHIER', null).lastInsertRowid;
@@ -69,6 +73,23 @@ test('Temel segment filtreleri yetki, birleşim, tanım ve sayfalamayı korur', 
     assert.equal((await (await get('purchase=once&membership=linked')).json()).pagination.total, 0);
     assert.equal((await (await get(`purchase=once&tag=${tag}&q=2`)).json()).pagination.total, 1);
     assert.equal((await (await get('purchase=none&q=3')).json()).pagination.total, 3);
+    for (const query of ['createdFrom=2025-02-30', 'createdTo=2025-13-01', 'createdFrom=2025-01-02&createdTo=2025-01-01', `city=${'x'.repeat(101)}`]) assert.equal((await get(query)).status, 422);
+    assert.equal((await get('city=Adana', null)).status, 401);
+    assert.equal((await get('createdFrom=2025-01-01', 'cashier')).status, 403);
+    const city = await (await get('city=Adana')).json();
+    assert.deepEqual(city.data.map(c => c.id), [2,1]);
+    assert.equal(city.metrics.customerCount, 2); assert.equal(city.metrics.paidOrderTotal, 350);
+    assert.equal((await (await get('city=adana')).json()).pagination.total, 0);
+    assert.equal((await (await get('city=%C4%B0zmir')).json()).pagination.total, 1);
+    assert.equal((await (await get('city=ada')).json()).pagination.total, 0);
+    assert.equal((await (await get("city=Adana%27%20OR%201%3D1--")).json()).pagination.total, 0);
+    const day = await (await get('createdFrom=2025-01-01&createdTo=2025-01-01')).json();
+    assert.deepEqual(day.data.map(c => c.id), [2,1]); assert.equal(day.metrics.paidOrderTotal, 350);
+    const nextDay = await (await get('createdFrom=2025-01-02&createdTo=2025-01-02')).json();
+    assert.deepEqual(nextDay.data.map(c => c.id), [4,3]);
+    const combined = await (await get(`city=Adana&createdFrom=2025-01-01&createdTo=2025-01-01&tag=${tag}&membership=linked&purchase=repeat&q=M%C3%BC%C5%9Fteri`)).json();
+    assert.deepEqual(combined.data.map(c => c.id), [1]); assert.equal(combined.metrics.customerCount, 1); assert.equal(combined.metrics.paidOrderTotal, 300);
+    assert.equal((await (await get('city=Adana&createdFrom=2025-01-02')).json()).pagination.total, 0);
   } finally {
     if (server && server.exitCode === null) { server.kill('SIGTERM'); await new Promise(resolve => server.once('exit', resolve)); }
     fs.rmSync(dir, { recursive: true, force: true });

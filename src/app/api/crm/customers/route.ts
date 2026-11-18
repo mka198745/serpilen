@@ -4,6 +4,7 @@ import { requireCrmAccess } from "@/lib/crm-access";
 import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
 import { isValidReviewEmail } from "@/lib/review-email";
 import { crmEmailKey, hasCrmContactDuplicate } from "@/lib/crm-duplicates";
+import { crmUtcDayStart } from "@/lib/crm-date";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -15,7 +16,11 @@ export async function GET(request: Request) {
   const tagText = params.get("tag") || "";
   const purchase = params.get("purchase") || "";
   const membership = params.get("membership") || "";
-  if (search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership)) {
+  const city = (params.get("city") || "").trim();
+  const createdFrom = params.get("createdFrom") || "", createdTo = params.get("createdTo") || "";
+  const fromTime = createdFrom ? crmUtcDayStart(createdFrom) : null;
+  const toTime = createdTo ? crmUtcDayStart(createdTo) : null;
+  if (city.length > 100 || (createdFrom && fromTime === null) || (createdTo && toTime === null) || (fromTime !== null && toTime !== null && fromTime > toTime) || search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership)) {
     return NextResponse.json({ success: false, error: "Geçersiz arama, filtre veya sayfa." }, { status: 422 });
   }
   const page = Number(pageText), limit = 20;
@@ -26,8 +31,9 @@ export async function GET(request: Request) {
   const linked = `EXISTS (SELECT 1 FROM users u WHERE u.customer_id = c.id AND u.role = 'B2C_CUSTOMER')`;
   const purchaseWhere: Record<string, string> = { none: `${paid} = 0`, once: `${paid} = 1`, repeat: `${paid} >= 2` };
   const membershipWhere: Record<string, string> = { linked, unlinked: `NOT ${linked}` };
-  const filters = [where, purchaseWhere[purchase], membershipWhere[membership]].filter(Boolean).join(" AND ");
-  const args = [search, term, term, term, search, Number(tagText), Number(tagText)];
+  const filters = [where, purchaseWhere[purchase], membershipWhere[membership], "(? = '' OR trim(c.city) = ? COLLATE BINARY)", "(? IS NULL OR c.created_at >= ?)", "(? IS NULL OR c.created_at < ?)"].filter(Boolean).join(" AND ");
+  const endTime = toTime === null ? null : toTime + 86400;
+  const args = [search, term, term, term, search, Number(tagText), Number(tagText), city, city, fromTime, fromTime, endTime, endTime];
   try {
     const metrics = sqlite.prepare(`WITH filtered AS (SELECT c.id FROM customers c WHERE ${filters}),
       paid AS (SELECT o.customer_id, COUNT(*) AS order_count, SUM(CAST(o.grand_total AS REAL)) AS amount
