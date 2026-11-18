@@ -102,6 +102,19 @@ export const crmCustomerTags = sqliteTable("crm_customer_tags", {
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 }, (table) => [primaryKey({ columns: [table.customerId, table.tagId] }), index("crm_customer_tags_tag_idx").on(table.tagId, table.customerId)]);
 
+// İki müşteri kartı için insan değerlendirmesi; birleştirme yetkisi veya işlemi değildir.
+export const crmDuplicateReviews = sqliteTable("crm_duplicate_reviews", {
+  customerLowId: integer("customer_low_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  customerHighId: integer("customer_high_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  status: text("status").notNull(),
+  lowVersion: text("low_version").notNull(),
+  highVersion: text("high_version").notNull(),
+  revision: integer("revision").notNull(),
+  reviewedById: integer("reviewed_by_id").notNull(),
+  reviewedByName: text("reviewed_by_name").notNull(),
+  reviewedAt: integer("reviewed_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [primaryKey({ columns: [table.customerLowId, table.customerHighId] }), index("crm_duplicate_reviews_high_idx").on(table.customerHighId, table.customerLowId)]);
+
 // ==========================================
 // 3. KATEGORİLER & MARKALAR
 // ==========================================

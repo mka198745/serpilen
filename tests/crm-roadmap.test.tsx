@@ -6,6 +6,7 @@ import { CrmRoadmap } from "../src/components/admin/CrmRoadmap";
 import { CrmLatestUpdate } from "../src/components/admin/CrmLatestUpdate";
 import { CrmDemoNotice, isCrmPreviewDemo } from "../src/components/admin/CrmDemoNotice";
 import { CrmCustomerSegmentFilters, emptySegmentFilters } from "../src/components/admin/CrmCustomerSegmentFilters";
+import { CrmDuplicateReview } from "../src/components/admin/CrmDuplicateReview";
 import { CrmCustomerNotes } from "../src/components/admin/CrmCustomerNotes";
 import { CrmCustomerEdit } from "../src/components/admin/CrmCustomerEdit";
 import { CrmTimeline } from "../src/components/admin/CrmTimeline";
@@ -78,9 +79,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Şehir ve kayıt tarihiyle filtreleme/);
-  assert.match(html, /Şehir ve müşteri kayıt tarihi/);
-  assert.match(html, /tarih aralığı UTC günlerine göredir/);
+  assert.match(html, /Son geliştirme · Yinelenen kart değerlendirmesi/);
+  assert.match(html, /Aday değerlendirmesi/);
+  assert.match(html, /kimlik doğrulaması veya birleştirme değildir/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {
@@ -100,4 +101,12 @@ test("Şehir ve müşteri kayıt tarihi filtreleri panelde bulunur", () => {
   assert.match(html, /crm-created-to/);
   assert.match(html, /büyük\/küçük harfe duyarlı/);
   assert.match(html, /UTC gün sınırlarına/);
+});
+
+test("Aday değerlendirmesi birleştirme yapmadığını ve alan sınırlarını gösterir", () => {
+  const html = renderToStaticMarkup(<CrmDuplicateReview customerId={1} targetId={2} versions={{source:"a".repeat(64),target:"b".repeat(64)}} review={{status:"DISTINCT",revision:1,reviewedByName:"<Personel>",reviewedAt:1700000000,stale:true}} onSaved={()=>{}} onBusyChange={()=>{}} />);
+  assert.match(html, /birleştirme yapmaz/);
+  assert.match(html, /Kart alanları değişmiş; yeniden inceleyin/);
+  assert.match(html, /&lt;Personel&gt;/);
+  assert.match(html, /Siparişler, üyelikler ve dış kaynaklardaki değişiklikler/);
 });
