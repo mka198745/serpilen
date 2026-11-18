@@ -700,9 +700,10 @@ export function AdminDashboardClient({
     try {
       const res = await authFetch("/api/users?type=staff", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setUsersList(data.data);
+      if (res.ok && data?.success) setUsersList(data.data);
+      else { setUsersList([]); setUserFeedback({ text: data?.error?.message || "Personel listesi yüklenemedi.", isError: true }); }
     } catch {
-      /* sessiz */
+      setUsersList([]); setUserFeedback({ text: "Personel listesi yüklenemedi.", isError: true });
     } finally {
       setUsersBusy(false);
     }
@@ -713,9 +714,10 @@ export function AdminDashboardClient({
     try {
       const res = await authFetch("/api/users?type=customers", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setCustomersList(data.data);
+      if (res.ok && data?.success) setCustomersList(data.data);
+      else { setCustomersList([]); setUserFeedback({ text: data?.error?.message || "Müşteri listesi yüklenemedi.", isError: true }); }
     } catch {
-      /* sessiz */
+      setCustomersList([]); setUserFeedback({ text: "Müşteri listesi yüklenemedi.", isError: true });
     } finally {
       setCustomersBusy(false);
     }
@@ -775,40 +777,35 @@ export function AdminDashboardClient({
     }
   };
 
-  const updateUser = async (id: number, patch: { role?: string; isActive?: boolean }) => {
-    const res = await authFetch("/api/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    const data = await res.json();
-    if (data?.success) {
-      setUsersList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.data } : u)));
+  const updateAccount = async (id: number, patch: { role?: string; isActive?: boolean }, customer: boolean) => {
+    setUserFeedback(null);
+    try {
+      const res = await authFetch("/api/users", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }) });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setUserFeedback({ text: data?.error?.message || (typeof data?.error === "string" ? data.error : "Hesap güncellenemedi."), isError: true });
+        return;
+      }
+      const update = (prev: any[]) => prev.map((u) => u.id === id ? { ...u, ...data.data } : u);
+      if (customer) setCustomersList(update); else setUsersList(update);
+      setUserFeedback({ text: "Hesap güncellendi.", isError: false });
+    } catch {
+      setUserFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
     }
   };
-
-  const updateCustomer = async (id: number, patch: { isActive?: boolean }) => {
-    const res = await authFetch("/api/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    const data = await res.json();
-    if (data?.success) {
-      setCustomersList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.data } : u)));
-    }
-  };
+  const updateUser = (id: number, patch: { role?: string; isActive?: boolean }) => updateAccount(id, patch, false);
+  const updateCustomer = (id: number, patch: { isActive?: boolean }) => updateAccount(id, patch, true);
 
   const deleteUser = async (id: number, name: string, email: string) => {
     if (!window.confirm(`"${name}" (${email}) kullanıcısı silinsin mi? Bu işlem geri alınamaz.`)) return;
-    const res = await authFetch(`/api/users?id=${id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && data?.success) {
-      setUsersList((prev) => prev.filter((u) => u.id !== id));
-      setUserFeedback({ text: `"${name}" kullanıcısı silindi.`, isError: false });
-    } else {
-      setUserFeedback({ text: data?.error?.message || "Kullanıcı silinemedi.", isError: true });
-    }
+    try {
+      const res = await authFetch(`/api/users?id=${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setUsersList((prev) => prev.filter((u) => u.id !== id));
+        setUserFeedback({ text: `"${name}" kullanıcısı silindi.`, isError: false });
+      } else setUserFeedback({ text: data?.error?.message || "Kullanıcı silinemedi.", isError: true });
+    } catch { setUserFeedback({ text: "Sunucuya ulaşılamadı.", isError: true }); }
   };
 
   const refreshProducts = async () => {
@@ -2014,7 +2011,7 @@ export function AdminDashboardClient({
               {catalogSubTab === "products" && (
                 <button
                   onClick={openAddProductModal}
-                  className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+                  className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Yeni Ürün Ekle</span>
@@ -4089,7 +4086,7 @@ export function AdminDashboardClient({
               <div>
                 <h2 className="text-xl font-black text-stone-900">Kullanıcılar & Roller</h2>
                 <p className="text-xs text-stone-500">
-                  Mağaza personeli (Süper Admin, Mağaza Müdürü, Depo Sorumlusu, POS Kasiyeri) kayıtları, rol atamaları ve hesap durumu. Siteye üye olan müşteriler ayrı sekmededir (Kayıtlı Müşteriler).
+                  Personel listesini yetkili roller görebilir; personel oluşturma, değiştirme ve silme yalnız Süper Admin yetkisindedir. Siteye üye olan müşteriler ayrı sekmededir (Kayıtlı Müşteriler).
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -4101,6 +4098,8 @@ export function AdminDashboardClient({
                   <span>Yenile</span>
                 </button>
                 <button
+                  disabled={!isSuper}
+                  title={isSuper ? "Yeni personel oluştur" : "Personel yönetimi yalnız Süper Admin yetkisindedir"}
                   onClick={() => setIsAddUserOpen(true)}
                   className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
                 >
@@ -4148,8 +4147,10 @@ export function AdminDashboardClient({
                         <td className="py-3 px-3">
                           <select
                             value={u.role}
+                            disabled={!isSuper}
+                            title={!isSuper ? "Personel yönetimi yalnız Süper Admin yetkisindedir" : "Personel rolü"}
                             onChange={(e) => void updateUser(u.id, { role: e.target.value })}
-                            className="px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-950 rounded-lg text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-700"
+                            className="px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-950 rounded-lg text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <option value="SUPER_ADMIN">Süper Admin</option>
                             <option value="STORE_MANAGER">Mağaza Müdürü</option>
@@ -4159,6 +4160,7 @@ export function AdminDashboardClient({
                         </td>
                         <td className="py-3 px-3">
                           <button
+                            disabled={!isSuper}
                             onClick={() => void updateUser(u.id, { isActive: !u.isActive })}
                             className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
                               u.isActive
@@ -4235,6 +4237,8 @@ export function AdminDashboardClient({
                 </button>
               </div>
             </div>
+
+            {userFeedback && <div role="status" className={`p-3 rounded-xl text-xs font-medium border ${userFeedback.isError ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>{userFeedback.text}</div>}
 
             <div className="flex items-start gap-2 text-[11px] text-sky-900 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-sky-700" />
@@ -5180,6 +5184,7 @@ export function AdminDashboardClient({
             </div>
 
             <form onSubmit={handleAddUser} className="space-y-3 text-xs">
+              {userFeedback?.isError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-rose-800">{userFeedback.text}</p>}
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ad Soyad:</label>
                 <input

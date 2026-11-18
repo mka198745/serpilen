@@ -79,9 +79,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Yinelenen kart değerlendirmesi/);
-  assert.match(html, /Aday değerlendirmesi/);
-  assert.match(html, /kimlik doğrulaması veya birleştirme değildir/);
+  assert.match(html, /Son geliştirme · Hesap yönetimi yetki sınırı/);
+  assert.match(html, /Kullanıcılar &amp; Roller/);
+  assert.match(html, /genel kişisel veri izolasyonu değildir/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {
