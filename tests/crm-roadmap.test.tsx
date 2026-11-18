@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CrmRoadmap } from "../src/components/admin/CrmRoadmap";
+import { CrmLatestUpdate } from "../src/components/admin/CrmLatestUpdate";
 import { CrmCustomerNotes } from "../src/components/admin/CrmCustomerNotes";
 import { CrmCustomerEdit } from "../src/components/admin/CrmCustomerEdit";
 import { CrmTimeline } from "../src/components/admin/CrmTimeline";
@@ -71,4 +72,11 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
   assert.match(html, /Sadakat puan hareketleri/);
   assert.match(html, /Filtreleri temizle/);
   assert.match(html, /crm-timeline/);
+});
+
+test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
+  const html = renderToStaticMarkup(<CrmLatestUpdate />);
+  assert.match(html, /Son geliştirme · Müşteri notlarında sayfalama/);
+  assert.match(html, /Profili aç → Müşteri notları/);
+  assert.match(html, /not düzenleme ve silme henüz yoktur/);
 });
