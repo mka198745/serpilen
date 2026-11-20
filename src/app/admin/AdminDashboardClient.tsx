@@ -79,7 +79,6 @@ import {
   ADMIN_MODULES,
   ADMIN_MODULE_GROUPS,
   MATRIX_ROLES,
-  DEFAULT_ROLE_MATRIX,
   normalizeRoleMatrix,
   type RoleMatrix,
 } from "@/lib/admin-modules";
@@ -414,9 +413,12 @@ export function AdminDashboardClient({
   };
 
   const refreshOrders = async () => {
-    const res = await authFetch("/api/orders", { cache: "no-store" });
-    const data = await res.json();
-    if (data.success) setOrders(data.data);
+    try {
+      const res = await authFetch("/api/orders", { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok && data.success) setOrders(data.data);
+      else { setOrders([]); setOrderFeedback({ text: data.error || "Siparişler yüklenemedi.", isError: true }); }
+    } catch { setOrderFeedback({ text: "Siparişler yüklenemedi: sunucuya ulaşılamadı.", isError: true }); }
   };
 
   const loadReturns = React.useCallback(async () => {
@@ -603,10 +605,27 @@ export function AdminDashboardClient({
   const [matrixDirty, setMatrixDirty] = useState(false);
   const [matrixMsg, setMatrixMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const isSuper = currentRole === "SUPER_ADMIN";
-  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || DEFAULT_ROLE_MATRIX.SUPER_ADMIN;
-  // dashboard herkese açık taban erişimdir
-  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] !== false;
+  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || {};
+  // Tanınmayan roller için varsayılan erişim verilmez.
+  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] === true;
   const reportsAllowed = matrixLoaded && canSee("reports");
+
+  // Yetki sonradan açıldığında SSR'de gönderilmeyen listeyi sekme açılınca yükle.
+  React.useEffect(() => {
+    if (!matrixLoaded || activeTab !== "orders" || !canSee("orders")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/orders", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data.success) setOrders(data.data);
+        else { setOrders([]); setOrderFeedback({ text: data.error || "Siparişler yüklenemedi.", isError: true }); }
+      } catch { if (!cancelled) setOrderFeedback({ text: "Siparişler yüklenemedi: sunucuya ulaşılamadı.", isError: true }); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, matrixLoaded, roleMatrix, currentRole]);
 
   React.useEffect(() => {
     if (activeTab === "reports" && reportsAllowed) void loadReport(reportDays);
@@ -1899,9 +1918,9 @@ export function AdminDashboardClient({
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
                 <span className="text-xs font-bold text-stone-500 uppercase">Bekleyen Sipariş</span>
                 <div className="text-2xl font-black text-amber-800">{pendingOrdersCount}</div>
-                <button onClick={() => setActiveTab("orders")} className="text-[11px] text-amber-800 hover:underline font-semibold block text-left">
+                {matrixLoaded && canSee("orders") && <button onClick={() => setActiveTab("orders")} className="text-[11px] text-amber-800 hover:underline font-semibold block text-left">
                   Siparişleri Yönet →
-                </button>
+                </button>}
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
@@ -1936,18 +1955,17 @@ export function AdminDashboardClient({
               </div>
             </div>
 
-            {/* Recent Orders Table */}
-            <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-4">
+            {/* Sipariş tablosu için menü değil, sunucu izin kontrolü de uygulanır. */}
+            {matrixLoaded && canSee("orders") ? <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-sm text-stone-900">Son Sipariş & Satış Hareketleri</h3>
-                <button
-                  onClick={() => setActiveTab("orders")}
-                  className="text-xs text-amber-800 hover:underline font-semibold"
-                >
-                  Tümünü Gör →
-                </button>
+                <div className="flex gap-3">
+                  <button onClick={() => void refreshOrders()} className="text-xs text-amber-800 hover:underline font-semibold">Listeyi Yenile</button>
+                  <button onClick={() => setActiveTab("orders")} className="text-xs text-amber-800 hover:underline font-semibold">Tümünü Gör →</button>
+                </div>
               </div>
 
+              {orderFeedback?.isError && <p role="alert" className="text-xs text-rose-700">{orderFeedback.text}</p>}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
@@ -1964,7 +1982,7 @@ export function AdminDashboardClient({
                     {orders.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-stone-400 text-xs">
-                          Henüz sipariş/satış kaydı yok — sistem yeni. İlk satıştan sonra bu liste otomatik dolar.
+                          Sipariş/satış kaydı yok. Yetkiniz yeni açıldıysa listeyi yenileyin.
                         </td>
                       </tr>
                     )}
@@ -1991,7 +2009,7 @@ export function AdminDashboardClient({
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div> : <p className="text-xs text-stone-500">Son sipariş ayrıntıları için Siparişler modülü yetkisi gerekir. Özet göstergeler toplu değerlerdir.</p>}
           </div>
         )}
 
@@ -3642,7 +3660,9 @@ export function AdminDashboardClient({
             )}
 
             {/* Subtab 4: POS Stats */}
-            {posSubTab === "stats" && (
+            {posSubTab === "stats" && (!matrixLoaded || !canSee("orders") ? (
+              <p className="text-xs text-stone-500">Bu özetin sipariş verileri için Siparişler modülü yetkisi gerekir.</p>
+            ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-1">
                   <span className="text-[10px] font-bold uppercase text-stone-500">POS Nakit Ciro</span>
@@ -3685,7 +3705,7 @@ export function AdminDashboardClient({
                   </div>
                 </div>
               </div>
-            )}
+            ))}
           </div>
         )}
 

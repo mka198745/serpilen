@@ -4,7 +4,9 @@ import { orders, orderItems, orderStatusHistory, customers, loyaltyTransactions,
 import { adjustInventory } from "@/lib/inventory-engine";
 import { desc, eq } from "drizzle-orm";
 
-import { requireStaff } from "@/lib/auth";
+import { requireStaff, publicBaseUrl, getUserByToken } from "@/lib/auth";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
+import { readCrmJson } from "@/lib/crm-write";
 import { normalizeOrderNumber } from "@/lib/order-number";
 import { claimOnlineOrderNumber } from "@/lib/order-number-server";
 // Sipariş yaşam döngüsü — geçerli durum geçişleri
@@ -40,10 +42,14 @@ export async function GET(request: Request) {
     const orderNumber = searchParams.get("orderNumber"); // müşteri sipariş takibi
     const phone = searchParams.get("phone");
 
-    // Toplu sipariş listesi yalnızca personele açıktır; müşteri takibi (orderNumber+phone) herkese açıktır.
+    // Toplu liste yalnız sipariş modülüne yetkili personele açıktır.
+    const staff = await requireStaff(request);
+    const matrix = staff.ok ? await readRoleMatrix() : null;
+    const canOrders = staff.ok && !!matrix && roleCanAccessModule(matrix, staff.user.role, "orders");
+    const canPos = staff.ok && !!matrix && roleCanAccessModule(matrix, staff.user.role, "pos");
     if (!orderNumber) {
-      const __gate = await requireStaff(request);
-      if (!__gate.ok) return __gate.response;
+      if (!staff.ok) return staff.response;
+      if (!canOrders) return NextResponse.json({ success: false, error: "Sipariş erişim yetkiniz bulunmuyor." }, { status: 403 });
     }
 
     // Tekil sipariş takibi (müşteri): sipariş no + telefon eşleşmesi
@@ -61,29 +67,38 @@ export async function GET(request: Request) {
       if (!ord) {
         return NextResponse.json({ success: false, error: "Sipariş bulunamadı. Numara/telefon kontrol edin." }, { status: 404 });
       }
-      const staff = await requireStaff(request);
-      const phoneMatches = !!phone && !!ord.customerPhone &&
-        ord.customerPhone.replace(/\D/g, "") === phone.replace(/\D/g, "");
-      if (!staff.ok && phone && !phoneMatches) {
+      const phoneDigits = phone?.replace(/\D/g, "") || "";
+      const phoneMatches = phoneDigits.length >= 7 && !!ord.customerPhone &&
+        ord.customerPhone.replace(/\D/g, "") === phoneDigits;
+      const posOnly = !canOrders && canPos;
+      if (!canOrders && !posOnly && phone && !phoneMatches) {
         return NextResponse.json({ success: false, error: "Sipariş bulunamadı. Numara/telefon kontrol edin." }, { status: 404 });
       }
-      if (!staff.ok && !phoneMatches) {
+      if (!canOrders && !posOnly && !phoneMatches) {
         // Sıralı numaralar tahmin edilebilir: telefon doğrulanmadan kişisel bilgiler gösterilmez.
         return NextResponse.json({ success: true, data: {
           orderNumber: ord.orderNumber, status: ord.status,
           statusLabel: ORDER_STATUS_LABELS[ord.status] || ord.status,
           detailsRestricted: true,
-        } });
+        } }, { headers: { "Cache-Control": "private, no-store" } });
       }
       const items = await db.select().from(orderItems).where(eq(orderItems.orderId, ord.id));
+      if (posOnly) {
+        // POS iade araması için gerekli alanlarla sınırlı; adres, telefon, e-posta,
+        // serbest notlar ve durum geçmişi verilmez. Online iadeler de desteklenir.
+        return NextResponse.json({ success: true, data: {
+          orderNumber: ord.orderNumber, customerName: ord.customerName, grandTotal: ord.grandTotal, createdAt: ord.createdAt,
+          items: items.map(({ id, productId, variantId, productName, quantity, unitPrice }) => ({ id, productId, variantId, productName, quantity, unitPrice })),
+        } }, { headers: { "Cache-Control": "private, no-store" } });
+      }
       const history = await db.select().from(orderStatusHistory).where(eq(orderStatusHistory.orderId, ord.id));
       return NextResponse.json({
         success: true,
         data: { ...ord, items, history: history.map((h) => ({ ...h, statusLabel: ORDER_STATUS_LABELS[h.toStatus] || h.toStatus })), statusLabel: ORDER_STATUS_LABELS[ord.status] || ord.status },
-      });
+      }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
-    let query = db.select().from(orders).orderBy(desc(orders.id));
+    const query = db.select().from(orders).orderBy(desc(orders.id));
     let orderList = await query;
 
     if (orderType) {
@@ -104,7 +119,7 @@ export async function GET(request: Request) {
       };
     });
 
-    return NextResponse.json({ success: true, count: enriched.length, data: enriched });
+    return NextResponse.json({ success: true, count: enriched.length, data: enriched }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -346,9 +361,23 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
+  const matrix = await readRoleMatrix();
+  if (!roleCanAccessModule(matrix, __gate.user.role, "orders")) return NextResponse.json({ success: false, error: "Sipariş değiştirme yetkiniz bulunmuyor." }, { status: 403 });
+  const origin = request.headers.get("origin");
+  if ((origin && origin !== publicBaseUrl(request)) || request.headers.get("sec-fetch-site") === "cross-site") return NextResponse.json({ success: false, error: "İstek kaynağı doğrulanamadı." }, { status: 403 });
+  if (!origin) {
+    const auth = request.headers.get("authorization") || "";
+    const actor = auth.startsWith("Bearer ") ? await getUserByToken(auth.slice(7).trim()) : null;
+    if (!actor || actor.id !== __gate.user.id) return NextResponse.json({ success: false, error: "İstek kaynağı doğrulanamadı." }, { status: 403 });
+  }
+  if (!/^application\/json(?:\s*;|\s*$)/i.test(request.headers.get("content-type") || "")) return NextResponse.json({ success: false, error: "Geçersiz istek türü." }, { status: 415 });
+  if (Number(request.headers.get("content-length") || 0) > 16384) return NextResponse.json({ success: false, error: "İstek çok büyük." }, { status: 413 });
+  const parsed = await readCrmJson(request);
+  if (!parsed.ok) return parsed.response;
+  if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) return NextResponse.json({ success: false, error: "Geçersiz istek gövdesi." }, { status: 400 });
 
   try {
-    const body = await request.json();
+    const body = parsed.value as Record<string, any>;
     const id = Number(body.id);
     if (!id) {
       return NextResponse.json({ success: false, error: "Sipariş ID zorunludur." }, { status: 422 });

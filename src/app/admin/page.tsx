@@ -22,6 +22,7 @@ import { getSessionUser, getStaffUserFromKt } from "@/lib/auth";
 import { StripQueryParam } from "@/components/layout/StripQueryParam";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
 import { AdminDashboardClient } from "./AdminDashboardClient";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     currentRole = staffUser.role;
     currentRoleLabel = staffUser.roleLabel;
   }
+  const matrix = await readRoleMatrix();
+  const canReadOrders = roleCanAccessModule(matrix, currentRole, "orders");
   const allProds = await db.select().from(products).orderBy(desc(products.id));
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
@@ -48,8 +51,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const allWh = await db.select().from(warehouses);
   const allInv = await db.select().from(inventory);
   const allLedger = await db.select().from(inventoryLedger).orderBy(desc(inventoryLedger.id)).limit(30);
-  const allOrders = await db.select().from(orders).orderBy(desc(orders.id)).limit(50);
-  const allOrderItems = await db.select().from(orderItems);
+  // Sipariş yetkisi olmayan personelin SSR/RSC çıktısına müşteri bilgileri eklenmez.
+  const allOrders = canReadOrders ? await db.select().from(orders).orderBy(desc(orders.id)).limit(50) : [];
+  const allOrderItems = allOrders.length ? await db.select().from(orderItems).where(inArray(orderItems.orderId, allOrders.map(order => order.id))) : [];
   const [customerCount] = await db.select({ value: count() }).from(customers);
   const allSuppliers = await db.select().from(suppliers).orderBy(desc(suppliers.id));
   const allPOs = await db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.id));

@@ -422,7 +422,7 @@ export function PosTerminalClient({
       const res = await authFetch(`/api/orders?orderNumber=${encodeURIComponent(returnSearchQuery.trim())}`);
       const data = await res.json();
       setIsSearchingReturn(false);
-      if (data.success && data.data) {
+      if (data.success && data.data && !data.data.detailsRestricted && Array.isArray(data.data.items)) {
         setReturnOrderData(data.data);
         const init: Record<number, number> = {};
         (data.data.items || []).forEach((it: any) => {
