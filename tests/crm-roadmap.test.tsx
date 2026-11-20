@@ -25,7 +25,7 @@ test("CRM yol haritası gerçek durumu ve tüm aşamaları gösterir", () => {
 });
 
 test("Not içeriği HTML olarak çalıştırılmadan gösterilir", () => {
-  const html = renderToStaticMarkup(<CrmCustomerNotes customerId={1} initialNotes={[{ id: 1, body: "<script>alert(1)</script>", createdByName: "Personel", createdAt: 1700000000 }]} />);
+  const html = renderToStaticMarkup(<CrmCustomerNotes customerId={1} initialNotes={[{ id: 1, body: "<script>alert(1)</script>", createdByName: "Personel", createdAt: 1700000000, revision: 1, updatedByName: null, updatedAt: null }]} />);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /Not ekle/);
@@ -43,11 +43,11 @@ test("Müşteri düzenleme ayrımı ve zaman çizelgesi mevcut verileri doğru a
 
 test("Salt okunur CRM'de değiştirme kontrolleri gösterilmez", () => {
   const tags = renderToStaticMarkup(<CrmCustomerTags customerId={1} initialTags={[{ id: 1, name: "Deneme" }]} canWrite={false} />);
-  const notes = renderToStaticMarkup(<CrmCustomerNotes customerId={1} initialNotes={[]} canWrite={false} />);
+  const notes = renderToStaticMarkup(<CrmCustomerNotes customerId={1} initialNotes={[{ id: 1, body: "Salt not", createdByName: "Personel", createdAt: 1700000000, revision: 1, updatedAt: null, updatedByName: null }]} canWrite={false} />);
   const edit = renderToStaticMarkup(<CrmCustomerEdit customer={{ id: 1, name: "Test", phone: "5551234567", email: null, city: null }} canWrite={false} editVersion="x" onSaved={() => {}} />);
   assert.match(tags, /Deneme/);
   assert.doesNotMatch(tags, /Etiket ekle|etiketini kaldır/);
-  assert.doesNotMatch(notes, /Not ekle/);
+  assert.doesNotMatch(notes, /Not ekle|notu düzenle|>Düzenle</);
   assert.doesNotMatch(edit, /Düzenle/);
   assert.match(renderToStaticMarkup(<CrmCustomerCreate onCreated={() => {}} />), /Müşteri ekle/);
 });
@@ -69,6 +69,7 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
   const html = renderToStaticMarkup(<CrmTimelineExplorer customerId={1} refresh={0} />);
   assert.match(html, /value="RETURN_CREATED"/);
   assert.match(html, /value="LOYALTY_TRANSACTION"/);
+  assert.match(html, /value="NOTE_UPDATED"/);
   assert.match(html, /UTC gün sınırlarına/);
   assert.match(html, /Müşteri zaman çizelgesi/);
   assert.match(html, /İade kayıtları/);
@@ -79,9 +80,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Sipariş bilgilerinde yetki sınırı/);
-  assert.match(html, /Yönetim → Siparişler/);
-  assert.match(html, /kayıt bazlı CRM yetkileri/);
+  assert.match(html, /Son geliştirme · Müşteri notu düzenleme/);
+  assert.match(html, /Müşteri notları/);
+  assert.match(html, /eski metin/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {

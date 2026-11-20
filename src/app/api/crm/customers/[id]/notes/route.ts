@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
 import { requireCrmAccess } from "@/lib/crm-access";
+import { crmNoteColumns, crmNoteFrom } from "@/lib/crm-note-query";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const result = sqlite.transaction(() => {
       if (!sqlite.prepare("SELECT 1 FROM customers WHERE id=?").get(Number(id))) return null;
       const total = (sqlite.prepare("SELECT COUNT(*) AS n FROM crm_customer_notes WHERE customer_id=?").get(Number(id)) as { n: number }).n;
-      const data = sqlite.prepare(`SELECT id,body,created_by_name AS createdByName,created_at AS createdAt FROM crm_customer_notes WHERE customer_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`).all(Number(id), limit, (page - 1) * limit);
+      const data = sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.customer_id=? ORDER BY n.created_at DESC,n.id DESC LIMIT ? OFFSET ?`).all(Number(id), limit, (page - 1) * limit);
       sqlite.prepare("INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?,'CRM_NOTES_VIEW','Customer',?,?)").run(String(gate.user.id), gate.user.name, id, `CRM notları, sayfa ${page}`);
       return { data, pagination: { page, limit, total } };
     })();
@@ -52,7 +53,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (!sqlite.prepare("SELECT 1 FROM customers WHERE id = ?").get(Number(rawId))) return null;
       const result = sqlite.prepare("INSERT INTO crm_customer_notes (customer_id,body,created_by_id,created_by_name) VALUES (?,?,?,?)").run(Number(rawId), body, gate.user.id, gate.user.name);
       sqlite.prepare("INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_NOTE_CREATED', 'Customer', ?, ?)").run(String(gate.user.id), gate.user.name, rawId, `CRM notu #${result.lastInsertRowid} eklendi`);
-      return sqlite.prepare("SELECT id, body, created_by_name AS createdByName, created_at AS createdAt FROM crm_customer_notes WHERE id = ?").get(result.lastInsertRowid);
+      return sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.id = ?`).get(result.lastInsertRowid);
     });
     const created = save();
     if (!created) return NextResponse.json({ success: false, error: "Müşteri bulunamadı." }, { status: 404 });

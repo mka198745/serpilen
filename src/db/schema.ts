@@ -79,7 +79,7 @@ export const customers = sqliteTable("customers", {
   index("customers_crm_normalized_phone_idx").on(sql`replace(replace(replace(replace(replace(replace(${table.phone},' ',''),'-',''),'(',''),')',''),'.',''),'+','')`),
 ]);
 
-// Personel tarafından eklenen, müşteriye bağlı değiştirilemeyen CRM notları.
+// Personel tarafından eklenen, müşteriye bağlı CRM notları.
 export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
@@ -88,6 +88,15 @@ export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
   createdByName: text("created_by_name").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 }, (table) => [index("crm_customer_notes_customer_idx").on(table.customerId, table.createdAt, table.id)]);
+
+// Notun yalnız son düzenleme üstverisi; eski not metni saklanmaz.
+export const crmNoteEditState = sqliteTable("crm_note_edit_state", {
+  noteId: integer("note_id").primaryKey().references(() => crmCustomerNotes.id, { onDelete: "restrict" }),
+  revision: integer("revision").notNull(),
+  updatedById: integer("updated_by_id").notNull(),
+  updatedByName: text("updated_by_name").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+});
 
 export const crmTags = sqliteTable("crm_tags", {
   id: integer("id").primaryKey({ autoIncrement: true }),

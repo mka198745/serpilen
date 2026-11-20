@@ -4,7 +4,7 @@ import { requireCrmAccess } from "@/lib/crm-access";
 import { crmUtcDayStart } from "@/lib/crm-date";
 
 export const dynamic = "force-dynamic";
-const kinds = ["CUSTOMER_CREATED", "ORDER_CREATED", "ORDER_STATUS", "NOTE_CREATED", "PROFILE_UPDATED", "RETURN_CREATED", "LOYALTY_TRANSACTION"];
+const kinds = ["CUSTOMER_CREATED", "ORDER_CREATED", "ORDER_STATUS", "NOTE_CREATED", "NOTE_UPDATED", "PROFILE_UPDATED", "RETURN_CREATED", "LOYALTY_TRANSACTION"];
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request);
   if (!gate.ok) return gate.response;
@@ -26,6 +26,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       UNION ALL SELECT 'ORDER_STATUS',h.id,h.created_at,o.order_number,o.order_type,h.changed_by,h.from_status,h.to_status,NULL,NULL,NULL,NULL FROM orders o JOIN order_status_history h ON h.order_id=o.id WHERE o.customer_id=@id AND h.from_status IS NOT NULL
       UNION ALL SELECT 'NOTE_CREATED',n.id,n.created_at,NULL,NULL,n.created_by_name,NULL,NULL,NULL,NULL,NULL,NULL FROM crm_customer_notes n WHERE n.customer_id=@id
       UNION ALL SELECT 'PROFILE_UPDATED',a.id,a.created_at,NULL,NULL,a.user_name,NULL,NULL,NULL,NULL,NULL,NULL FROM audit_logs a WHERE a.entity='Customer' AND a.entity_id=@rawId AND a.action='CRM_CUSTOMER_UPDATED'
+      UNION ALL SELECT 'NOTE_UPDATED',a.id,a.created_at,NULL,NULL,a.user_name,NULL,NULL,NULL,NULL,NULL,NULL FROM audit_logs a WHERE a.entity='Customer' AND a.entity_id=@rawId AND a.action='CRM_NOTE_UPDATED'
       UNION ALL SELECT 'RETURN_CREATED',r.id,r.created_at,o.order_number,o.order_type,r.created_by,NULL,NULL,r.return_number,r.status,NULL,NULL FROM orders o JOIN order_returns r ON r.order_id=o.id WHERE o.customer_id=@id
       UNION ALL SELECT 'LOYALTY_TRANSACTION',t.id,t.created_at,o.order_number,o.order_type,NULL,NULL,NULL,NULL,NULL,t.type,t.points FROM loyalty_transactions t LEFT JOIN orders o ON o.id=t.order_id AND o.customer_id=t.customer_id WHERE t.customer_id=@id`;
     const filter = `(@kind='' OR kind=@kind) AND (@channel='' OR channel=@channel) AND (@actor='' OR actor LIKE @actorLike ESCAPE '\\') AND (@fromTime IS NULL OR occurredAt>=@fromTime) AND (@toTime IS NULL OR occurredAt<@toTime)`;

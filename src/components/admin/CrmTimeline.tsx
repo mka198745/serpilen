@@ -2,7 +2,7 @@
 
 import React from "react";
 
-export type CrmTimelineEvent = { kind: "CUSTOMER_CREATED" | "ORDER_CREATED" | "ORDER_STATUS" | "NOTE_CREATED" | "PROFILE_UPDATED" | "RETURN_CREATED" | "LOYALTY_TRANSACTION"; eventId: number; occurredAt: number; orderNumber: string | null; channel: string | null; actor: string | null; fromStatus: string | null; toStatus: string | null; returnNumber?: string | null; returnStatus?: string | null; loyaltyType?: string | null; points?: number | null };
+export type CrmTimelineEvent = { kind: "CUSTOMER_CREATED" | "ORDER_CREATED" | "ORDER_STATUS" | "NOTE_CREATED" | "NOTE_UPDATED" | "PROFILE_UPDATED" | "RETURN_CREATED" | "LOYALTY_TRANSACTION"; eventId: number; occurredAt: number; orderNumber: string | null; channel: string | null; actor: string | null; fromStatus: string | null; toStatus: string | null; returnNumber?: string | null; returnStatus?: string | null; loyaltyType?: string | null; points?: number | null };
 
 const title = (event: CrmTimelineEvent) => {
   switch (event.kind) {
@@ -12,6 +12,7 @@ const title = (event: CrmTimelineEvent) => {
     case "RETURN_CREATED": return `İade kaydı oluşturuldu · ${event.returnNumber} · Sipariş ${event.orderNumber} · Güncel durum: ${event.returnStatus}`;
     case "LOYALTY_TRANSACTION": return `Sadakat puan hareketi · ${event.loyaltyType} · ${event.points} puan${event.orderNumber ? ` · Sipariş ${event.orderNumber}` : ""}`;
     case "NOTE_CREATED": return "Müşteri notu eklendi";
+    case "NOTE_UPDATED": return "Müşteri notu düzenlendi";
     case "PROFILE_UPDATED": return "Müşteri kartı güncellendi";
   }
 };
