@@ -80,9 +80,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Müşteri notu düzenleme/);
-  assert.match(html, /Müşteri notları/);
-  assert.match(html, /eski metin/);
+  assert.match(html, /Son geliştirme · Son ödenmiş sipariş tarihi/);
+  assert.match(html, /Son ödenmiş sipariş tarihi/);
+  assert.match(html, /ödeme zamanı değildir/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {
@@ -100,6 +100,9 @@ test("Şehir ve müşteri kayıt tarihi filtreleri panelde bulunur", () => {
   assert.match(html, /crm-city-filter/);
   assert.match(html, /crm-created-from/);
   assert.match(html, /crm-created-to/);
+  assert.match(html, /crm-last-paid-from/);
+  assert.match(html, /crm-last-paid-to/);
+  assert.match(html, /ödeme tarihi değildir/);
   assert.match(html, /büyük\/küçük harfe duyarlı/);
   assert.match(html, /UTC gün sınırlarına/);
 });

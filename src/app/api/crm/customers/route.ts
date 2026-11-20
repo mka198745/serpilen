@@ -20,7 +20,10 @@ export async function GET(request: Request) {
   const createdFrom = params.get("createdFrom") || "", createdTo = params.get("createdTo") || "";
   const fromTime = createdFrom ? crmUtcDayStart(createdFrom) : null;
   const toTime = createdTo ? crmUtcDayStart(createdTo) : null;
-  if (city.length > 100 || (createdFrom && fromTime === null) || (createdTo && toTime === null) || (fromTime !== null && toTime !== null && fromTime > toTime) || search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership)) {
+  const lastPaidFrom = params.get("lastPaidFrom") || "", lastPaidTo = params.get("lastPaidTo") || "";
+  const lastFromTime = lastPaidFrom ? crmUtcDayStart(lastPaidFrom) : null;
+  const lastToTime = lastPaidTo ? crmUtcDayStart(lastPaidTo) : null;
+  if ((lastPaidFrom && lastFromTime === null) || (lastPaidTo && lastToTime === null) || (lastFromTime !== null && lastToTime !== null && lastFromTime > lastToTime) || city.length > 100 || (createdFrom && fromTime === null) || (createdTo && toTime === null) || (fromTime !== null && toTime !== null && fromTime > toTime) || search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership)) {
     return NextResponse.json({ success: false, error: "Geçersiz arama, filtre veya sayfa." }, { status: 422 });
   }
   const page = Number(pageText), limit = 20;
@@ -28,12 +31,15 @@ export async function GET(request: Request) {
   const where = `(? = '' OR c.name LIKE ? ESCAPE '\\' OR c.email LIKE ? ESCAPE '\\' OR c.phone LIKE ? ESCAPE '\\' OR CAST(c.id AS TEXT) = ?) AND (? = 0 OR EXISTS (SELECT 1 FROM crm_customer_tags ct WHERE ct.customer_id = c.id AND ct.tag_id = ?))`;
   // Only fixed, allowlisted SQL fragments are added; user input remains bound.
   const paid = `(SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED'))`;
+  // The most recently CREATED order that is currently paid and not cancelled/returned.
+  // An older matching order must not make a newer qualifying order fit the range.
+  const lastPaid = `(SELECT o.created_at FROM orders o WHERE o.customer_id = c.id AND o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED') ORDER BY o.created_at DESC, o.id DESC LIMIT 1)`;
   const linked = `EXISTS (SELECT 1 FROM users u WHERE u.customer_id = c.id AND u.role = 'B2C_CUSTOMER')`;
   const purchaseWhere: Record<string, string> = { none: `${paid} = 0`, once: `${paid} = 1`, repeat: `${paid} >= 2` };
   const membershipWhere: Record<string, string> = { linked, unlinked: `NOT ${linked}` };
-  const filters = [where, purchaseWhere[purchase], membershipWhere[membership], "(? = '' OR trim(c.city) = ? COLLATE BINARY)", "(? IS NULL OR c.created_at >= ?)", "(? IS NULL OR c.created_at < ?)"].filter(Boolean).join(" AND ");
+  const filters = [where, purchaseWhere[purchase], membershipWhere[membership], "(? = '' OR trim(c.city) = ? COLLATE BINARY)", "(? IS NULL OR c.created_at >= ?)", "(? IS NULL OR c.created_at < ?)", lastFromTime !== null ? `${lastPaid} >= ?` : "", lastToTime !== null ? `${lastPaid} < ?` : ""].filter(Boolean).join(" AND ");
   const endTime = toTime === null ? null : toTime + 86400;
-  const args = [search, term, term, term, search, Number(tagText), Number(tagText), city, city, fromTime, fromTime, endTime, endTime];
+  const args = [search, term, term, term, search, Number(tagText), Number(tagText), city, city, fromTime, fromTime, endTime, endTime, ...(lastFromTime !== null ? [lastFromTime] : []), ...(lastToTime !== null ? [lastToTime + 86400] : [])];
   try {
     const metrics = sqlite.prepare(`WITH filtered AS (SELECT c.id FROM customers c WHERE ${filters}),
       paid AS (SELECT o.customer_id, COUNT(*) AS order_count, SUM(CAST(o.grand_total AS REAL)) AS amount
@@ -50,7 +56,8 @@ export async function GET(request: Request) {
     const data = sqlite.prepare(`SELECT c.id, c.name, c.email, c.phone, c.type, c.segment, c.city, c.loyalty_points AS loyaltyPoints, c.created_at AS createdAt,
       (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id) AS orderCount,
       (SELECT COALESCE(SUM(CAST(o.grand_total AS REAL)), 0) FROM orders o WHERE o.customer_id = c.id AND o.payment_status = 'PAID' AND o.status NOT IN ('CANCELLED','REFUNDED','RETURNED')) AS paidOrderTotal,
-      (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = c.id) AS lastOrderAt
+      (SELECT MAX(o.created_at) FROM orders o WHERE o.customer_id = c.id) AS lastOrderAt,
+      ${lastPaid} AS lastPaidOrderAt
       FROM customers c WHERE ${filters} ORDER BY c.id DESC LIMIT ? OFFSET ?`).all(...args, limit, (page - 1) * limit);
     return NextResponse.json({ success: true, data, metrics: { ...metrics, averagePaidOrder: metrics.paidOrderCount ? metrics.paidOrderTotal / metrics.paidOrderCount : null }, pagination: { page, limit, total } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
