@@ -26,9 +26,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         (SELECT COUNT(*) FROM account_transactions WHERE customer_id=@id) AS accountTransactions,
         (SELECT COUNT(*) FROM loyalty_transactions WHERE customer_id=@id) AS loyaltyTransactions,
         (SELECT COUNT(*) FROM crm_customer_notes WHERE customer_id=@id) AS notes,
+        (SELECT COUNT(*) FROM crm_customer_notes n JOIN crm_note_edit_state e ON e.note_id=n.id WHERE n.customer_id=@id) AS editedNotes,
         (SELECT COUNT(*) FROM crm_customer_tags WHERE customer_id=@id) AS tags,
-        (SELECT COUNT(*) FROM rfm_scores WHERE customer_id=@id) AS rfmScores`);
-      const data = { source: { customer: source, counts: counts.get({ id: Number(id) }) }, target: { customer: destination, counts: counts.get({ id: Number(target) }) } };
+        (SELECT COUNT(*) FROM rfm_scores WHERE customer_id=@id) AS rfmScores,
+        (SELECT COUNT(*) FROM crm_duplicate_reviews WHERE customer_low_id=@id) +
+        (SELECT COUNT(*) FROM crm_duplicate_reviews WHERE customer_high_id=@id) AS duplicateReviews`);
+      const comparison = sqlite.prepare(`SELECT
+        (SELECT COUNT(*) FROM crm_customer_tags a JOIN crm_customer_tags b ON b.tag_id=a.tag_id AND b.customer_id=@target WHERE a.customer_id=@source) AS sharedTags,
+        (SELECT COUNT(DISTINCT a.period_days) FROM rfm_scores a WHERE a.customer_id=@source AND EXISTS
+          (SELECT 1 FROM rfm_scores b WHERE b.customer_id=@target AND b.period_days=a.period_days)) AS sharedRfmPeriods`).get({ source: Number(id), target: Number(target) });
+      const data = { source: { customer: source, counts: counts.get({ id: Number(id) }) }, target: { customer: destination, counts: counts.get({ id: Number(target) }) }, comparison };
       sqlite.prepare(`INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_MERGE_PREVIEW', 'Customer', ?, ?)`).run(String(gate.user.id), gate.user.name, id, `Birleştirme ön incelemesi, hedef müşteri #${target}`);
       return { data, versions: { source: customerEditVersion(source), target: customerEditVersion(destination) }, review: readDuplicateReview(source, destination) };
     })();

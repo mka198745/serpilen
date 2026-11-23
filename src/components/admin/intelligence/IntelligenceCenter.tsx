@@ -150,7 +150,7 @@ function SectionNote({ notes }: { notes?: string[] }) {
 }
 function Loading() { return <div className="py-10 flex items-center justify-center gap-2 text-stone-500 text-xs"><Loader2 className="w-4 h-4 animate-spin" /> Hesaplanıyor…</div>; }
 function ErrorBox({ msg }: { msg: string }) {
-  return <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />{msg}</div>;
+  return <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2"><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />{msg}</div>;
 }
 function Empty({ msg }: { msg: string }) { return <div className="py-10 text-center text-xs text-stone-400">{msg}</div>; }
 

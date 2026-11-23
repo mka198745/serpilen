@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
+import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
-import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
+import { readCrmJson } from "@/lib/crm-write";
 import { isValidReviewEmail } from "@/lib/review-email";
 import { crmEmailKey, hasCrmContactDuplicate } from "@/lib/crm-duplicates";
 import { crmUtcDayStart } from "@/lib/crm-date";
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
   const tagText = params.get("tag") || "";
   const purchase = params.get("purchase") || "";
   const membership = params.get("membership") || "";
+  const channel = params.get("channel") || "";
   const city = (params.get("city") || "").trim();
   const createdFrom = params.get("createdFrom") || "", createdTo = params.get("createdTo") || "";
   const fromTime = createdFrom ? crmUtcDayStart(createdFrom) : null;
@@ -23,7 +25,7 @@ export async function GET(request: Request) {
   const lastPaidFrom = params.get("lastPaidFrom") || "", lastPaidTo = params.get("lastPaidTo") || "";
   const lastFromTime = lastPaidFrom ? crmUtcDayStart(lastPaidFrom) : null;
   const lastToTime = lastPaidTo ? crmUtcDayStart(lastPaidTo) : null;
-  if ((lastPaidFrom && lastFromTime === null) || (lastPaidTo && lastToTime === null) || (lastFromTime !== null && lastToTime !== null && lastFromTime > lastToTime) || city.length > 100 || (createdFrom && fromTime === null) || (createdTo && toTime === null) || (fromTime !== null && toTime !== null && fromTime > toTime) || search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership)) {
+  if ((lastPaidFrom && lastFromTime === null) || (lastPaidTo && lastToTime === null) || (lastFromTime !== null && lastToTime !== null && lastFromTime > lastToTime) || city.length > 100 || (createdFrom && fromTime === null) || (createdTo && toTime === null) || (fromTime !== null && toTime !== null && fromTime > toTime) || search.length > 100 || !/^[1-9]\d{0,5}$/.test(pageText) || (tagText && !/^[1-9]\d{0,14}$/.test(tagText)) || (tagText && !Number.isSafeInteger(Number(tagText))) || !["", "none", "once", "repeat"].includes(purchase) || !["", "linked", "unlinked"].includes(membership) || !["", "online", "pos", "both", "other", "none"].includes(channel)) {
     return NextResponse.json({ success: false, error: "Geçersiz arama, filtre veya sayfa." }, { status: 422 });
   }
   const page = Number(pageText), limit = 20;
@@ -37,7 +39,13 @@ export async function GET(request: Request) {
   const linked = `EXISTS (SELECT 1 FROM users u WHERE u.customer_id = c.id AND u.role = 'B2C_CUSTOMER')`;
   const purchaseWhere: Record<string, string> = { none: `${paid} = 0`, once: `${paid} = 1`, repeat: `${paid} >= 2` };
   const membershipWhere: Record<string, string> = { linked, unlinked: `NOT ${linked}` };
-  const filters = [where, purchaseWhere[purchase], membershipWhere[membership], "(? = '' OR trim(c.city) = ? COLLATE BINARY)", "(? IS NULL OR c.created_at >= ?)", "(? IS NULL OR c.created_at < ?)", lastFromTime !== null ? `${lastPaid} >= ?` : "", lastToTime !== null ? `${lastPaid} < ?` : ""].filter(Boolean).join(" AND ");
+  // A channel describes existence of any directly linked order, not paid revenue.
+  const online = `EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND o.order_type = 'ONLINE_B2C')`;
+  const pos = `EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND o.order_type = 'POS')`;
+  const other = `EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id AND (o.order_type NOT IN ('ONLINE_B2C','POS') OR o.order_type IS NULL))`;
+  const anyOrder = `EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)`;
+  const channelWhere: Record<string, string> = { online, pos, both: `(${online} AND ${pos})`, other, none: `NOT ${anyOrder}` };
+  const filters = [where, purchaseWhere[purchase], membershipWhere[membership], channelWhere[channel], "(? = '' OR trim(c.city) = ? COLLATE BINARY)", "(? IS NULL OR c.created_at >= ?)", "(? IS NULL OR c.created_at < ?)", lastFromTime !== null ? `${lastPaid} >= ?` : "", lastToTime !== null ? `${lastPaid} < ?` : ""].filter(Boolean).join(" AND ");
   const endTime = toTime === null ? null : toTime + 86400;
   const args = [search, term, term, term, search, Number(tagText), Number(tagText), city, city, fromTime, fromTime, endTime, endTime, ...(lastFromTime !== null ? [lastFromTime] : []), ...(lastToTime !== null ? [lastToTime + 86400] : [])];
   try {
@@ -70,7 +78,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const invalid = validateCrmWrite(request);
+  const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
   const parsed = await readCrmJson(request);
   if (!parsed.ok) return parsed.response;
@@ -88,14 +96,16 @@ export async function POST(request: Request) {
   }
   try {
     const create = sqlite.transaction(() => {
-      if (hasCrmContactDuplicate(email ? crmEmailKey(email) : null, digits, 0)) return null;
+      if (!canStillWriteCrm(gate.user)) return { status: 403 } as const;
+      if (hasCrmContactDuplicate(email ? crmEmailKey(email) : null, digits, 0)) return { status: 409 } as const;
       const result = sqlite.prepare(`INSERT INTO customers (name, phone, email, city, address, company_name, type, segment) VALUES (?,?,?,?,?,?, 'B2C', 'YENİ')`).run(name, phone, email, city, address, companyName);
       sqlite.prepare(`INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_CUSTOMER_CREATED', 'Customer', ?, 'CRM müşteri kartı oluşturuldu')`).run(String(gate.user.id), gate.user.name, String(result.lastInsertRowid));
-      return Number(result.lastInsertRowid);
+      return { status: 201, id: Number(result.lastInsertRowid) } as const;
     });
-    const id = create.immediate();
-    if (id === null) return NextResponse.json({ success: false, error: "Bu e-posta veya telefonla bir müşteri kartı mevcut. Önce mevcut kayıtları kontrol edin." }, { status: 409 });
-    return NextResponse.json({ success: true, data: { id } }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
+    const result = create.immediate();
+    if (result.status === 403) return NextResponse.json({ success: false, error: "CRM değiştirme yetkiniz bulunmuyor." }, { status: 403 });
+    if (result.status === 409) return NextResponse.json({ success: false, error: "Bu e-posta veya telefonla bir müşteri kartı mevcut. Önce mevcut kayıtları kontrol edin." }, { status: 409 });
+    return NextResponse.json({ success: true, data: { id: result.id } }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM customer creation failed", error);
     return NextResponse.json({ success: false, error: "Müşteri kartı oluşturulamadı." }, { status: 500 });

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
+import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
-import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
+import { readCrmJson } from "@/lib/crm-write";
 import { customerEditVersion } from "@/lib/crm-customer";
 import { readDuplicateReview, reviewCustomerSql, reviewPair, type ReviewCustomer, type ReviewStatus } from "@/lib/crm-duplicate-review";
 
@@ -13,7 +14,7 @@ const validVersion = (value: unknown) => typeof value === "string" && /^[a-f0-9]
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const invalid = validateCrmWrite(request);
+  const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
   const { id } = await context.params;
   if (!validId(id)) return NextResponse.json({ success: false, error: "Geçersiz müşteri numarası." }, { status: 422 });
@@ -27,6 +28,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const targetId = Number(body.targetId), status = body.status as ReviewStatus;
   try {
     const save = sqlite.transaction(() => {
+      if (!canStillWriteCrm(gate.user)) return { status: 403, error: "CRM değiştirme yetkiniz bulunmuyor." } as const;
       const query = sqlite.prepare(reviewCustomerSql);
       const source = query.get(Number(id)) as ReviewCustomer | undefined;
       const target = query.get(targetId) as ReviewCustomer | undefined;

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
+import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
-import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
+import { readCrmJson } from "@/lib/crm-write";
 import { crmEmailKey, crmPhoneKey, hasCrmContactDuplicate } from "@/lib/crm-duplicates";
 import { customerEditVersion, type EditableCustomer } from "@/lib/crm-customer";
 import { isValidReviewEmail } from "@/lib/review-email";
@@ -24,6 +25,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const summary = sqlite.prepare(`SELECT COUNT(*) AS orderCount, COALESCE(SUM(CASE WHEN payment_status = 'PAID' AND status NOT IN ('CANCELLED','REFUNDED','RETURNED') THEN CAST(grand_total AS REAL) ELSE 0 END), 0) AS paidOrderTotal, MIN(created_at) AS firstOrderAt, MAX(created_at) AS lastOrderAt FROM orders WHERE customer_id = ?`).get(id);
     const notes = sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.customer_id = ? ORDER BY n.created_at DESC, n.id DESC LIMIT 50`).all(id);
     const tags = sqlite.prepare("SELECT t.id,t.name FROM crm_tags t JOIN crm_customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=? ORDER BY t.name COLLATE NOCASE").all(id);
+    // Counts only: never return account identifiers, emails, authentication fields or inferred matches.
+    const identityLinks = sqlite.prepare(`SELECT
+      (SELECT COUNT(*) FROM users WHERE customer_id=@id AND role='B2C_CUSTOMER' AND is_active=1) AS activeWebAccounts,
+      (SELECT COUNT(*) FROM users WHERE customer_id=@id AND role='B2C_CUSTOMER' AND is_active=0) AS inactiveWebAccounts,
+      (SELECT COUNT(*) FROM users WHERE customer_id=@id AND role='B2C_CUSTOMER' AND is_active NOT IN (0,1)) AS unknownWebAccounts,
+      (SELECT COUNT(*) FROM users WHERE customer_id=@id AND role<>'B2C_CUSTOMER') AS otherRoleAccounts,
+      (SELECT COUNT(*) FROM orders WHERE customer_id=@id AND order_type='ONLINE_B2C') AS onlineOrders,
+      (SELECT COUNT(*) FROM orders WHERE customer_id=@id AND order_type='POS') AS posOrders,
+      (SELECT COUNT(*) FROM orders WHERE customer_id=@id AND order_type NOT IN ('ONLINE_B2C','POS')) AS otherOrders`).get({ id });
     const timeline = sqlite.prepare(`
       SELECT * FROM (
         SELECT 'CUSTOMER_CREATED' AS kind, c.id AS eventId, c.created_at AS occurredAt, NULL AS orderNumber, NULL AS channel, NULL AS actor, NULL AS fromStatus, NULL AS toStatus FROM customers c WHERE c.id = @id
@@ -39,7 +49,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         SELECT 'NOTE_UPDATED', a.id, a.created_at, NULL, NULL, a.user_name, NULL, NULL FROM audit_logs a WHERE a.entity = 'Customer' AND a.entity_id = @rawId AND a.action = 'CRM_NOTE_UPDATED'
       ) ORDER BY occurredAt DESC, kind ASC, eventId DESC LIMIT 100`).all({ id, rawId });
     sqlite.prepare(`INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_CUSTOMER_VIEW', 'Customer', ?, 'CRM profil görüntüleme')`).run(String(gate.user.id), gate.user.name, rawId);
-    return NextResponse.json({ success: true, data: { customer, editVersion: customerEditVersion(customer), orders, summary, notes, tags, timeline } }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ success: true, data: { customer, editVersion: customerEditVersion(customer), orders, summary, notes, tags, identityLinks, timeline } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM customer detail failed", error);
     return NextResponse.json({ success: false, error: "Müşteri profili yüklenemedi." }, { status: 500 });
@@ -50,7 +60,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const invalid = validateCrmWrite(request);
+  const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
   const { id: rawId } = await context.params;
   if (!validId(rawId)) return NextResponse.json({ success: false, error: "Geçersiz müşteri numarası." }, { status: 422 });
@@ -64,6 +74,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const values = body as Record<typeof keys[number] | "editVersion", string>;
   try {
     const update = sqlite.transaction(() => {
+      if (!canStillWriteCrm(gate.user)) return { status: 403, error: "CRM değiştirme yetkiniz bulunmuyor." } as const;
       const current = sqlite.prepare(customerSelect).get(Number(rawId)) as (EditableCustomer & { id: number }) | undefined;
       if (!current) return { status: 404, error: "Müşteri bulunamadı." } as const;
       if (customerEditVersion(current) !== values.editVersion) return { status: 409, error: "Müşteri bilgileri başka bir işlemle değişti. Profili yenileyip tekrar deneyin." } as const;

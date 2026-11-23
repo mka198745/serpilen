@@ -1,13 +1,13 @@
-import { requireStaff } from "@/lib/auth";
+import { requireIntelligenceRead, privateIntelligenceResponse } from "@/lib/intelligence/customer-access";
 import { loadSalesBundle } from "@/lib/intelligence/repositories";
 import { computeRfm, SEGMENT_ACTIONS } from "@/lib/intelligence/customers/rfm-engine";
 import { getIntelligenceSettings, cached } from "@/lib/intelligence/service";
-import { ok, fail } from "@/lib/intelligence/http";
+import { fail } from "@/lib/intelligence/http";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const gate = await requireStaff(request);
+  const gate = await requireIntelligenceRead(request, true);
   if (!gate.ok) return gate.response;
   try {
     const settings = await getIntelligenceSettings();
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       }));
       return { ...rfm, churnRisk, churnDays, segmentActions: SEGMENT_ACTIONS };
     });
-    return ok(data);
+    return privateIntelligenceResponse(data);
   } catch (err) {
     console.error("[intelligence/rfm]", err);
     return fail(500, "INTELLIGENCE_ERROR", "RFM analizi hesaplanamadı.");

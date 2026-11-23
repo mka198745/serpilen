@@ -1,0 +1,60 @@
+import { NextResponse } from "next/server";
+import { requireStaff, getUserByToken } from "@/lib/auth";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
+import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
+import { fetchPublicProductPage, publicHttpsUrl, resolvePublicHost, ProductImportError } from "@/lib/product-import/safe-fetch";
+import { extractProduct } from "@/lib/product-import/extract";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+const fail = (status: number, message: string) => NextResponse.json({ success: false, error: message }, { status, headers: { "Cache-Control": "private, no-store" } });
+// Best-effort per-process safeguards; not a distributed production rate limiter.
+const recent = new Map<number, number[]>();
+let inFlight = 0;
+
+export async function POST(request: Request) {
+  try {
+    return await handleImport(request);
+  } catch (error) {
+    // Failures in authorization, role settings or body reading must not become an HTML 500 page.
+    console.error("[product-import] Beklenmeyen servis hatası:", error instanceof Error ? error.name : "UnknownError");
+    return fail(500, "Ürün getirme servisi şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.");
+  }
+}
+
+async function handleImport(request: Request) {
+  const gate = await requireStaff(request);
+  if (!gate.ok) return gate.response;
+  if (!roleCanAccessModule(await readRoleMatrix(), gate.user.role, "catalog")) return fail(403,"Ürün bağlantısını getirmek için katalog yetkisi gerekir.");
+  const invalid = validateCrmWrite(request);
+  if (invalid) return invalid;
+  if (!request.headers.get("origin")) {
+    const actor = await getUserByToken(request.headers.get("authorization")?.slice(7).trim());
+    if (!actor || actor.id !== gate.user.id) return fail(403,"İstek kaynağı doğrulanamadı.");
+  }
+  const parsed = await readCrmJson(request);
+  if (!parsed.ok) return parsed.response;
+  const input = parsed.value as Record<string, unknown> | null;
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => k !== "url") || typeof input.url !== "string" || input.url.length > 2048 || !input.url.trim()) return fail(422,"Geçerli bir ürün bağlantısı girin.");
+  try { publicHttpsUrl(input.url.trim()); } catch (err) { return fail(422, err instanceof ProductImportError ? err.message : "Geçersiz bağlantı."); }
+  const now = Date.now();
+  for (const [id, times] of recent) if (times.every(time => now - time >= 60000)) recent.delete(id);
+  const times = (recent.get(gate.user.id) || []).filter(time => now - time < 60000);
+  if (times.length >= 8 || inFlight >= 4) return fail(429,"Çok fazla istek var. Lütfen biraz sonra tekrar deneyin.");
+  recent.set(gate.user.id,[...times, now]); inFlight++;
+  try {
+    const page = await fetchPublicProductPage(input.url.trim());
+    const data = extractProduct(page.html,page.url);
+    // A browser will load these external images. Exclude names resolving to any private/special IP.
+    const signal = AbortSignal.timeout(4000);
+    const checks = await Promise.all(data.images.map(async url => {
+      try { await resolvePublicHost(publicHttpsUrl(url).hostname, signal); return true; } catch { return false; }
+    }));
+    const images = data.images.filter((_url,index) => checks[index]);
+    if (images.length < data.images.length) data.warnings.push("Bazı görsel adresleri güvenlik veya erişim nedeniyle aktarılmadı.");
+    return NextResponse.json({ success: true, data: { ...data, images } }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof ProductImportError) return fail(["NO_PRODUCT","AMBIGUOUS","INVALID_URL","UNSAFE_HOST"].includes(error.code) ? 422 : 502, error.message);
+    return fail(502,"Ürün sayfası okunamadı.");
+  } finally { inFlight--; }
+}

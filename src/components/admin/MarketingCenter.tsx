@@ -76,6 +76,8 @@ export function MarketingCenter({ categories, brands }: Props) {
   const [couponForm, setCouponForm] = useState({ code: "", discountType: "PERCENT", discountValue: "10", minCartAmount: "250", maxDiscount: "", usageLimit: "100" });
 
   const [loyaltySettings, setLoyaltySettings] = useState<Record<string, string>>({});
+  const [loyaltyError, setLoyaltyError] = useState("");
+  const [savingLoyalty, setSavingLoyalty] = useState(false);
   const [answerModal, setAnswerModal] = useState<any | null>(null);
   const [answerText, setAnswerText] = useState("");
 
@@ -95,6 +97,10 @@ export function MarketingCenter({ categories, brands }: Props) {
       if (ly?.success) {
         setLoyalty(ly);
         setLoyaltySettings(ly.settings);
+        setLoyaltyError("");
+      } else {
+        setLoyalty(null);
+        setLoyaltyError(typeof ly?.error === "string" ? ly.error : "Sadakat bilgileri yüklenemedi.");
       }
       if (rv?.success) {
         setPendingReviews(rv.data.filter((x: any) => x.status === "PENDING"));
@@ -102,6 +108,9 @@ export function MarketingCenter({ categories, brands }: Props) {
       }
       void rvA;
       if (qs?.success) setQuestions(qs.data);
+    } catch {
+      setLoyalty(null);
+      setLoyaltyError("Bilgiler yüklenemedi. Bağlantınızı kontrol edin.");
     } finally {
       setBusy(false);
     }
@@ -162,9 +171,19 @@ export function MarketingCenter({ categories, brands }: Props) {
   };
 
   const saveLoyalty = async () => {
-    await post("/api/loyalty", { action: "SAVE_SETTINGS", settings: loyaltySettings });
-    setFeedback({ text: "Sadakat & sistem ayarları kaydedildi." });
-    void loadAll();
+    if (savingLoyalty || !Array.isArray(loyalty?.settingsWriteKeys)) return;
+    setSavingLoyalty(true);
+    setFeedback(null);
+    try {
+      const settings = Object.fromEntries(loyalty.settingsWriteKeys.map((key: string) => [key, loyaltySettings[key]]));
+      const res = await authFetch("/api/loyalty", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "SAVE_SETTINGS", settings }) });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Ayarlar kaydedilemedi.");
+      setFeedback({ text: "Ayarlar kaydedildi." });
+      await loadAll();
+    } catch (error) {
+      setFeedback({ text: error instanceof Error ? error.message : "Ayarlar kaydedilemedi.", isError: true });
+    } finally { setSavingLoyalty(false); }
   };
 
   const inputCls = "w-full px-3 py-2 border border-stone-300 rounded-xl text-xs";
@@ -293,6 +312,7 @@ export function MarketingCenter({ categories, brands }: Props) {
       )}
 
       {/* ---------------- SADAKAT & AYARLAR ---------------- */}
+      {subTab === "loyalty" && !loyalty && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{loyaltyError || "Sadakat bilgileri yükleniyor…"}</p>}
       {subTab === "loyalty" && loyalty && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3">
@@ -309,15 +329,17 @@ export function MarketingCenter({ categories, brands }: Props) {
                 <label className="flex-1 text-[11px] text-stone-600">{f.label}</label>
                 <input
                   value={loyaltySettings[f.key] ?? ""}
+                  disabled={savingLoyalty || !Array.isArray(loyalty.settingsWriteKeys) || !loyalty.settingsWriteKeys.includes(f.key)}
                   onChange={(e) => setLoyaltySettings({ ...loyaltySettings, [f.key]: e.target.value })}
                   className="w-24 px-2 py-1.5 border border-stone-300 rounded-lg text-xs text-center font-mono"
                 />
               </div>
             ))}
-            <button onClick={() => void saveLoyalty()} className="w-full py-2.5 bg-amber-800 text-white text-xs font-bold rounded-xl">Ayarları Kaydet</button>
+            <p className="text-[11px] text-stone-500">Rezervasyon ve kargo ayarlarını yalnız Süper Admin değiştirebilir.</p>
+            <button disabled={savingLoyalty || !Array.isArray(loyalty.settingsWriteKeys)} onClick={() => void saveLoyalty()} className="w-full py-2.5 bg-amber-800 text-white text-xs font-bold rounded-xl disabled:opacity-50">{savingLoyalty ? "Kaydediliyor…" : "Ayarları Kaydet"}</button>
           </div>
 
-          <div className="space-y-4">
+          {(!Array.isArray(loyalty.members) || !Array.isArray(loyalty.transactions)) ? <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Müşteri puanları ve hareketleri için CRM okuma yetkisi gerekir.</p> : <div className="space-y-4">
             <div className="bg-white p-5 rounded-2xl border border-stone-200">
               <h3 className="font-bold text-sm text-stone-900 mb-3">Üyelik Tiers (otomatik)</h3>
               <div className="grid grid-cols-4 gap-2 text-center text-[10px] font-bold">
@@ -346,7 +368,7 @@ export function MarketingCenter({ categories, brands }: Props) {
                 ))}
               </div>
             </div>
-          </div>
+          </div>}
         </div>
       )}
 

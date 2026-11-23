@@ -305,11 +305,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onStage?.({ id: "api", ok: false, detail: `ağ hatası: ${msg}` });
         return {
           success: false,
-          message: `Sunucuya ulaşılamadı (ağ hatası: ${msg}). Önizleme bağlantınızı kontrol edip tekrar deneyin.`,
+          message: path === "/api/auth/register"
+            ? "Kayıt isteğinin sonucu bilinmiyor. Tekrar kayıt olmadan önce giriş yapmayı deneyin."
+            : `Sunucuya ulaşılamadı (ağ hatası: ${msg}). Önizleme bağlantınızı kontrol edip tekrar deneyin.`,
         };
       }
       const data = await res.json().catch(() => ({}));
-      if (data?.success) {
+      if (res.ok && data?.success && data?.data && typeof data.data === "object") {
         onStage?.({ id: "api", ok: true, detail: `HTTP ${res.status} ✓` });
         const ok = await establishSession(data.data.token || null, onStage);
         if (ok) return { success: true };
@@ -318,6 +320,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           message:
             "Giriş doğrulandı ancak oturum sürdürülemedi. Tarayıcınız çerezleri ve site verilerini engelliyor olabilir — izin verip tekrar deneyin veya önizlemeyi yeni sekmede açın.",
         };
+      }
+      if (path === "/api/auth/register" && (res.status >= 500 || res.ok)) {
+        onStage?.({ id: "api", ok: false, detail: `HTTP ${res.status}: kayıt sonucu doğrulanamadı` });
+        return { success: false, message: "Kayıt isteğinin sonucu doğrulanamadı. Tekrar kayıt olmadan önce giriş yapmayı deneyin." };
       }
       const errMsg: string = data?.error?.message || "İşlem yapılamadı.";
       const errCode: string = data?.error?.code ? ` [${data.error.code}]` : "";

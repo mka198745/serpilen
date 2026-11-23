@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
-import { getUserByToken } from "@/lib/auth";
+import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
-import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
-import { normalizeRoleMatrix } from "@/lib/admin-modules";
-import { roleCanAccessModule } from "@/lib/role-matrix-server";
+import { readCrmJson } from "@/lib/crm-write";
 import { crmNoteColumns, crmNoteFrom } from "@/lib/crm-note-query";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +13,8 @@ const fail = (status: number, error: string) => NextResponse.json({ success: fal
 export async function PATCH(request: Request, context: { params: Promise<{ id: string; noteId: string }> }) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const invalid = validateCrmWrite(request);
+  const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
-  // A forged bearer header must not grant a cookie-authenticated request an Origin exemption.
-  if (!request.headers.get("origin")) {
-    const actor = await getUserByToken(request.headers.get("authorization")?.slice(7).trim());
-    if (!actor || actor.id !== gate.user.id) return fail(403, "İstek kaynağı doğrulanamadı.");
-  }
   const { id, noteId } = await context.params;
   if (!validId(id) || !validId(noteId)) return fail(422, "Geçersiz müşteri veya not numarası.");
   const parsed = await readCrmJson(request);
@@ -31,13 +24,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const body = (input.body as string).trim(), expected = Number(input.expectedRevision);
   try {
     const save = sqlite.transaction(() => {
-      // Check the current actor and matrix under the same write lock as the update.
-      const actor = sqlite.prepare("SELECT role,is_active AS isActive FROM users WHERE id=?").get(gate.user.id) as { role: string; isActive: number } | undefined;
-      const setting = sqlite.prepare("SELECT value FROM app_settings WHERE key='admin.role_matrix'").get() as { value: string } | undefined;
-      let savedMatrix: unknown = null;
-      try { if (setting?.value) savedMatrix = JSON.parse(setting.value); } catch { /* defaults */ }
-      const matrix = normalizeRoleMatrix(savedMatrix);
-      if (!actor?.isActive || actor.role !== gate.user.role || !roleCanAccessModule(matrix, actor.role, "crm") || !roleCanAccessModule(matrix, actor.role, "crmWrite")) return { status: 403, error: "CRM değiştirme yetkiniz bulunmuyor." } as const;
+      if (!canStillWriteCrm(gate.user)) return { status: 403, error: "CRM değiştirme yetkiniz bulunmuyor." } as const;
       const current = sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.customer_id=? AND n.id=?`).get(Number(id), Number(noteId)) as { body: string; revision: number } | undefined;
       if (!current) return { status: 404, error: "Not bulunamadı." } as const;
       if (current.revision !== expected) return { status: 409, error: "Not başka bir işlemle değişti. Taslağınızı kopyalayıp notları yenileyin ve tekrar düzenleyin." } as const;

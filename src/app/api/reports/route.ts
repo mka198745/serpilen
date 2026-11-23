@@ -46,15 +46,19 @@ export async function GET(request: Request) {
     const days = Number(searchParams.get("days") || 30);
     const format = searchParams.get("format"); // csv
     const exportType = searchParams.get("export"); // sales | products | stock | customers | finance
+    const canReadCustomers = roleCanAccessModule(matrix, __gate.user.role, "crm");
+    if (format === "csv" && exportType === "customers" && !canReadCustomers) {
+      return NextResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Müşteri raporu için CRM erişim yetkisi gerekir." } }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+    }
     const since = new Date(DAYS(days));
 
-    const allOrders = await db.select().from(orders);
+    const allOrders = await db.select({ id: orders.id, createdAt: orders.createdAt, customerId: orders.customerId, status: orders.status, orderType: orders.orderType, grandTotal: orders.grandTotal, discountTotal: orders.discountTotal, shippingTotal: orders.shippingTotal }).from(orders);
     const allItems = await db.select().from(orderItems);
     const allProds = await db.select().from(products);
     const allVars = await db.select().from(productVariants);
     const allBrands = await db.select().from(brands);
     const allCats = await db.select().from(categories);
-    const allCusts = await db.select().from(customers);
+    const allCusts = canReadCustomers ? await db.select({ id: customers.id, name: customers.name, type: customers.type, segment: customers.segment, phone: customers.phone, loyaltyPoints: customers.loyaltyPoints }).from(customers) : [];
     const allInv = await db.select().from(inventory);
     const allWh = await db.select().from(warehouses);
     const returns = await db.select().from(orderReturns);
@@ -260,6 +264,7 @@ export async function GET(request: Request) {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
           "Content-Disposition": `attachment; filename="${exportType || "rapor"}-${days}gun.csv"`,
+          "Cache-Control": "private, no-store",
         },
       });
     }
@@ -289,16 +294,16 @@ export async function GET(request: Request) {
         turnover,
         totalQty,
       },
-      customers: {
+      customers: canReadCustomers ? {
         total: allCusts.length,
         newCount: newCustomers,
         activeCount: activeCustomers,
         passiveCount: passiveCustomers,
         vipCount: vipCustomers,
         top: custReport.slice(0, 10),
-      },
+      } : null,
       finance,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error: any) {
     console.error("Reports error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

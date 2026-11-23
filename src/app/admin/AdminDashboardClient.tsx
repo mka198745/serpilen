@@ -64,6 +64,8 @@ import {
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
+import { ProductLinkImport } from "@/components/admin/ProductLinkImport";
+import type { ImportedProduct } from "@/lib/product-import/extract";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import { SiteManagement } from "@/components/admin/SiteManagement";
 import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
@@ -267,8 +269,10 @@ export function AdminDashboardClient({
   const [reportDays, setReportDays] = useState(30);
   const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance" | "zreports">("sales");
   const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState("");
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
+  const reportRequestSequence = React.useRef(0);
 
   const downloadReportCsv = async () => {
     if (csvBusy) return;
@@ -392,13 +396,19 @@ export function AdminDashboardClient({
   };
 
   const loadReport = React.useCallback(async (days: number) => {
+    const sequence = ++reportRequestSequence.current;
     setReportBusy(true);
+    setReportData(null);
+    setReportError("");
     try {
       const res = await authFetch(`/api/reports?days=${days}`, { cache: "no-store" });
       const data = await res.json();
-      if (data.success) setReportData(data);
+      if (!res.ok || !data.success) throw new Error("Rapor yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.");
+      if (sequence === reportRequestSequence.current) setReportData(data);
+    } catch {
+      if (sequence === reportRequestSequence.current) setReportError("Rapor yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.");
     } finally {
-      setReportBusy(false);
+      if (sequence === reportRequestSequence.current) setReportBusy(false);
     }
   }, []);
 
@@ -557,7 +567,7 @@ export function AdminDashboardClient({
   const [isAddCouponOpen, setIsAddCouponOpen] = useState(false);
 
   // Form states
-  const [newProd, setNewProd] = useState({
+  const emptyNewProduct = () => ({
     name: "",
     sku: "",
     barcode: "",
@@ -573,6 +583,33 @@ export function AdminDashboardClient({
     photos: [] as string[],
     videoUrl: "",
   });
+  const [newProd, setNewProd] = useState(emptyNewProduct);
+
+  const productSelectionTouched = React.useRef({ brand: false, category: false });
+
+  const applyImportedProduct = (product: ImportedProduct) => {
+    const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
+    const brandMatches = product.brand ? brandsList.filter((item) => normalize(String(item.name)) === normalize(product.brand)) : [];
+    const categoryMatches = product.category ? categoriesList.filter((item) => normalize(String(item.name)) === normalize(product.category)) : [];
+    const useBrand = !productSelectionTouched.current.brand && brandMatches.length === 1;
+    const useCategory = !productSelectionTouched.current.category && categoryMatches.length === 1;
+    const warnings: string[] = [];
+    if (!useBrand) warnings.push("Markayı kontrol edip seçin; kaynak marka eşleşmedi veya mevcut seçim korundu.");
+    if (!useCategory) warnings.push("Kategoriyi kontrol edip seçin; kaynak kategori eşleşmedi veya mevcut seçim korundu.");
+    if (useBrand) productSelectionTouched.current.brand = true;
+    if (useCategory) productSelectionTouched.current.category = true;
+    setNewProd(prev => ({
+      ...prev,
+      name: prev.name.trim() ? prev.name : product.name,
+      description: prev.description.trim() ? prev.description : product.description,
+      sku: prev.sku.trim() ? prev.sku : product.sku,
+      barcode: prev.barcode.trim() ? prev.barcode : product.barcode,
+      brandId: useBrand ? String(brandMatches[0].id) : prev.brandId,
+      categoryId: useCategory ? String(categoryMatches[0].id) : prev.categoryId,
+      photos: [...new Set([...prev.photos, ...product.images])].slice(0, 6),
+    }));
+    return warnings;
+  };
 
   const [transferData, setTransferData] = useState({
     fromWarehouseId: "1",
@@ -609,6 +646,7 @@ export function AdminDashboardClient({
   // Tanınmayan roller için varsayılan erişim verilmez.
   const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] === true;
   const reportsAllowed = matrixLoaded && canSee("reports");
+  const customerReportsAllowed = reportsAllowed && canSee("crm");
 
   // Yetki sonradan açıldığında SSR'de gönderilmeyen listeyi sekme açılınca yükle.
   React.useEffect(() => {
@@ -628,8 +666,11 @@ export function AdminDashboardClient({
   }, [activeTab, matrixLoaded, roleMatrix, currentRole]);
 
   React.useEffect(() => {
+    const sequence = reportRequestSequence;
     if (activeTab === "reports" && reportsAllowed) void loadReport(reportDays);
-  }, [activeTab, reportDays, loadReport, reportsAllowed]);
+    else { setReportData(null); setReportBusy(false); setReportError(""); }
+    return () => { sequence.current++; };
+  }, [activeTab, reportDays, loadReport, reportsAllowed, customerReportsAllowed]);
 
   React.useEffect(() => {
     (async () => {
@@ -1324,6 +1365,8 @@ export function AdminDashboardClient({
       const data = await res.json();
       if (data.success) {
         alert("Ürün başarıyla oluşturuldu.");
+        setNewProd(emptyNewProduct());
+        productSelectionTouched.current = { brand: false, category: false };
         setIsAddProductOpen(false);
         // Refresh product list
         const pRes = await authFetch("/api/products");
@@ -3066,8 +3109,8 @@ export function AdminDashboardClient({
               })}
               <button
                 onClick={downloadReportCsv}
-                disabled={csvBusy || reportSubTab === "zreports"}
-                title={reportSubTab === "zreports" ? "Z raporları CSV olarak dışa aktarılmaz" : undefined}
+                disabled={csvBusy || reportSubTab === "zreports" || (reportSubTab === "customers" && (!customerReportsAllowed || !reportData?.customers))}
+                title={reportSubTab === "zreports" ? "Z raporları CSV olarak dışa aktarılmaz" : reportSubTab === "customers" && (!customerReportsAllowed || reportData?.customers === null) ? "Müşteri raporu için CRM yetkisi gerekir" : undefined}
                 className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-stone-900 text-white hover:bg-black disabled:opacity-60 transition ml-auto"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -3077,6 +3120,7 @@ export function AdminDashboardClient({
             </div>
 
             {reportBusy && <div className="text-xs text-stone-500">Hesaplanıyor…</div>}
+            {reportError && <p role="alert" className="text-xs text-rose-700">{reportError}</p>}
 
             {reportData && reportSubTab === "sales" && (
               <div className="space-y-4">
@@ -3208,7 +3252,10 @@ export function AdminDashboardClient({
               </div>
             )}
 
-            {reportData && reportSubTab === "customers" && (
+            {reportSubTab === "customers" && (!customerReportsAllowed || reportData?.customers === null) && (
+              <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Müşteri raporunu ve CSV çıktısını görmek için Raporlar ve CRM erişim yetkileri birlikte gerekir.</p>
+            )}
+            {reportData?.customers && customerReportsAllowed && reportSubTab === "customers" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                   {[
@@ -4675,6 +4722,7 @@ export function AdminDashboardClient({
             </div>
 
             <form onSubmit={handleAddProduct} className="space-y-3 text-xs">
+              <ProductLinkImport onImport={applyImportedProduct} />
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ürün Adı:</label>
                 <input
@@ -4796,7 +4844,7 @@ export function AdminDashboardClient({
                   <label className="block font-bold text-stone-700 mb-1">Kategori:</label>
                   <select
                     value={newProd.categoryId}
-                    onChange={(e) => setNewProd({ ...newProd, categoryId: e.target.value })}
+                    onChange={(e) => { productSelectionTouched.current.category = true; setNewProd({ ...newProd, categoryId: e.target.value }); }}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   >
                     {categoriesList.map((c) => (
@@ -4808,7 +4856,7 @@ export function AdminDashboardClient({
                   <label className="block font-bold text-stone-700 mb-1">Marka:</label>
                   <select
                     value={newProd.brandId}
-                    onChange={(e) => setNewProd({ ...newProd, brandId: e.target.value })}
+                    onChange={(e) => { productSelectionTouched.current.brand = true; setNewProd({ ...newProd, brandId: e.target.value }); }}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   >
                     {brandsList.map((b) => (

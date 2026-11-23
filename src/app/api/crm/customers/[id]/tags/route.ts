@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
+import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
-import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
+import { readCrmJson } from "@/lib/crm-write";
 export const dynamic = "force-dynamic";
 const validId = (x: string) => /^[1-9]\d{0,14}$/.test(x) && Number.isSafeInteger(Number(x));
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const invalid = validateCrmWrite(request);
+  const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
   const { id: rawId } = await context.params;
   if (!validId(rawId)) return NextResponse.json({ success: false, error: "Geçersiz müşteri numarası." }, { status: 422 });
@@ -21,6 +22,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if ((!add && !remove) || (add && (name.length < 1 || name.length > 40 || /[\p{Cc}\p{Cf}]/u.test(name)))) return NextResponse.json({ success: false, error: "Etiket 1–40 karakter olmalıdır." }, { status: 422 });
   try {
     const change = sqlite.transaction(() => {
+      if (!canStillWriteCrm(gate.user)) return { status: 403, error: "CRM değiştirme yetkiniz bulunmuyor." } as const;
       const customerId = Number(rawId);
       if (!sqlite.prepare("SELECT 1 FROM customers WHERE id=?").get(customerId)) return { status: 404, error: "Müşteri bulunamadı." } as const;
       let changed = false;
@@ -45,7 +47,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const tags = sqlite.prepare("SELECT t.id,t.name FROM crm_tags t JOIN crm_customer_tags ct ON ct.tag_id=t.id WHERE ct.customer_id=? ORDER BY t.name COLLATE NOCASE").all(customerId);
       return { status: 200, tags } as const;
     });
-    const result = change();
+    const result = change.immediate();
     if (result.status !== 200) return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     return NextResponse.json({ success: true, data: result.tags }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { console.error("CRM tag change failed",error); return NextResponse.json({ success: false, error: "Etiket güncellenemedi." }, { status: 500 }); }

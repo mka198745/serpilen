@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { authFetch } from "@/lib/client-auth";
 import {
@@ -49,38 +49,46 @@ function fmt(d: string | number | null | undefined): string {
 export function SupportDesk() {
   // rows === null → yükleniyor durumu (efekt içinde senkron setState yapılmaz)
   const [rows, setRows] = useState<ContactMessage[] | null>(null);
-  const [counts, setCounts] = useState({ total: 0, NEW: 0, READ: 0, ANSWERED: 0 });
+  const [counts, setCounts] = useState<{ total: number; NEW: number; READ: number; ANSWERED: number } | null>(null);
+  const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<"" | "NEW" | "READ" | "ANSWERED">("");
   const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
+  const requestSeq = useRef(0);
   const loading = rows === null;
 
   /** Yenile / filtre değişimi: listeyi boşaltıp yeniden yükler. */
   const refresh = useCallback(() => {
+    requestSeq.current++;
     setError(null);
     setRows(null);
+    setCounts(null);
+    setOpenId(null);
     setReloadKey((k) => k + 1);
   }, []);
 
   useEffect(() => {
     let alive = true;
+    const seq = ++requestSeq.current;
     const url = `/api/contact${filter ? `?status=${filter}` : ""}`;
     void (async () => {
       try {
         const res = await authFetch(url, { cache: "no-store" });
         const data = await res.json();
-        if (!alive) return;
+        if (!alive || seq !== requestSeq.current) return;
         if (res.ok && data?.success) {
           setRows(Array.isArray(data.data) ? data.data : []);
           setCounts(data.counts || { total: 0, NEW: 0, READ: 0, ANSWERED: 0 });
         } else {
           setRows([]);
+          setCounts(null);
           setError(data?.error?.message || "Mesajlar yüklenemedi.");
         }
       } catch {
-        if (!alive) return;
+        if (!alive || seq !== requestSeq.current) return;
         setRows([]);
+        setCounts(null);
         setError("Bağlantı hatası: mesajlar yüklenemedi.");
       }
     })();
@@ -90,6 +98,8 @@ export function SupportDesk() {
   }, [filter, reloadKey]);
 
   const setStatus = async (id: number, status: "NEW" | "READ" | "ANSWERED") => {
+    if (saving) return;
+    setSaving(true);
     try {
       const res = await authFetch("/api/contact", {
         method: "PATCH",
@@ -97,21 +107,14 @@ export function SupportDesk() {
         body: JSON.stringify({ id, status }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.success) {
-        setRows((prev) => (prev || []).map((r) => (r.id === id ? { ...r, status } : r)));
-        setCounts((prev) => {
-          const next = { ...prev };
-          const before = (rows || []).find((r) => r.id === id)?.status;
-          if (before && before in next) next[before as "NEW" | "READ" | "ANSWERED"] = Math.max(0, next[before as "NEW" | "READ" | "ANSWERED"] - 1);
-          if (status in next) next[status] += 1;
-          return next;
-        });
-      } else {
-        alert(data?.error?.message || "Durum güncellenemedi.");
+      if (res.ok && data?.success) refresh();
+      else {
+        if (res.status === 401 || res.status === 403) { requestSeq.current++; setRows([]); setCounts(null); setOpenId(null); }
+        setError(data?.error?.message || "Durum güncellenemedi.");
       }
     } catch {
-      alert("Bağlantı hatası: durum güncellenemedi.");
-    }
+      setError("Bağlantı hatası: durum güncellenemedi.");
+    } finally { setSaving(false); }
   };
 
   const sorted = useMemo(
@@ -120,10 +123,10 @@ export function SupportDesk() {
   );
 
   const kpis = [
-    { key: "total", label: "Toplam Mesaj", value: counts.total, cls: "text-stone-800" },
-    { key: "NEW", label: "Yeni (okunmadı)", value: counts.NEW, cls: "text-rose-700" },
-    { key: "READ", label: "Okundu", value: counts.READ, cls: "text-amber-700" },
-    { key: "ANSWERED", label: "Yanıtlandı", value: counts.ANSWERED, cls: "text-emerald-700" },
+    { key: "total", label: "Toplam Mesaj", value: counts?.total ?? "—", cls: "text-stone-800" },
+    { key: "NEW", label: "Yeni (okunmadı)", value: counts?.NEW ?? "—", cls: "text-rose-700" },
+    { key: "READ", label: "Okundu", value: counts?.READ ?? "—", cls: "text-amber-700" },
+    { key: "ANSWERED", label: "Yanıtlandı", value: counts?.ANSWERED ?? "—", cls: "text-emerald-700" },
   ];
 
   return (
@@ -177,7 +180,7 @@ export function SupportDesk() {
           <button
             key={f.key}
             type="button"
-            onClick={() => setFilter(f.key as "" | "NEW" | "READ" | "ANSWERED")}
+            onClick={() => { if (filter !== f.key) { requestSeq.current++; setRows(null); setCounts(null); setError(null); setOpenId(null); setFilter(f.key as "" | "NEW" | "READ" | "ANSWERED"); } }}
             className={`px-3 py-1.5 rounded-full text-[11px] font-bold border transition ${
               filter === f.key
                 ? "bg-amber-800 text-white border-amber-800"
@@ -191,14 +194,14 @@ export function SupportDesk() {
 
       {/* Liste */}
       {error && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">{error}</div>
+        <div role="alert" className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">{error}</div>
       )}
 
       {loading ? (
         <div className="bg-white rounded-2xl border border-stone-200 p-10 text-center text-xs text-stone-400">
           Mesajlar yükleniyor…
         </div>
-      ) : sorted.length === 0 ? (
+      ) : error && sorted.length === 0 ? null : sorted.length === 0 ? (
         <div className="bg-white rounded-2xl border border-dashed border-stone-300 p-10 text-center space-y-2">
           <MessageSquare className="w-7 h-7 text-stone-300 mx-auto" />
           <p className="text-sm font-bold text-stone-500">Henüz mesaj yok</p>
@@ -244,7 +247,7 @@ export function SupportDesk() {
                     <button
                       type="button"
                       onClick={() => void setStatus(m.id, "READ")}
-                      disabled={m.status === "READ"}
+                      disabled={saving || m.status === "READ"}
                       className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 disabled:opacity-40 text-amber-800 text-[11px] font-bold transition inline-flex items-center gap-1"
                     >
                       <MailOpen className="w-3 h-3" /> Okundu
@@ -252,7 +255,7 @@ export function SupportDesk() {
                     <button
                       type="button"
                       onClick={() => void setStatus(m.id, "ANSWERED")}
-                      disabled={m.status === "ANSWERED"}
+                      disabled={saving || m.status === "ANSWERED"}
                       className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 disabled:opacity-40 text-emerald-800 text-[11px] font-bold transition inline-flex items-center gap-1"
                     >
                       <CheckCheck className="w-3 h-3" /> Yanıtlandı

@@ -99,7 +99,7 @@ export function AuthModal() {
         </div>
 
         {error && (
-          <div className="mx-5 mt-3 p-3 rounded-xl text-xs font-medium bg-rose-50 border border-rose-200 text-rose-800">
+          <div role="alert" className="mx-5 mt-3 p-3 rounded-xl text-xs font-medium bg-rose-50 border border-rose-200 text-rose-800">
             {error}
           </div>
         )}
@@ -168,7 +168,7 @@ export function AuthModal() {
             <div className="relative">
               <User className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
               <input
-                required minLength={2}
+                required minLength={2} maxLength={120}
                 placeholder="Ad Soyad"
                 value={regForm.name}
                 onChange={(e) => setRegForm({ ...regForm, name: e.target.value })}
@@ -179,7 +179,7 @@ export function AuthModal() {
               <div className="relative">
                 <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
                 <input
-                  type="email" required autoComplete="email"
+                  type="email" required maxLength={254} autoComplete="email"
                   placeholder="E-posta"
                   value={regForm.email}
                   onChange={(e) => setRegForm({ ...regForm, email: e.target.value })}
@@ -189,7 +189,7 @@ export function AuthModal() {
               <div className="relative">
                 <Phone className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
                 <input
-                  required
+                  required maxLength={40}
                   placeholder="Telefon (05__)"
                   value={regForm.phone}
                   onChange={(e) => setRegForm({ ...regForm, phone: e.target.value })}
@@ -200,7 +200,7 @@ export function AuthModal() {
             <div className="relative">
               <MapPin className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
               <input
-                placeholder="Şehir (opsiyonel)"
+                maxLength={100} placeholder="Şehir (opsiyonel)"
                 value={regForm.city}
                 onChange={(e) => setRegForm({ ...regForm, city: e.target.value })}
                 className={inputCls}
@@ -210,7 +210,7 @@ export function AuthModal() {
               <div className="relative">
                 <Lock className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
                 <input
-                  type="password" required minLength={6} autoComplete="new-password"
+                  type="password" required minLength={6} maxLength={256} autoComplete="new-password"
                   placeholder="Şifre (min. 6)"
                   value={regForm.password}
                   onChange={(e) => setRegForm({ ...regForm, password: e.target.value })}
@@ -220,7 +220,7 @@ export function AuthModal() {
               <div className="relative">
                 <Lock className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
                 <input
-                  type="password" required minLength={6} autoComplete="new-password"
+                  type="password" required minLength={6} maxLength={256} autoComplete="new-password"
                   placeholder="Şifre (tekrar)"
                   value={regForm.password2}
                   onChange={(e) => setRegForm({ ...regForm, password2: e.target.value })}

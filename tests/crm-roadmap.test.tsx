@@ -7,6 +7,7 @@ import { CrmLatestUpdate } from "../src/components/admin/CrmLatestUpdate";
 import { CrmDemoNotice, isCrmPreviewDemo } from "../src/components/admin/CrmDemoNotice";
 import { CrmCustomerSegmentFilters, emptySegmentFilters } from "../src/components/admin/CrmCustomerSegmentFilters";
 import { CrmDuplicateReview } from "../src/components/admin/CrmDuplicateReview";
+import { CrmMergeComparison } from "../src/components/admin/CrmMergePreview";
 import { CrmCustomerNotes } from "../src/components/admin/CrmCustomerNotes";
 import { CrmCustomerEdit } from "../src/components/admin/CrmCustomerEdit";
 import { CrmTimeline } from "../src/components/admin/CrmTimeline";
@@ -80,9 +81,9 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Son ödenmiş sipariş tarihi/);
-  assert.match(html, /Son ödenmiş sipariş tarihi/);
-  assert.match(html, /ödeme zamanı değildir/);
+  assert.match(html, /Son geliştirme · Sipariş kanalı filtresi/);
+  assert.match(html, /Online, POS, her ikisi, diğer kanal veya hiç bağlı siparişi olmayan kartları/);
+  assert.match(html, /bağlantısız misafir siparişleri dahil değildir/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {
@@ -113,4 +114,16 @@ test("Aday değerlendirmesi birleştirme yapmadığını ve alan sınırlarını
   assert.match(html, /Kart alanları değişmiş; yeniden inceleyin/);
   assert.match(html, /&lt;Personel&gt;/);
   assert.match(html, /Siparişler, üyelikler ve dış kaynaklardaki değişiklikler/);
+});
+
+
+test("Bağlantı incelemesi çakışmaları gösterir, birleştirmeye uygunluk iddia etmez", () => {
+  const html=renderToStaticMarkup(<CrmMergeComparison comparison={{sharedTags:2,sharedRfmPeriods:1}} sourceAccounts={1} targetAccounts={1} />);
+  assert.match(html,/ortak etiketi: <strong>2/);
+  assert.match(html,/Ortak RFM dönemi: <strong>1/);
+  assert.match(html,/giriş hesapları kendiliğinden birleştirilemez/);
+  assert.match(html,/birleştirme onayı veya tüm risklerin eksiksiz kontrolü değildir/);
+  const noOverlap=renderToStaticMarkup(<CrmMergeComparison comparison={{sharedTags:0,sharedRfmPeriods:0}} sourceAccounts={1} targetAccounts={0} />);
+  assert.doesNotMatch(noOverlap,/Her iki kartta bağlı hesap var|tekrarları ele alan|Aynı döneme ait RFM kayıtları/);
+  assert.match(noOverlap,/tüm risklerin eksiksiz kontrolü değildir/);
 });

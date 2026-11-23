@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Product, Category, Customer, PosShift, ProductVariant } from "@/lib/types";
+import { Product, Category, PosShift, ProductVariant } from "@/lib/types";
 import {
   Scan,
   Search,
@@ -14,7 +14,6 @@ import {
   RotateCcw,
   CheckCircle2,
   X,
-  User,
   Clock,
   Sparkles,
   Scissors,
@@ -31,6 +30,7 @@ import {
 } from "lucide-react";
 
 import { authFetch } from "@/lib/client-auth";
+import { PosCustomerPicker, type PosCustomer } from "./PosCustomerPicker";
 interface PosCartItem {
   productId: number;
   variantId: number | null;
@@ -47,14 +47,12 @@ interface PosCartItem {
 interface PosTerminalClientProps {
   initialProducts: (Product & { variants: ProductVariant[] })[];
   categories: Category[];
-  customers: Customer[];
   initialShift: PosShift | null;
 }
 
 export function PosTerminalClient({
   initialProducts,
   categories,
-  customers: initialCustomers,
   initialShift,
 }: PosTerminalClientProps) {
   const [shift, setShift] = useState<PosShift | null>(initialShift);
@@ -62,10 +60,9 @@ export function PosTerminalClient({
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [cart, setCart] = useState<PosCartItem[]>([]);
-  const [customersList, setCustomersList] = useState<Customer[]>(initialCustomers);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialCustomers[0] || null);
+  const [selectedCustomer, setSelectedCustomer] = useState<PosCustomer | null>(null);
   const [overallDiscount, setOverallDiscount] = useState<number>(0);
-  const [heldCarts, setHeldCarts] = useState<{ id: string; time: string; items: PosCartItem[]; customer: Customer | null }[]>([]);
+  const [heldCarts, setHeldCarts] = useState<{ id: string; time: string; items: PosCartItem[]; customer: PosCustomer | null }[]>([]);
   const [receiptData, setReceiptData] = useState<any | null>(null);
   const [zReportData, setZReportData] = useState<any | null>(null);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(!initialShift);
@@ -89,7 +86,10 @@ export function PosTerminalClient({
   const [isSearchingReturn, setIsSearchingReturn] = useState(false);
 
   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "", city: "İstanbul" });
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: "", phone: "", email: "" });
+  const [newCustomerError, setNewCustomerError] = useState<string | null>(null);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const creatingCustomerRef = useRef(false);
 
   // Denomination Cash Calculator for Shift Close
   const [denominations, setDenominations] = useState<Record<string, number>>({
@@ -500,27 +500,30 @@ export function PosTerminalClient({
   // Fast Customer Creation
   const handleCreateFastCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (creatingCustomerRef.current) return;
+    creatingCustomerRef.current = true;
+    setCreatingCustomer(true);
+    setNewCustomerError(null);
     try {
       const res = await authFetch("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newCustomerForm.name,
-          phone: newCustomerForm.phone,
-          email: newCustomerForm.email || null,
-          city: newCustomerForm.city,
-        }),
+        body: JSON.stringify({ name: newCustomerForm.name, phone: newCustomerForm.phone, email: newCustomerForm.email || null }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setCustomersList((prev) => [data.data, ...prev]);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data.data && Number.isSafeInteger(data.data.id)) {
         setSelectedCustomer(data.data);
         setIsNewCustomerModalOpen(false);
-        setNewCustomerForm({ name: "", phone: "", email: "", city: "İstanbul" });
+        setNewCustomerForm({ name: "", phone: "", email: "" });
         showFeedback(`✓ ${data.data.name} müşteri olarak seçildi.`);
+      } else {
+        setNewCustomerError(res.status >= 500 || res.ok ? "İşlem sonucu doğrulanamadı. Yeni kayıt açmadan önce müşteri listesini kontrol edin." : typeof data?.error === "string" ? data.error : data?.error?.message || "Müşteri kaydedilemedi.");
       }
-    } catch (err: any) {
-      alert("Hata: " + err.message);
+    } catch {
+      setNewCustomerError("Bağlantı hatası: işlem sonucu bilinmiyor. Yeni kayıt açmadan önce müşteri listesini kontrol edin.");
+    } finally {
+      creatingCustomerRef.current = false;
+      setCreatingCustomer(false);
     }
   };
 
@@ -739,27 +742,10 @@ export function PosTerminalClient({
 
             {/* Customer Switcher + Add Customer Button */}
             <div className="flex items-center gap-1.5">
-              <div className="flex-1 flex items-center gap-1.5 bg-stone-100 p-1.5 rounded-xl border border-stone-200 text-xs">
-                <User className="w-4 h-4 text-stone-500 shrink-0 ml-1" />
-                <select
-                  value={selectedCustomer?.id || ""}
-                  onChange={(e) => {
-                    const c = customersList.find((cust) => cust.id === Number(e.target.value));
-                    setSelectedCustomer(c || null);
-                  }}
-                  className="w-full bg-transparent font-medium focus:outline-none text-xs"
-                >
-                  <option value="">Misafir Perakende Müşterisi</option>
-                  {customersList.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.companyName ? `(${c.companyName})` : ""} · {c.loyaltyPoints} Puan
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <PosCustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} />
 
               <button
-                onClick={() => setIsNewCustomerModalOpen(true)}
+                onClick={() => { setNewCustomerError(null); setIsNewCustomerModalOpen(true); }}
                 className="p-2 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
                 title="Hızlı Müşteri Ekle"
               >
@@ -1111,9 +1097,12 @@ export function PosTerminalClient({
                 />
               </div>
 
+              {newCustomerError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-rose-800">{newCustomerError}</p>}
+              <p className="text-stone-500">Benzer bir kayıt bulunması aynı kişi olduğunu kanıtlamaz; otomatik eşleştirme yapılmaz.</p>
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition shadow-md"
+                disabled={creatingCustomer}
+                className="w-full py-3 disabled:opacity-50 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition shadow-md"
               >
                 Kasa Hareketini Kaydet
               </button>
@@ -1231,7 +1220,7 @@ export function PosTerminalClient({
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-stone-200 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-stone-100">
               <h3 className="font-black text-base text-stone-900">Hızlı Müşteri Kaydı (POS CRM)</h3>
-              <button onClick={() => setIsNewCustomerModalOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
+              <button type="button" aria-label="Müşteri kaydını kapat" disabled={creatingCustomer} onClick={() => setIsNewCustomerModalOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1242,6 +1231,7 @@ export function PosTerminalClient({
                 <input
                   type="text"
                   required
+                  disabled={creatingCustomer}
                   placeholder="Örn: Gülizar Aydın"
                   value={newCustomerForm.name}
                   onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
@@ -1254,6 +1244,7 @@ export function PosTerminalClient({
                 <input
                   type="text"
                   required
+                  disabled={creatingCustomer}
                   placeholder="0532 000 00 00"
                   value={newCustomerForm.phone}
                   onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
@@ -1265,6 +1256,7 @@ export function PosTerminalClient({
                 <label className="block font-bold text-stone-700 mb-1">E-Posta (opsiyonel):</label>
                 <input
                   type="email"
+                  disabled={creatingCustomer}
                   placeholder="gulizar@gmail.com"
                   value={newCustomerForm.email}
                   onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
@@ -1272,11 +1264,14 @@ export function PosTerminalClient({
                 />
               </div>
 
+              {newCustomerError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-rose-800">{newCustomerError}</p>}
+              <p className="text-stone-500">Benzer bir kayıt bulunması aynı kişi olduğunu kanıtlamaz; otomatik eşleştirme yapılmaz.</p>
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition shadow-md"
+                disabled={creatingCustomer}
+                className="w-full py-3 disabled:opacity-50 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition shadow-md"
               >
-                Müşteriyi Kaydet & Seç
+                {creatingCustomer ? "Kaydediliyor…" : "Müşteriyi Kaydet & Seç"}
               </button>
             </form>
           </div>

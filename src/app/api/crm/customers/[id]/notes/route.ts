@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
-import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
+import { readCrmJson } from "@/lib/crm-write";
+import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
 import { crmNoteColumns, crmNoteFrom } from "@/lib/crm-note-query";
 
@@ -35,7 +36,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const gate = await requireCrmAccess(request, "write");
   if (!gate.ok) return gate.response;
-  const invalid = validateCrmWrite(request);
+  const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
   const { id: rawId } = await context.params;
   if (!/^[1-9]\d{0,14}$/.test(rawId) || !Number.isSafeInteger(Number(rawId))) {
@@ -50,14 +51,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const body = input.body.trim();
   try {
     const save = sqlite.transaction(() => {
-      if (!sqlite.prepare("SELECT 1 FROM customers WHERE id = ?").get(Number(rawId))) return null;
+      if (!canStillWriteCrm(gate.user)) return { status: 403 } as const;
+      if (!sqlite.prepare("SELECT 1 FROM customers WHERE id = ?").get(Number(rawId))) return { status: 404 } as const;
       const result = sqlite.prepare("INSERT INTO crm_customer_notes (customer_id,body,created_by_id,created_by_name) VALUES (?,?,?,?)").run(Number(rawId), body, gate.user.id, gate.user.name);
       sqlite.prepare("INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?, 'CRM_NOTE_CREATED', 'Customer', ?, ?)").run(String(gate.user.id), gate.user.name, rawId, `CRM notu #${result.lastInsertRowid} eklendi`);
-      return sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.id = ?`).get(result.lastInsertRowid);
+      return { status: 201, data: sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.id = ?`).get(result.lastInsertRowid) } as const;
     });
-    const created = save();
-    if (!created) return NextResponse.json({ success: false, error: "Müşteri bulunamadı." }, { status: 404 });
-    return NextResponse.json({ success: true, data: created }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
+    const created = save.immediate();
+    if (created.status === 403) return NextResponse.json({ success: false, error: "CRM değiştirme yetkiniz bulunmuyor." }, { status: 403 });
+    if (created.status === 404) return NextResponse.json({ success: false, error: "Müşteri bulunamadı." }, { status: 404 });
+    return NextResponse.json({ success: true, data: created.data }, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM note creation failed", error);
     return NextResponse.json({ success: false, error: "Not kaydedilemedi." }, { status: 500 });
