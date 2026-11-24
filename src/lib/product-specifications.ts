@@ -39,13 +39,13 @@ function normalizeLabel(value: string): string {
 }
 const aliases: Record<string, ProductSpecificationKey> = {
   "artikel no": "articleNo", "article no": "articleNo", "article nr": "articleNo", "article number": "articleNo",
-  "karisim": "composition", "content": "composition", "composition": "composition",
-  "metraj": "length", "metraj gramaj": "length", "length": "length", "lenght": "length", "weight and length": "length",
-  "iplik cinsi": "yarnType", "yarn type": "yarnType",
-  "ambalaj": "packaging", "package": "packaging", "packaging": "packaging",
-  "sis no": "knittingNeedle", "knitting needle": "knittingNeedle",
-  "tig no": "crochetNeedle", "crochet needle": "crochetNeedle",
-  "sezon": "season", "season": "season",
+  "karisim": "composition", "karisimi hammaddesi": "composition", "karisim ham madde": "composition", "karisim hammadde": "composition", "mixture raw material": "composition", "content": "composition", "composition": "composition",
+  "metraj": "length", "metraj gramaj": "length", "length": "length", "lenght": "length", "weight and length": "length", "agirlik uzunluk": "length",
+  "iplik cinsi": "yarnType", "iplik turu": "yarnType", "yarn type": "yarnType",
+  "ambalaj": "packaging", "1 paket": "packaging", "package": "packaging", "packaging": "packaging",
+  "sis no": "knittingNeedle", "ilgili sis numaralari": "knittingNeedle", "ilgili sis numarasi": "knittingNeedle", "related skewer numbers": "knittingNeedle", "knitting needle": "knittingNeedle",
+  "tig no": "crochetNeedle", "ilgili tig numaralari": "crochetNeedle", "ilgili tig numarasi": "crochetNeedle", "related crochet numbers": "crochetNeedle", "crochet needle": "crochetNeedle",
+  "sezon": "season", "mevsim": "season", "season": "season",
 };
 
 export function productSpecificationsFromPairs(pairs: Array<[string, string]>): ProductSpecifications {

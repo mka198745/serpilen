@@ -101,12 +101,119 @@ function extractAlize($: CheerioAPI, page: URL): ImportedProduct | null {
   return { name, description, sku: "", barcode: "", brand: "Alize", category: "", images, warnings, technicalDetails };
 }
 
+/** Manufacturer-specific selectors only accept explicitly identified product sections. */
+function manufacturerImage(raw: string, page: URL, hosts: string[], path: RegExp): string | null {
+  try {
+    const image = publicHttpsUrl(raw, page.href);
+    return hosts.includes(image.hostname.toLowerCase()) && path.test(image.pathname) ? image.href : null;
+  } catch { return null; }
+}
+function extractHimalaya($: CheerioAPI, page: URL): ImportedProduct | null {
+  if (!["himalaya.com.tr", "www.himalaya.com.tr"].includes(page.hostname.toLowerCase()) || !/^\/[^/]+\.html$/i.test(page.pathname)) return null;
+  const title = $(".page_title h1.red_title"), main = $(".product-image a.fancybox"), details = $(".product-description .detail_description");
+  if (title.length !== 1 || main.length !== 1 || details.length !== 1 || !$(".product-features").length) return null;
+  const name = plain(title.text(), 200), description = clean(details.html(), 6000);
+  if (!name) return null;
+  const image = manufacturerImage(main.attr("href") || main.find("img").attr("data-zoom-image") || "", page, ["himalaya.com.tr", "www.himalaya.com.tr"], /^\/uploads\/pictures\/[^/]+\.(?:jpe?g|png|webp)$/i);
+  const warnings = ["Teknik özellikler sayfada açık metin olarak bulunmayabilir; kaydetmeden önce kontrol edin."];
+  if (!image) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
+  if (!description) warnings.push("Ürün açıklaması bulunamadı.");
+  return { name, description, sku: "", barcode: "", brand: "Himalaya", category: "", images: image ? [image] : [], warnings, technicalDetails: {} };
+}
+
+function extractYarnArt($: CheerioAPI, page: URL): ImportedProduct | null {
+  if (!["yarnart.info", "www.yarnart.info"].includes(page.hostname.toLowerCase()) || !/^\/urunler\/[^/]+\/[^/]+\/?$/i.test(page.pathname)) return null;
+  const title = $("#left-sidebar h1.ya-catalog__title"), specs = $("#left-sidebar dl.ya-catalog__specs"), cards = $("a.ya-color-card");
+  if (title.length !== 1 || specs.length !== 1 || cards.length === 0) return null;
+  const name = plain(title.text(), 200);
+  if (!name) return null;
+  const pairs: Array<[string,string]> = [];
+  specs.find(".ya-catalog__spec-row").slice(0, 30).each((_i, row) => {
+    const key = plain($(row).find("dt").first().text(),100), value = plain($(row).find("dd").first().text(),300);
+    if (key && value) pairs.push([key,value]);
+  });
+  if (!pairs.length) return null;
+  const description = clean($("#left-sidebar .ya-catalog__desc-text").first().html(), 6000);
+  const images: string[] = [];
+  cards.slice(0,50).each((_i, card) => {
+    if (images.length >= 6) return;
+    const link = $(card).attr("href") || "";
+    try {
+      const target = publicHttpsUrl(link, page.href);
+      const parent = page.pathname.replace(/\/$/, "") + "/";
+      if (target.hostname !== page.hostname || !target.pathname.startsWith(parent) || !/^[a-z0-9-]+\/?$/i.test(target.pathname.slice(parent.length))) return;
+      const image = manufacturerImage($(card).find("img.ya-color-card__img").first().attr("src") || "", page, ["yarnart.info", "www.yarnart.info"], /^\/img\/\d+x\d+\/storage\/uploads\/[^?#]+\.(?:jpe?g|png|webp)$/i);
+      if (image && !images.includes(image)) images.push(image);
+    } catch { /* Ignore invalid cards. */ }
+  });
+  const warnings = ["Bu bağlantı ürün ailesini ve farklı renkleri içerir; kaydetmeden önce doğru fotoğraf ve rengi seçin."];
+  if (!images.length) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
+  if (!description) warnings.push("Ürün açıklaması bulunamadı.");
+  return { name, description, sku: "", barcode: "", brand: "YarnArt", category: "", images, warnings, technicalDetails: productSpecificationsFromPairs(pairs) };
+}
+
+function extractNako($: CheerioAPI, page: URL): ImportedProduct | null {
+  if (!["nako.com.tr", "www.nako.com.tr"].includes(page.hostname.toLowerCase()) || !/^(?:\/urun\/[^/]+|\/(?:en|de|ru)\/product\/[^/]+)\/?$/i.test(page.pathname)) return null;
+  const title = $(".product-title h1"), details = $(".product-detail table");
+  if (title.length !== 1 || details.length !== 1) return null;
+  const name = plain(title.text(), 200), pairs: Array<[string,string]> = [];
+  details.find("tr").slice(0,30).each((_i,row) => {
+    const cells = $(row).find("td");
+    if (cells.length < 2) return;
+    const key = plain(cells.first().text(),100), value = plain(cells.last().text(),300);
+    if (key && value && value !== ":") pairs.push([key,value]);
+  });
+  if (!name || pairs.length < 2) return null;
+  const description = pairs.map(([key,value]) => `${key}: ${value}`).join("\n").slice(0,6000);
+  const technicalDetails = productSpecificationsFromPairs(pairs);
+  // Preserve the source labels and units verbatim; a bare number is not proof of grams or metres.
+  const lengthPairs = pairs.filter(([key]) => /^(?:yumak gramaj[ıi]?|etiket metraj[ıi]?|ball weight|label quantity)$/i.test(key.trim())).slice(0,2);
+  if (lengthPairs.length && !technicalDetails.length) technicalDetails.length = lengthPairs.map(([key,value]) => `${key}: ${value}`).join(" / ").slice(0,300);
+  const rawImage = $("#primary-image").attr("data-zoom-image") || $("#primary-image").attr("src") || "";
+  const image = manufacturerImage(rawImage, page, ["nako.com.tr", "www.nako.com.tr"], /^\/idea\/[^/]+\/[^/]+\/myassets\/products\/[^/]+\/[^/]+\.(?:jpe?g|png|webp)$/i);
+  const warnings = ["Üreticinin açıklamasındaki değerleri ve görselin rengini kaydetmeden önce kontrol edin."];
+  if (!image) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
+  return { name, description, sku: "", barcode: "", brand: "Nako", category: "", images: image ? [image] : [], warnings, technicalDetails };
+}
+
+function extractMilano($: CheerioAPI, page: URL): ImportedProduct | null {
+  if (!["milanorafya.com", "www.milanorafya.com"].includes(page.hostname.toLowerCase()) || !/^\/(?:tr\/)?[^/]+\/?$/i.test(page.pathname)) return null;
+  const title = $(".product-name-main h1.product-name"), brand = $(".product-name-main .brand-name");
+  const tabs = $(".tab").filter((_i, tab) => plain($(tab).find(".title").first().text(),100).toLocaleLowerCase("tr-TR") === "ürün açıklaması");
+  if (title.length !== 1 || brand.length !== 1 || tabs.length !== 1 || tabs.find(".tab-content").length !== 1) return null;
+  const name = plain(title.text(),200);
+  if (!name) return null;
+  const text = tabs.find(".tab-content").first().clone(); text.find("#show-all-description, button").remove();
+  const description = clean(text.html(),6000);
+  const products: JsonObject[] = [];
+  $('script[type="application/ld+json"]').slice(0,25).each((_i, el) => {
+    const raw = $(el).text(); if (raw.length > 512000) return;
+    try { products.push(...productCandidates(JSON.parse(raw))); } catch { /* ignore invalid JSON */ }
+  });
+  const matching = products.filter(p => plain(p.name,200) === name);
+  if (matching.length > 1) throw new ProductImportError("AMBIGUOUS", "Sayfada birden fazla eşleşen ürün bulundu; görsel otomatik seçilemedi.");
+  const candidates = valuesFromImage(matching[0]?.image);
+  const images: string[] = [];
+  for (const raw of candidates) {
+    const image = manufacturerImage(raw, page, ["milanorafya.com", "www.milanorafya.com", "cdn.myikas.com"], /^\/images\/[^?#]+\.(?:jpe?g|png|webp)$/i);
+    if (image && !images.includes(image) && images.length < 6) images.push(image);
+  }
+  if (!description && !images.length) return null;
+  const length = name.match(/\b\d+(?:[.,]\d+)?\s*(?:gr|g)\s*\/\s*\d+(?:[.,]\d+)?\s*(?:metre|m)\b/i)?.[0];
+  const warnings = ["Ürün bilgileri kaynak sayfadan alınmıştır; özellikle renk ve görselleri kaydetmeden önce kontrol edin."];
+  if (!description) warnings.push("Ürün açıklaması bulunamadı.");
+  if (!images.length) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
+  return { name, description, sku: "", barcode: "", brand: plain(brand.text(),100), category: "", images, warnings, technicalDetails: length ? {length} : {} };
+}
+
 /** Structured Product, product-specific OpenGraph/microdata, or supported manufacturer pages. Never interprets prices or stocks. */
 export function extractProduct(html: string, pageUrl: string): ImportedProduct {
   const page = publicHttpsUrl(pageUrl);
   const $ = load(html);
   const alize = extractAlize($, page);
   if (alize) return alize;
+  const manufacturer = extractHimalaya($, page) || extractYarnArt($, page) || extractNako($, page) || extractMilano($, page);
+  if (manufacturer) return manufacturer;
   const candidates: JsonObject[] = [];
   $('script[type="application/ld+json"]').slice(0, 25).each((_index, el) => {
     const text = $(el).text(); if (text.length > 512000) return;
