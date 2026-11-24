@@ -7,9 +7,11 @@ import {spawnSync} from 'node:child_process';
 import Database from 'better-sqlite3';
 
 test('Hosting 0021–0022 geçişi tek işlemde, yedek uyumuyla ve hatada geri alınarak çalışır', {timeout:40000}, async()=>{
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'crm-host-migrate-')),dbfile=path.join(dir,'live.db'),backup=path.join(dir,'backup.db'),app=path.resolve('.build-tmp/hosting-app');let db;
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'crm-host-migrate-')),dbfile=path.join(dir,'live.db'),backup=path.join(dir,'backup.db'),app=path.join(dir,'app');let db;
  try{
-  assert.ok(fs.existsSync(path.join(app,'node_modules/better-sqlite3/prebuilds/linux-x64.node')),'hosting test uygulaması hazırlanmalı');
+  fs.mkdirSync(path.join(app,'node_modules'),{recursive:true});
+  fs.cpSync(path.resolve('.next/standalone/node_modules/better-sqlite3'),path.join(app,'node_modules/better-sqlite3'),{recursive:true});
+  fs.copyFileSync('hosting/better_sqlite3-linux-x64-glibc228.node',path.join(app,'node_modules/better-sqlite3/prebuilds/linux-x64.node'));
   const migration=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env:{...process.env,DATABASE_URL:`sqlite:${dbfile}`},encoding:'utf8'});assert.equal(migration.status,0,migration.stderr);
   db=new Database(dbfile);db.exec("DROP INDEX account_transactions_customer_idx; DROP INDEX loyalty_transactions_order_idx; DROP INDEX order_return_items_return_idx; ALTER TABLE products DROP COLUMN technical_details; DELETE FROM __migrations WHERE tag IN ('0021_product_technical_details','0022_crm_merge_reference_indexes'); INSERT INTO customers(name,phone) VALUES('Test','5551234567');");
   const run=()=>spawnSync(process.execPath,['hosting/crm-migrate-0021-0022.cjs',dbfile,app,path.resolve('drizzle-sqlite'),backup],{encoding:'utf8'});
