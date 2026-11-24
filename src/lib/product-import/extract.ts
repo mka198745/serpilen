@@ -229,6 +229,43 @@ function extractYarnArt($: CheerioAPI, page: URL): ImportedProduct | null {
   return { name, description, sku: "", barcode: "", brand: "YarnArt", category: "", images, warnings, technicalDetails: productSpecificationsFromPairs(pairs), variants };
 }
 
+/** The detail page contains the complete client-side color list. Never trust its links
+ * until the active detail and every returned color are bound to the family path. */
+export function extractYarnArtDetailVariants(html: string, detailUrl: string, familyUrl: string, baseline: ImportedVariant[]): { variants: ImportedVariant[]; warnings: string[] } | null {
+  let detail: URL, family: URL;
+  try { detail = publicHttpsUrl(detailUrl); family = publicHttpsUrl(familyUrl); } catch { return null; }
+  if (!["yarnart.info", "www.yarnart.info"].includes(family.hostname) || detail.origin !== family.origin || !/^\/urunler\/[^/]+\/[^/]+\/?$/i.test(family.pathname)) return null;
+  const parent = family.pathname.replace(/\/$/, "") + "/";
+  if (!detail.pathname.startsWith(parent)) return null;
+  const active = detail.pathname.slice(parent.length).replace(/\/$/, "");
+  if (!/^[a-z0-9-]{1,40}$/i.test(active)) return null;
+  const $ = load(html), scripts = $("#ya-product-detail-config"), title = $("h1.ya-pd-info__title");
+  if (scripts.length !== 1 || title.length !== 1 || plain(title.text(),100).toLowerCase() !== active.toLowerCase()) return null;
+  const raw = scripts.first().text();
+  if (!raw || raw.length > 512000) return null;
+  let config: unknown;
+  try { config = JSON.parse(raw); } catch { return null; }
+  if (!isObject(config) || typeof config.activeColor !== "string" || config.activeColor.toLowerCase() !== active.toLowerCase() || !Array.isArray(config.colors) || !config.colors.length || config.colors.length > 500) return null;
+  const valid: Array<{ code: string; image: string | null }> = [], seen = new Set<string>();
+  let rejected = false;
+  for (const item of config.colors) {
+    if (!isObject(item) || typeof item.code !== "string" || typeof item.url !== "string" || !/^[a-z0-9-]{1,40}$/i.test(item.code)) { rejected = true; continue; }
+    try {
+      const target = publicHttpsUrl(item.url, detail.href), code = item.code, key = code.toLowerCase();
+      if (target.origin !== family.origin || target.pathname.replace(/\/$/, "") !== parent + code || target.search || seen.has(key)) { rejected = true; continue; }
+      seen.add(key);
+      const image = manufacturerImage(typeof item.img === "string" ? item.img : "", detail, ["yarnart.info", "www.yarnart.info"], /^\/img\/\d+x\d+\/storage\/uploads\/[^?#]+\.(?:jpe?g|png|webp)$/i);
+      valid.push({ code, image });
+    } catch { rejected = true; }
+  }
+  if (!seen.has(active.toLowerCase()) || baseline.some(v => !seen.has(v.colorName.toLowerCase()))) return null;
+  const warnings: string[] = [];
+  if (rejected) warnings.push("YarnArt renk listesindeki bazı seçenekler doğrulanamadığı için alınmadı; eksikleri kontrol edin.");
+  const collected = variantCollector(warnings);
+  valid.forEach(v => collected.add(v.code, v.image));
+  return { variants: collected.result(), warnings };
+}
+
 function extractNako($: CheerioAPI, page: URL): ImportedProduct | null {
   if (!["nako.com.tr", "www.nako.com.tr"].includes(page.hostname.toLowerCase()) || !/^(?:\/urun\/[^/]+|\/(?:en|de|ru)\/product\/[^/]+)\/?$/i.test(page.pathname)) return null;
   const title = $(".product-title h1"), details = $(".product-detail table");

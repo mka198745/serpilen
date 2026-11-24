@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { requireStaff, getUserByToken } from "@/lib/auth";
 import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 import { readCrmJson, validateCrmWrite } from "@/lib/crm-write";
-import { fetchPublicProductPage, publicHttpsUrl, resolvePublicHost, ProductImportError } from "@/lib/product-import/safe-fetch";
-import { extractProduct } from "@/lib/product-import/extract";
+import { publicHttpsUrl, resolvePublicHost, ProductImportError } from "@/lib/product-import/safe-fetch";
+import { importProduct } from "@/lib/product-import/import-product";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -63,9 +63,7 @@ async function handleImport(request: Request) {
   if (times.length >= 8 || inFlight >= 4) return fail(429,"Çok fazla istek var. Lütfen biraz sonra tekrar deneyin.");
   recent.set(gate.user.id,[...times, now]); inFlight++;
   try {
-    const page = await fetchPublicProductPage(input.url.trim());
-    const data = extractProduct(page.html,page.url);
-    if (page.warnings) data.warnings.push(...page.warnings);
+    const data = await importProduct(input.url.trim());
     // Check every unique image host, including variant images, without fetching the images.
     const signal = AbortSignal.timeout(4000);
     const hosts = new Map<string, Promise<boolean>>();
