@@ -592,7 +592,12 @@ export function AdminDashboardClient({
   });
   const [newProd, setNewProd] = useState(emptyNewProduct);
   const [productVariantsDraft, setProductVariantsDraft] = useState<VariantDraft[]>([]);
+  const variantsDraftRef = React.useRef<VariantDraft[]>([]);
+  const productNameRef = React.useRef("");
+  React.useEffect(() => { productNameRef.current = newProd.name; }, [newProd.name]);
+  const updateVariantsDraft = (draft: VariantDraft[]) => { variantsDraftRef.current = draft; setProductVariantsDraft(draft); };
   const [productSaving, setProductSaving] = useState(false);
+  const [productImportBusy, setProductImportBusy] = useState(false);
   const [productSaveError, setProductSaveError] = useState("");
   const productSavingRef = React.useRef(false);
 
@@ -607,6 +612,15 @@ export function AdminDashboardClient({
     const warnings: string[] = [];
     if (!useBrand) warnings.push("Markayı kontrol edip seçin; kaynak marka eşleşmedi veya mevcut seçim korundu.");
     if (!useCategory) warnings.push("Kategoriyi kontrol edip seçin; kaynak kategori eşleşmedi veya mevcut seçim korundu.");
+    if (product.variants?.length) {
+      const existingName = normalize(productNameRef.current), sourceName = normalize(product.name);
+      if (existingName && existingName !== sourceName) warnings.push("Formdaki ürün adı kaynak ürünle farklı; varyantlar karışmaması için eklenmedi.");
+      else if (variantsDraftRef.current.length) warnings.push("Mevcut varyantlar korunuyor; kaynak varyantlar otomatik eklenmedi.");
+      else {
+        updateVariantsDraft(product.variants.map(v => ({ colorName: v.colorName, colorHex: "", size: v.size, length: "", sku: "", barcode: "", imageUrl: v.imageUrl, buyPrice: "", retailPrice: "", initialStock: "0", imported: true })));
+        warnings.push(`${product.variants.length} varyant taslağa eklendi; stok, fiyat ve fotoğrafları kontrol edin.`);
+      }
+    } else warnings.push("Kaynak sayfada doğrulanabilir varyant bulunamadı; gerekirse elle ekleyin.");
     if (useBrand) productSelectionTouched.current.brand = true;
     if (useCategory) productSelectionTouched.current.category = true;
     setNewProd(prev => ({
@@ -1355,7 +1369,7 @@ export function AdminDashboardClient({
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (productSavingRef.current) return;
+    if (productSavingRef.current || productImportBusy) return;
     try { validateNewProductVariants(productVariantsDraft); }
     catch (error) { setProductSaveError(error instanceof Error ? error.message : "Varyant bilgileri geçersiz."); return; }
     productSavingRef.current = true;
@@ -1370,7 +1384,7 @@ export function AdminDashboardClient({
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Ürün kaydedilemedi.");
       alert("Ürün başarıyla oluşturuldu.");
-      setNewProd(emptyNewProduct()); setProductVariantsDraft([]);
+      setNewProd(emptyNewProduct()); updateVariantsDraft([]);
       productSelectionTouched.current = { brand: false, category: false };
       setIsAddProductOpen(false);
       // A failed refresh must not be reported as a failed product creation.
@@ -4660,7 +4674,7 @@ export function AdminDashboardClient({
 
             <form onSubmit={handleAddProduct} className="space-y-3 text-xs">
               <fieldset disabled={productSaving} className="space-y-3">
-              <AuthorizedProductLinkImport onImport={applyImportedProduct} />
+              <AuthorizedProductLinkImport onImport={applyImportedProduct} onBusyChange={setProductImportBusy} />
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ürün Adı:</label>
                 <input
@@ -4843,7 +4857,7 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
-              <NewProductVariants value={productVariantsDraft} onChange={setProductVariantsDraft} disabled={productSaving} />
+              <NewProductVariants value={productVariantsDraft} onChange={updateVariantsDraft} disabled={productSaving} />
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -4874,9 +4888,10 @@ export function AdminDashboardClient({
               {productSaveError && <p role="alert" className="text-rose-700 font-semibold">{productSaveError}</p>}
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition"
+                disabled={productImportBusy || productSaving}
+                className="w-full py-3 bg-amber-800 disabled:opacity-50 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition"
               >
-                {productSaving ? "Kaydediliyor…" : "Ürünü Kaydet & Stoğa Al"}
+                {productSaving ? "Kaydediliyor…" : productImportBusy ? "Ürün bilgileri getiriliyor…" : "Ürünü Kaydet & Stoğa Al"}
               </button>
               </fieldset>
             </form>

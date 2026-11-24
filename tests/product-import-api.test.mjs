@@ -17,12 +17,13 @@ test('Ürün bağlantısı API katalog yetkisi, kaynak ve güvenli URL sınırla
   for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER','B2C_CUSTOMER']){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES (?,?,?,?)').run(role,`${role}@example.test`,'hash',role).lastInsertRowid;const token=crypto.randomBytes(32).toString('hex');tokens[role]=token;db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);}
   // Test-only network fixture: actual production URL validation, route and extraction remain intact.
   const hook=path.join(dir,'network-hook.cjs');
+  const groupHtml='<script type="application/ld+json">'+JSON.stringify({'@type':'ProductGroup',url:'https://fixture.example/group',name:'Test',hasVariant:[{'@type':'Product',color:'A',image:'https://cdn.fixture.example/a.jpg'},{'@type':'Product',color:'B',image:'https://private.fixture.example/b.jpg'}]})+'</script>';
   fs.writeFileSync(hook, `const dns=require('node:dns'),https=require('node:https'),{PassThrough,Readable}=require('node:stream');
-    const lookup=dns.promises.lookup.bind(dns.promises); dns.promises.lookup=(host,opts)=>['fixture.example','cdn.fixture.example','alize.gen.tr'].includes(host)?Promise.resolve([{address:'8.8.8.8',family:4}]):lookup(host,opts);
+    const lookup=dns.promises.lookup.bind(dns.promises); dns.promises.lookup=(host,opts)=>host==='private.fixture.example'?Promise.resolve([{address:'127.0.0.1',family:4}]):['fixture.example','cdn.fixture.example','alize.gen.tr'].includes(host)?Promise.resolve([{address:'8.8.8.8',family:4}]):lookup(host,opts);
     const request=https.request; https.request=function(url,opts,cb){if(!['fixture.example','alize.gen.tr'].includes(url.hostname))return request.apply(this,arguments);
       const out=new PassThrough(); out.on('finish',()=>{opts.lookup(url.hostname,{},(err,ip,family)=>{if(err||ip!=='8.8.8.8'||family!==4){out.emit('error',new Error('DNS not pinned'));return;}
         const html='<script type=\"application/ld+json\">{\"@type\":\"Product\",\"name\":\"Demo İplik\",\"description\":\"Ürün açıklaması\",\"sku\":\"SKU-TEST\",\"brand\":{\"name\":\"Örnek\"},\"image\":[\"https://cdn.fixture.example/iplik.jpg\"],\"additionalProperty\":[{\"name\":\"Malzeme\",\"value\":\"Pamuk\"}]}</script>';
-        const body=url.hostname==='alize.gen.tr'?require('node:fs').readFileSync(${JSON.stringify(path.resolve('tests/fixtures/alize-baby-best.html'))},'utf8'):html;
+        const body=url.hostname==='alize.gen.tr'?require('node:fs').readFileSync(${JSON.stringify(path.resolve('tests/fixtures/alize-baby-best.html'))},'utf8'):url.pathname==='/group'?${JSON.stringify(groupHtml)}:html;
         const respond=()=>{const res=Readable.from([Buffer.from(body)]);res.statusCode=200;res.headers={'content-type':'text/html; charset=utf-8'};cb(res);};
         if(url.pathname==='/slow'){require('node:fs').writeFileSync(${JSON.stringify(path.join(dir,'network-started'))},'1');setTimeout(respond,400);}else respond();});});return out;};`);
   const port=await freePort();server=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(port),NODE_ENV:'production',NODE_OPTIONS:`--require=${hook}`},stdio:'ignore'});const base=`http://127.0.0.1:${port}/api/products/import`;let ready=false;for(let i=0;i<100;i++){try{await fetch(base);ready=true;break}catch{await delay(100)}}assert.ok(ready);
@@ -39,17 +40,19 @@ test('Ürün bağlantısı API katalog yetkisi, kaynak ve güvenli URL sınırla
   assert.equal((await req('SUPER_ADMIN',{url:'https://example.com',unknown:'x'})).status,422);assert.equal((await req('SUPER_ADMIN',{url:'x'.repeat(17000)})).status,413);assert.equal((await req('SUPER_ADMIN',{url:'https://example.com'},{'Content-Type':'text/plain'})).status,415);
   const imported=await req('SUPER_ADMIN',{url:'https://fixture.example/item'});assert.equal(imported.status,200);assert.match(imported.headers.get('cache-control'),/no-store/);const result=(await imported.json()).data;
   assert.equal(result.name,'Demo İplik');assert.equal(result.sku,'SKU-TEST');assert.match(result.description,/Malzeme: Pamuk/);assert.deepEqual(result.images,['https://cdn.fixture.example/iplik.jpg']);
+  const group=await req('SUPER_ADMIN',{url:'https://fixture.example/group'});assert.equal(group.status,200);const gd=(await group.json()).data;
+  assert.equal(gd.variants[0].imageUrl,'https://cdn.fixture.example/a.jpg');assert.equal(gd.variants[1].imageUrl,'');assert.match(gd.warnings.join(' '),/güvenlik veya erişim/);
   const updateMatrix=async matrix=>fetch(`http://127.0.0.1:${port}/api/role-matrix`,{method:'POST',headers:{Authorization:`Bearer ${tokens.SUPER_ADMIN}`,'Content-Type':'application/json'},body:JSON.stringify({matrix})});
   assert.equal((await updateMatrix({STORE_MANAGER:{catalog:true,productLinkImport:true}})).status,200);
   assert.equal((await check('STORE_MANAGER').then(r=>r.json())).allowed,true);
   const alize=await req('STORE_MANAGER',{url:'https://alize.gen.tr/yumak/baby-best'});assert.equal(alize.status,200);const alizeProduct=(await alize.json()).data;
-  assert.equal(alizeProduct.name,'BABY BEST');assert.equal(alizeProduct.technicalDetails.articleNo,'260');assert.equal(alizeProduct.technicalDetails.knittingNeedle,'4-5');assert.ok(alizeProduct.images.includes('https://alize.gen.tr/uploads/26000506.jpg'));assert.equal(alizeProduct.sku,'');
+  assert.equal(alizeProduct.name,'BABY BEST');assert.equal(alizeProduct.technicalDetails.articleNo,'260');assert.equal(alizeProduct.technicalDetails.knittingNeedle,'4-5');assert.ok(alizeProduct.images.includes('https://alize.gen.tr/uploads/26000506.jpg'));assert.equal(alizeProduct.sku,'');assert.deepEqual(alizeProduct.variants.map(v=>v.colorName),['55','506']);assert.equal(alizeProduct.variants[0].imageUrl,'https://alize.gen.tr/uploads/151746890726000055.jpg');
   const inFlight=req('STORE_MANAGER',{url:'https://fixture.example/slow'});
   for(let i=0;i<100&&!fs.existsSync(path.join(dir,'network-started'));i++)await delay(10);
   assert.ok(fs.existsSync(path.join(dir,'network-started')),'upstream request started');
   assert.equal((await updateMatrix({STORE_MANAGER:{catalog:true,productLinkImport:false}})).status,200);
   assert.equal((await inFlight).status,403,'permission revoked while downloading must prevent import');
-  for(let i=0;i<7;i++)assert.equal((await req('SUPER_ADMIN',{url:'https://fixture.example/item'})).status,200);assert.equal((await req('SUPER_ADMIN',{url:'https://fixture.example/item'})).status,429);
+  for(let i=0;i<6;i++)assert.equal((await req('SUPER_ADMIN',{url:'https://fixture.example/item'})).status,200);assert.equal((await req('SUPER_ADMIN',{url:'https://fixture.example/item'})).status,429);
   assert.equal((await updateMatrix({STORE_MANAGER:{catalog:false,productLinkImport:true},CASHIER:{catalog:true,productLinkImport:false}})).status,200);
   assert.equal((await check('STORE_MANAGER').then(r=>r.json())).allowed,false);assert.equal((await req('STORE_MANAGER',{url:'https://example.com'})).status,403);
   assert.equal((await check('CASHIER').then(r=>r.json())).allowed,false);assert.equal((await req('CASHIER',{url:'https://127.0.0.1'})).status,403);

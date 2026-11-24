@@ -6,6 +6,7 @@ import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 import { requireStaff } from "@/lib/auth";
 import { validateProductSpecifications } from "@/lib/product-specifications";
 import { validateNewProductVariants, variantSkuBase, VariantValidationError } from "@/lib/new-product-variants";
+import { publicHttpsUrl, resolvePublicHost } from "@/lib/product-import/safe-fetch";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -242,6 +243,20 @@ export async function POST(request: Request) {
       if (!productName || !productSku || productSku.length > 40 || productBarcode.length > 80 || !validPrice(buyPrice) || !validPrice(retailPrice) || !Number.isSafeInteger(warehouse) || warehouse < 1 || Number(initialStock) !== 0) {
         return NextResponse.json({ success: false, error: "Varyantlı ürün için ad, SKU, geçerli fiyat ve depo gereklidir; ana ürün stoğu 0 olmalıdır." }, { status: 422 });
       }
+      // Images are external browser resources: validate each hostname again at save time.
+      const imageHosts = new Map<string, Promise<unknown>>();
+      try {
+        const signal = AbortSignal.timeout(4000);
+        for (const variant of variants) {
+          if (!variant.imageUrl) continue;
+          const image = publicHttpsUrl(variant.imageUrl);
+          variant.imageUrl = image.href;
+          if (!imageHosts.has(image.hostname)) imageHosts.set(image.hostname, resolvePublicHost(image.hostname, signal));
+        }
+        await Promise.all(imageHosts.values());
+      } catch {
+        return NextResponse.json({ success: false, error: "Varyant görsel adresi güvenli veya erişilebilir değil. Görsel bağlantısını kontrol edin." }, { status: 422 });
+      }
       try {
         const created = db.transaction((tx) => {
           if (!tx.select({ id: warehouses.id }).from(warehouses).where(eq(warehouses.id, warehouse)).get()) throw new VariantValidationError("Seçilen depo bulunamadı.");
@@ -274,7 +289,7 @@ export async function POST(request: Request) {
             const [createdVariant] = tx.insert(productVariants).values({
               productId: product.id, sku: variantSku, barcode: variant.barcode || null,
               colorName: variant.colorName || null, colorHex: variant.colorHex || null, size: variant.size || null, length: variant.length || null,
-              buyPrice: variant.buyPrice || String(buyPrice), retailPrice: variant.retailPrice || String(retailPrice), imageUrl: product.imageUrl,
+              buyPrice: variant.buyPrice || String(buyPrice), retailPrice: variant.retailPrice || String(retailPrice), imageUrl: variant.imageUrl || null,
             }).returning().all();
             if (variant.initialStock > 0) tx.insert(inventory).values({ warehouseId: warehouse, productId: product.id, variantId: createdVariant.id, physicalQty: variant.initialStock, reservedQty: 0, locationCode: "MRK-A-01-01" }).run();
           }

@@ -16,13 +16,18 @@ function isImportedProduct(value: unknown): value is ImportedProduct {
   if (!value || typeof value !== "object") return false;
   const product = value as Record<string, unknown>;
   try { if (product.technicalDetails !== undefined) validateProductSpecifications(product.technicalDetails); } catch { return false; }
+  if (product.variants !== undefined && (!Array.isArray(product.variants) || product.variants.length > 50 || !product.variants.every((item: unknown) => {
+    if (!item || typeof item !== "object") return false;
+    const variant = item as Record<string, unknown>;
+    return typeof variant.colorName === "string" && variant.colorName.length <= 100 && typeof variant.size === "string" && variant.size.length <= 100 && !!(variant.colorName.trim() || variant.size.trim()) && typeof variant.imageUrl === "string" && variant.imageUrl.length <= 2048;
+  }))) return false;
   return ["name", "description", "sku", "barcode", "brand", "category"].every(key => typeof product[key] === "string") &&
     Array.isArray(product.images) && product.images.every((item: unknown) => typeof item === "string") &&
     Array.isArray(product.warnings) && product.warnings.every((item: unknown) => typeof item === "string");
 }
 
 /** Hide the control until the server confirms the current account has both required permissions. */
-export function AuthorizedProductLinkImport({ onImport }: { onImport: (product: ImportedProduct) => string[] }) {
+export function AuthorizedProductLinkImport({ onImport, onBusyChange }: { onImport: (product: ImportedProduct) => string[]; onBusyChange?: (busy: boolean) => void }) {
   const [allowed, setAllowed] = useState(false);
   useEffect(() => {
     let active = true;
@@ -47,22 +52,22 @@ export function AuthorizedProductLinkImport({ onImport }: { onImport: (product: 
     window.addEventListener("focus", onFocus);
     return () => { active = false; ++sequence; request?.abort(); window.clearInterval(timer); window.removeEventListener("focus", onFocus); };
   }, []);
-  return allowed ? <ProductLinkImport onImport={onImport} /> : null;
+  return allowed ? <ProductLinkImport onImport={onImport} onBusyChange={onBusyChange} /> : null;
 }
 
-export function ProductLinkImport({ onImport }: { onImport: (product: ImportedProduct) => string[] }) {
+export function ProductLinkImport({ onImport, onBusyChange }: { onImport: (product: ImportedProduct) => string[]; onBusyChange?: (busy: boolean) => void }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => () => { controller.current?.abort(); onBusyChange?.(false); }, [onBusyChange]);
 
   async function fetchProduct() {
     if (busy) return;
     const value = url.trim();
     if (!value) { setError("Ürün bağlantısını girin."); return; }
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); onBusyChange?.(true); setError(""); setMessage("");
     const abort = new AbortController(); controller.current = abort;
     try {
       const response = await authFetch("/api/products/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: value }), signal: abort.signal });
@@ -82,12 +87,12 @@ export function ProductLinkImport({ onImport }: { onImport: (product: ImportedPr
       const warning = [...result.data.warnings, ...onImport(result.data)].join(" ");
       setMessage(`Bilgiler forma aktarıldı. ${warning} Ürünü kaydetmeden önce tüm alanları kontrol edin.`);
     } catch (err) { if (!abort.signal.aborted) setError(err instanceof Error ? err.message : "Ürün bilgileri getirilemedi."); }
-    finally { if (!abort.signal.aborted) { setBusy(false); controller.current = null; } }
+    finally { if (!abort.signal.aborted) { setBusy(false); onBusyChange?.(false); controller.current = null; } }
   }
   return <section aria-label="Ürün bağlantısından bilgiler" className="rounded-xl border border-sky-200 bg-sky-50 p-3 space-y-2">
     <label htmlFor="product-source-url" className="block font-bold text-sky-950">Ürün Linki ekle</label>
     <div className="flex gap-2"><input id="product-source-url" type="url" value={url} disabled={busy} onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void fetchProduct(); } }} placeholder="https://bayi-sitesindeki-urun-adresi" className="min-w-0 flex-1 px-3 py-2 bg-white border border-sky-300 rounded-xl"/><button type="button" disabled={busy} onClick={() => void fetchProduct()} className="px-3 py-2 bg-sky-800 text-white font-bold rounded-xl disabled:opacity-50 whitespace-nowrap">{busy ? "Getiriliyor…" : "Ürünü getir"}</button></div>
-    <p className="text-[11px] leading-relaxed text-sky-950">Yalnızca güvendiğiniz ve içerik kullanımına yetkili olduğunuz bayi sitelerini kullanın. Boş alanlar doldurulur; mevcut bilgiler korunur. Marka ve kategori yalnız tam eşleşirse ve elle seçilmediyse atanır. Fotoğraf bağlantıları en fazla 6 adede eklenir, sunucumuza kopyalanmaz. Tarayıcı ve müşteriler görselleri üçüncü taraf sitelerden yükler; bu adresler sonradan değişebilir veya yönlendirebilir. Fiyat, stok ve depo değiştirilmez; formda görünen değerler (varsayılanlar dahil) kaydedilecektir. Tüm bilgileri kaydetmeden önce doğrulayın.</p>
+    <p className="text-[11px] leading-relaxed text-sky-950">Yalnızca güvendiğiniz ve içerik kullanımına yetkili olduğunuz bayi sitelerini kullanın. Boş alanlar doldurulur; mevcut bilgiler korunur. Marka ve kategori yalnız tam eşleşirse ve elle seçilmediyse atanır. Fotoğraf bağlantıları en fazla 6 adede eklenir, sunucumuza kopyalanmaz. Tarayıcı ve müşteriler görselleri üçüncü taraf sitelerden yükler; bu adresler sonradan değişebilir veya yönlendirebilir. Varyantlar kaynakta açıkça bulunursa taslağa eklenir; stokları sıfırdır. Boş varyant fiyatları, formdaki ürün fiyatını (varsayılanlar dahil) kullanır. Fiyat, stok ve depo değiştirilmez (ana ürün alanları için); formda görünen değerler (varsayılanlar dahil) kaydedilecektir. Tüm değerleri kontrol edin. Tüm bilgileri kaydetmeden önce doğrulayın.</p>
     <p className="text-[11px] text-sky-900">Giriş gerektiren veya bilgileri yalnız JavaScript ile oluşturan siteler desteklenmeyebilir. Siteye sizin adınıza giriş yapılmaz.</p>
     {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}{message && <p role="status" className="text-xs text-emerald-800">{message}</p>}
   </section>;

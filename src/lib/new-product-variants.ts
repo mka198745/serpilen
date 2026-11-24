@@ -5,6 +5,7 @@ export type NewProductVariant = {
   length: string;
   sku: string;
   barcode: string;
+  imageUrl: string;
   buyPrice: string;
   retailPrice: string;
   initialStock: number;
@@ -30,7 +31,7 @@ export function validateNewProductVariants(value: unknown): NewProductVariant[] 
       return val;
     };
     const colorName = text("colorName", 100), colorHex = text("colorHex", 7), size = text("size", 100), length = text("length", 100);
-    const sku = text("sku", 40), barcode = text("barcode", 80), buyPrice = text("buyPrice", 20), retailPrice = text("retailPrice", 20);
+    const sku = text("sku", 40), barcode = text("barcode", 80), imageUrl = text("imageUrl", 2048), buyPrice = text("buyPrice", 20), retailPrice = text("retailPrice", 20);
     if (!colorName && !size && !length) fail("Renk adı, ölçü veya uzunluk girin.");
     if (colorHex && !/^#[0-9a-f]{6}$/i.test(colorHex)) fail("Renk kodu geçersiz.");
     for (const price of [buyPrice, retailPrice]) if (price && (!/^\d+(?:\.\d{1,2})?$/.test(price) || Number(price) > 100000000)) fail("Fiyat sıfır veya pozitif olmalı ve en fazla iki ondalık basamak içermelidir.");
@@ -39,7 +40,7 @@ export function validateNewProductVariants(value: unknown): NewProductVariant[] 
     const combination = [colorName, size, length].map(x => x.toLocaleLowerCase("tr-TR")).join("\0");
     if (combinations.has(combination)) fail("Aynı renk, ölçü ve uzunluk zaten eklenmiş.");
     combinations.add(combination);
-    result.push({ colorName, colorHex, size, length, sku, barcode, buyPrice, retailPrice, initialStock: Number(stock) });
+    result.push({ colorName, colorHex, size, length, sku, barcode, imageUrl, buyPrice, retailPrice, initialStock: Number(stock) });
   }
   return result;
 }

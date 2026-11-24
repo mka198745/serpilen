@@ -3,7 +3,8 @@ import { publicHttpsUrl, ProductImportError } from "./safe-fetch";
 import { productSpecificationsFromPairs, type ProductSpecifications } from "../product-specifications";
 
 type JsonObject = Record<string, unknown>;
-export type ImportedProduct = { name: string; description: string; sku: string; barcode: string; brand: string; category: string; images: string[]; warnings: string[]; technicalDetails?: ProductSpecifications };
+export type ImportedVariant = { colorName: string; size: string; imageUrl: string };
+export type ImportedProduct = { variants?: ImportedVariant[]; name: string; description: string; sku: string; barcode: string; brand: string; category: string; images: string[]; warnings: string[]; technicalDetails?: ProductSpecifications };
 const isObject = (v: unknown): v is JsonObject => !!v && typeof v === "object" && !Array.isArray(v);
 const strings = (v: unknown): string => typeof v === "string" || typeof v === "number" ? String(v) : "";
 function clean(value: unknown, max: number): string {
@@ -57,6 +58,28 @@ function properties(value: unknown): Array<[string, string]> {
   return list.filter(isObject).map(item => [plain(item.name, 100), plain(item.value, 300)] as [string,string]).filter(([a,b]) => !!a && !!b).slice(0, 30);
 }
 
+const MAX_IMPORTED_VARIANTS = 50;
+function variantCollector(warnings: string[]) {
+  const variants: ImportedVariant[] = [], seen = new Set<string>();
+  let overflow = false;
+  return {
+    add(colorName: string, imageUrl: string | null, size = "") {
+      const name = plain(colorName, 100), dimension = plain(size, 100);
+      if (!name && !dimension) return;
+      const key = `${name.toLocaleLowerCase("tr-TR")}\0${dimension.toLocaleLowerCase("tr-TR")}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      if (variants.length >= MAX_IMPORTED_VARIANTS) { overflow = true; return; }
+      variants.push({ colorName: name, size: dimension, imageUrl: imageUrl || "" });
+    },
+    result() {
+      if (overflow) warnings.push("Kaynakta 50'den fazla varyant bulundu; yalnız ilk 50 seçenek getirildi.");
+      if (variants.length) warnings.push("Varyant kodları kaynaktan alındı; isim, fotoğraf, fiyat ve stokları kaydetmeden önce kontrol edin. Stoklar sıfır başlar; boş fiyatlar ürün fiyatını kullanır.");
+      return variants;
+    },
+  };
+}
+
 /** Alize product pages use an h2/breadcrumb, a #t_teknik list and color-photo filenames. */
 function extractAlize($: CheerioAPI, page: URL): ImportedProduct | null {
   if (!["alize.gen.tr", "www.alize.gen.tr"].includes(page.hostname.toLowerCase()) || !/^\/yumak\/[^/]+\/?$/i.test(page.pathname)) return null;
@@ -80,6 +103,8 @@ function extractAlize($: CheerioAPI, page: URL): ImportedProduct | null {
   const note = clean(heading.parent().find(".urun_yazi").first().html(), 2000);
   const description = [sourceDescription || summary, sourceDescription && note ? note : ""].filter(Boolean).join("\n\n");
   const images: string[] = [];
+  const warnings = ["Artikel No, SKU veya barkod değildir; SKU ve ticari bilgileri kendiniz kontrol edin."];
+  const collected = variantCollector(warnings);
   const addImage = (raw: string) => {
     if (!raw || images.length >= 6) return;
     try {
@@ -90,15 +115,20 @@ function extractAlize($: CheerioAPI, page: URL): ImportedProduct | null {
   };
   addImage($("#my_image").first().attr("src") || "");
   // The site's color selector switches its main image to /uploads/<data-id>.
-  $("#home").find('a[id="kesit_resim"][data-id]').slice(0, 50).each((_i, el) => {
+  $("#home").find('a[id="kesit_resim"][data-id]').slice(0, 500).each((_i, el) => {
     const filename = $(el).attr("data-id") || "";
-    if (/^[a-z0-9][a-z0-9._-]{0,195}\.(?:jpe?g|png|webp)$/i.test(filename)) addImage(`/uploads/${filename}`);
+    if (/^[a-z0-9][a-z0-9._-]{0,195}\.(?:jpe?g|png|webp)$/i.test(filename)) {
+      const image = manufacturerImage(`/uploads/${filename}`, page, ["alize.gen.tr", "www.alize.gen.tr"], /^\/uploads\/[^/]+\.(?:jpe?g|png|webp)$/i);
+      const code = $(el).attr("data-bilgi") || "";
+      if (/^[a-z0-9-]{1,40}$/i.test(code)) collected.add(code, image);
+      addImage(`/uploads/${filename}`);
+    }
   });
-  const warnings = ["Artikel No, SKU veya barkod değildir; SKU ve ticari bilgileri kendiniz kontrol edin."];
+  const variants = collected.result();
   if (images.length) warnings.push("Görseller farklı renklere ait olabilir; kaydetmeden önce uygun fotoğrafları seçin.");
   else warnings.push("Uygun ürün fotoğrafı bulunamadı.");
   if (!description) warnings.push("Ürün açıklaması bulunamadı.");
-  return { name, description, sku: "", barcode: "", brand: "Alize", category: "", images, warnings, technicalDetails };
+  return { name, description, sku: "", barcode: "", brand: "Alize", category: "", images, warnings, technicalDetails, variants };
 }
 
 /** Manufacturer-specific selectors only accept explicitly identified product sections. */
@@ -116,9 +146,19 @@ function extractHimalaya($: CheerioAPI, page: URL): ImportedProduct | null {
   if (!name) return null;
   const image = manufacturerImage(main.attr("href") || main.find("img").attr("data-zoom-image") || "", page, ["himalaya.com.tr", "www.himalaya.com.tr"], /^\/uploads\/pictures\/[^/]+\.(?:jpe?g|png|webp)$/i);
   const warnings = ["Teknik özellikler sayfada açık metin olarak bulunmayabilir; kaydetmeden önce kontrol edin."];
+  const collected = variantCollector(warnings);
+  main.closest(".container").find('a[href^="javascript:urun_resim("]').slice(0, 500).each((_i, el) => {
+    const link = $(el), href = link.attr("href") || "", card = link.parent();
+    if (!/^javascript:urun_resim\(\d+\)$/i.test(href) || !card.is(".col-xs-6.col-md-3")) return;
+    const code = plain(card.children("p.text-center").first().text(), 100);
+    if (!/^[a-z0-9-]{1,40}$/i.test(code)) return;
+    const photo = manufacturerImage(link.find("img").first().attr("src") || "", page, ["himalaya.com.tr", "www.himalaya.com.tr"], /^\/uploads\/pictures\/thumb_product_[^/]+\.(?:jpe?g|png|webp)$/i);
+    collected.add(code, photo);
+  });
+  const variants = collected.result();
   if (!image) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
   if (!description) warnings.push("Ürün açıklaması bulunamadı.");
-  return { name, description, sku: "", barcode: "", brand: "Himalaya", category: "", images: image ? [image] : [], warnings, technicalDetails: {} };
+  return { name, description, sku: "", barcode: "", brand: "Himalaya", category: "", images: image ? [image] : [], warnings, technicalDetails: {}, variants };
 }
 
 function extractYarnArt($: CheerioAPI, page: URL): ImportedProduct | null {
@@ -135,21 +175,24 @@ function extractYarnArt($: CheerioAPI, page: URL): ImportedProduct | null {
   if (!pairs.length) return null;
   const description = clean($("#left-sidebar .ya-catalog__desc-text").first().html(), 6000);
   const images: string[] = [];
-  cards.slice(0,50).each((_i, card) => {
-    if (images.length >= 6) return;
+  const warnings = ["Bu bağlantı ürün ailesini ve farklı renkleri içerir; kaydetmeden önce doğru fotoğraf ve rengi seçin."];
+  const collected = variantCollector(warnings);
+  cards.slice(0,500).each((_i, card) => {
     const link = $(card).attr("href") || "";
     try {
       const target = publicHttpsUrl(link, page.href);
       const parent = page.pathname.replace(/\/$/, "") + "/";
       if (target.hostname !== page.hostname || !target.pathname.startsWith(parent) || !/^[a-z0-9-]+\/?$/i.test(target.pathname.slice(parent.length))) return;
       const image = manufacturerImage($(card).find("img.ya-color-card__img").first().attr("src") || "", page, ["yarnart.info", "www.yarnart.info"], /^\/img\/\d+x\d+\/storage\/uploads\/[^?#]+\.(?:jpe?g|png|webp)$/i);
-      if (image && !images.includes(image)) images.push(image);
+      const code = plain($(card).find(".ya-color-card__code").first().text(),100);
+      if (/^[a-z0-9-]{1,40}$/i.test(code) && target.pathname.slice(parent.length).replace(/\/$/, "").toLowerCase() === code.toLowerCase()) collected.add(code, image);
+      if (image && images.length < 6 && !images.includes(image)) images.push(image);
     } catch { /* Ignore invalid cards. */ }
   });
-  const warnings = ["Bu bağlantı ürün ailesini ve farklı renkleri içerir; kaydetmeden önce doğru fotoğraf ve rengi seçin."];
+  const variants = collected.result();
   if (!images.length) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
   if (!description) warnings.push("Ürün açıklaması bulunamadı.");
-  return { name, description, sku: "", barcode: "", brand: "YarnArt", category: "", images, warnings, technicalDetails: productSpecificationsFromPairs(pairs) };
+  return { name, description, sku: "", barcode: "", brand: "YarnArt", category: "", images, warnings, technicalDetails: productSpecificationsFromPairs(pairs), variants };
 }
 
 function extractNako($: CheerioAPI, page: URL): ImportedProduct | null {
@@ -172,8 +215,19 @@ function extractNako($: CheerioAPI, page: URL): ImportedProduct | null {
   const rawImage = $("#primary-image").attr("data-zoom-image") || $("#primary-image").attr("src") || "";
   const image = manufacturerImage(rawImage, page, ["nako.com.tr", "www.nako.com.tr"], /^\/idea\/[^/]+\/[^/]+\/myassets\/products\/[^/]+\/[^/]+\.(?:jpe?g|png|webp)$/i);
   const warnings = ["Üreticinin açıklamasındaki değerleri ve görselin rengini kaydetmeden önce kontrol edin."];
+  const collected = variantCollector(warnings);
+  const groups = $(".variant-plural .variant-list-group");
+  if (groups.length === 1 && /^(?:renk|color|colour)$/i.test(plain(groups.first().find(".variant-group-title").first().text(),100))) {
+    groups.first().find(".variant-list .variant-image[data-option-title]").slice(0,500).each((_i, el) => {
+      const option = $(el), code = option.attr("data-option-title") || "";
+      if (!/^[a-z0-9_-]{1,60}$/i.test(code)) return;
+      const photo = manufacturerImage(option.find("img").first().attr("src") || "", page, ["nako.com.tr", "www.nako.com.tr"], /^\/idea\/[^/]+\/[^/]+\/myassets\/options\/[^/]+\.(?:jpe?g|png|webp)$/i);
+      collected.add(code, photo);
+    });
+  } else if (groups.length > 1) warnings.push("Birden fazla varyant grubu var; geçerli kombinasyonlar doğrulanamadığı için otomatik eklenmedi.");
+  const variants = collected.result();
   if (!image) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
-  return { name, description, sku: "", barcode: "", brand: "Nako", category: "", images: image ? [image] : [], warnings, technicalDetails };
+  return { name, description, sku: "", barcode: "", brand: "Nako", category: "", images: image ? [image] : [], warnings, technicalDetails, variants };
 }
 
 function extractMilano($: CheerioAPI, page: URL): ImportedProduct | null {
@@ -206,6 +260,55 @@ function extractMilano($: CheerioAPI, page: URL): ImportedProduct | null {
   return { name, description, sku: "", barcode: "", brand: plain(brand.text(),100), category: "", images, warnings, technicalDetails: length ? {length} : {} };
 }
 
+/** A ProductGroup is usable only if it explicitly identifies this exact page and embeds its variants. */
+function extractProductGroup($: CheerioAPI, page: URL): ImportedProduct | null {
+  const groups: JsonObject[] = [];
+  $('script[type="application/ld+json"]').slice(0,25).each((_i, el) => {
+    const text = $(el).text(); if (text.length > 512000) return;
+    try {
+      const stack: Array<{ value: unknown; depth: number }> = [{ value: JSON.parse(text), depth: 0 }]; let visited = 0;
+      while (stack.length && visited++ < 5000) {
+        const {value, depth} = stack.pop()!;
+        if (depth > 20) continue;
+        if (Array.isArray(value)) { for (const item of value.slice(0,500)) stack.push({value:item,depth:depth+1}); continue; }
+        if (!isObject(value)) continue;
+        const types = Array.isArray(value["@type"]) ? value["@type"] : [value["@type"]];
+        const groupUrl = typeof value.url === "string" ? value.url : typeof value["@id"] === "string" ? value["@id"] : "";
+        if (groupUrl.trim() && types.some(type => typeof type === "string" && /^(?:https?:\/\/schema\.org\/)?ProductGroup$/i.test(type)) && samePage(groupUrl, page)) groups.push(value);
+        for (const child of Object.values(value).slice(0,500)) if (child && typeof child === "object") stack.push({value:child,depth:depth+1});
+      }
+    } catch { /* ignore invalid JSON */ }
+  });
+  if (groups.length > 1) throw new ProductImportError("AMBIGUOUS", "Sayfaya ait birden fazla ürün grubu bulundu.");
+  const group = groups[0];
+  if (!group || !Array.isArray(group.hasVariant) || !group.hasVariant.length) return null;
+  const name = plain(group.name,200); if (!name) return null;
+  const warnings: string[] = [], collected = variantCollector(warnings);
+  for (const entry of group.hasVariant.slice(0,500)) {
+    if (!isObject(entry) || !isProduct(entry)) continue;
+    const color = plain(entry.color,100), size = plain(entry.size,100);
+    if (!color && !size) continue;
+    let image = "";
+    for (const raw of valuesFromImage(entry.image)) {
+      try { image = publicHttpsUrl(raw,page.href).href; break; } catch { /* skip unsafe image */ }
+    }
+    collected.add(color,image,size);
+  }
+  const variants = collected.result();
+  if (!variants.length) return null;
+  const images: string[] = [];
+  for (const raw of valuesFromImage(group.image)) {
+    try { const url = publicHttpsUrl(raw,page.href).href; if (!images.includes(url)) images.push(url); } catch { /* skip unsafe image */ }
+    if (images.length >= 6) break;
+  }
+  const brandValue = group.brand;
+  const brand = plain(isObject(brandValue) ? brandValue.name : brandValue, 100);
+  const description = clean(group.description,6000);
+  if (!description) warnings.push("Ürün açıklaması bulunamadı.");
+  if (!images.length) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
+  return { name, description, sku: "", barcode: "", brand, category: plain(group.category,100), images, warnings, technicalDetails: productSpecificationsFromPairs(properties(group.additionalProperty)), variants };
+}
+
 /** Structured Product, product-specific OpenGraph/microdata, or supported manufacturer pages. Never interprets prices or stocks. */
 export function extractProduct(html: string, pageUrl: string): ImportedProduct {
   const page = publicHttpsUrl(pageUrl);
@@ -214,6 +317,8 @@ export function extractProduct(html: string, pageUrl: string): ImportedProduct {
   if (alize) return alize;
   const manufacturer = extractHimalaya($, page) || extractYarnArt($, page) || extractNako($, page) || extractMilano($, page);
   if (manufacturer) return manufacturer;
+  const group = extractProductGroup($,page);
+  if (group) return group;
   const candidates: JsonObject[] = [];
   $('script[type="application/ld+json"]').slice(0, 25).each((_index, el) => {
     const text = $(el).text(); if (text.length > 512000) return;

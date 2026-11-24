@@ -15,10 +15,19 @@ async function main() {
       const page = await fetchPublicProductPage(url);
       const product = extractProduct(page.html, page.url);
       const signal = AbortSignal.timeout(4000);
-      const checks = await Promise.all(product.images.map(async image => {
-        try { await resolvePublicHost(publicHttpsUrl(image).hostname, signal); return true; } catch { return false; }
-      }));
-      console.log(JSON.stringify({ source: url, result: "OK", finalUrl: page.url, name: product.name, brand: product.brand, technicalDetails: product.technicalDetails, imageCount: checks.filter(Boolean).length, warnings: product.warnings }));
+      const hosts = new Map<string, Promise<boolean>>();
+      const safe = (image: string) => {
+        if (!image) return Promise.resolve(false);
+        try {
+          const host = publicHttpsUrl(image).hostname;
+          if (!hosts.has(host)) hosts.set(host, resolvePublicHost(host, signal).then(() => true, () => false));
+          return hosts.get(host)!;
+        } catch { return Promise.resolve(false); }
+      };
+      const checks = await Promise.all(product.images.map(safe));
+      const variants = product.variants || [];
+      const variantImages = await Promise.all(variants.map(v => safe(v.imageUrl)));
+      console.log(JSON.stringify({ source: url, result: "OK", finalUrl: page.url, name: product.name, brand: product.brand, imageCount: checks.filter(Boolean).length, variantCount: variants.length, variantImageCount: variantImages.filter(Boolean).length, firstVariants: variants.slice(0, 3).map((v,i) => ({ colorName: v.colorName, size: v.size, imageValidated: variantImages[i] })), warnings: product.warnings }));
     } catch (error) {
       console.log(JSON.stringify({ source: url, result: "ERROR", code: error instanceof ProductImportError ? error.code : "UNKNOWN", message: error instanceof Error ? error.message : "Bilinmeyen hata" }));
     }

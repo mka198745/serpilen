@@ -65,17 +65,24 @@ async function handleImport(request: Request) {
   try {
     const page = await fetchPublicProductPage(input.url.trim());
     const data = extractProduct(page.html,page.url);
-    // A browser will load these external images. Exclude names resolving to any private/special IP.
+    // Check every unique image host, including variant images, without fetching the images.
     const signal = AbortSignal.timeout(4000);
-    const checks = await Promise.all(data.images.map(async url => {
-      try { await resolvePublicHost(publicHttpsUrl(url).hostname, signal); return true; } catch { return false; }
-    }));
+    const hosts = new Map<string, Promise<boolean>>();
+    const safe = (url: string) => {
+      try {
+        const host = publicHttpsUrl(url).hostname;
+        if (!hosts.has(host)) hosts.set(host, resolvePublicHost(host, signal).then(() => true, () => false));
+        return hosts.get(host)!;
+      } catch { return Promise.resolve(false); }
+    };
+    const checks = await Promise.all(data.images.map(safe));
     const images = data.images.filter((_url,index) => checks[index]);
-    if (images.length < data.images.length) data.warnings.push("Bazı görsel adresleri güvenlik veya erişim nedeniyle aktarılmadı.");
+    const variants = await Promise.all((data.variants || []).map(async variant => ({ ...variant, imageUrl: variant.imageUrl && await safe(variant.imageUrl) ? variant.imageUrl : "" })));
+    if (images.length < data.images.length || variants.some((v, i) => !!data.variants?.[i].imageUrl && !v.imageUrl)) data.warnings.push("Bazı görsel adresleri güvenlik veya erişim nedeniyle aktarılmadı.");
     // Permission, role or account status may have changed during the network request.
     const current = await requireStaff(request);
     if (!current.ok || current.user.id !== gate.user.id || !(await hasImportAccess(current.user.role))) return fail(403, "Ürün bağlantısı yetkiniz değişti; bilgiler aktarılmadı.");
-    return NextResponse.json({ success: true, data: { ...data, images } }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ success: true, data: { ...data, images, variants } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof ProductImportError) return fail(["NO_PRODUCT","AMBIGUOUS","INVALID_URL","UNSAFE_HOST"].includes(error.code) ? 422 : 502, error.message);
     return fail(502,"Ürün sayfası okunamadı.");
