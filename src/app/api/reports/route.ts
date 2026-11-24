@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     }
     const since = new Date(DAYS(days));
 
-    const allOrders = await db.select({ id: orders.id, createdAt: orders.createdAt, customerId: orders.customerId, status: orders.status, orderType: orders.orderType, grandTotal: orders.grandTotal, discountTotal: orders.discountTotal, shippingTotal: orders.shippingTotal }).from(orders);
+    const allOrders = await db.select({ id: orders.id, createdAt: orders.createdAt, customerId: orders.customerId, status: orders.status, paymentStatus:orders.paymentStatus, orderType: orders.orderType, grandTotal: orders.grandTotal, discountTotal: orders.discountTotal, shippingTotal: orders.shippingTotal }).from(orders);
     const allItems = await db.select().from(orderItems);
     const allProds = await db.select().from(products);
     const allVars = await db.select().from(productVariants);
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
     const returns = await db.select().from(orderReturns);
 
     const periodOrders = allOrders.filter((o) => new Date(o.createdAt) >= since);
-    const validOrders = periodOrders.filter((o) => !["CANCELLED"].includes(o.status));
+    const validOrders = periodOrders.filter((o) => !["CANCELLED"].includes(o.status) && o.paymentStatus === "PAID");
 
     /* ---------- 1. SATIŞ RAPORU ---------- */
     const revenue = validOrders.reduce((s, o) => s + Number(o.grandTotal), 0);
@@ -89,7 +89,7 @@ export async function GET(request: Request) {
     /* ---------- 2. ÜRÜN PERFORMANSI ---------- */
     const periodItemRows = allItems.filter((it) => {
       const o = allOrders.find((x) => x.id === it.orderId);
-      return o && new Date(o.createdAt) >= since && !["CANCELLED"].includes(o.status);
+      return o && new Date(o.createdAt) >= since && !["CANCELLED"].includes(o.status) && o.paymentStatus === "PAID";
     });
 
     const productAgg = new Map<number, { qty: number; revenue: number; cost: number }>();

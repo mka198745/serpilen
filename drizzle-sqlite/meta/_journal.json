@@ -162,6 +162,34 @@
       "when": 1794779826192,
       "tag": "0022_crm_merge_reference_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794780826192,
+      "tag": "0023_order_discount_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794781826192,
+      "tag": "0024_pos_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794782826192,
+      "tag": "0025_pos_sale_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1794783826192,
+      "tag": "0026_brand_categories",
+      "breakpoints": true
     }
   ]
 }

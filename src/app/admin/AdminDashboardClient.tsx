@@ -231,8 +231,11 @@ export function AdminDashboardClient({
   });
   const [newCategory, setNewCategory] = useState({ name: "", parentId: "", description: "" });
   const [newBrandAdmin, setNewBrandAdmin] = useState("");
+  const [newBrandCategories, setNewBrandCategories] = useState<number[]>([]);
+  const [editingBrandCategories, setEditingBrandCategories] = useState<number[]>([]);
   const [editingBrandId, setEditingBrandId] = useState<number | null>(null);
   const [editingBrandName, setEditingBrandName] = useState("");
+  const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
   const [catalogFeedback, setCatalogFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [inventoryList, setInventoryList] = useState(initialInventory);
   const [ledger, setLedger] = useState(initialLedger);
@@ -266,6 +269,12 @@ export function AdminDashboardClient({
   const [ordersSubTab, setOrdersSubTab] = useState<"orders" | "returns">("orders");
   const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
   const [returnsList, setReturnsList] = useState<any[]>([]);
+  const [reconciliation, setReconciliation] = useState<any|null>(null);
+  const [reconciliationError, setReconciliationError] = useState("");
+  const loadReconciliation = async (page=1) => {
+    try {const res=await authFetch(`/api/orders/reconciliation?page=${page}`,{cache:"no-store"});const data=await res.json();if(data.success){setReconciliation(data.data);setReconciliationError("");}else setReconciliationError(data.error||"Liste yüklenemedi.");}
+    catch {setReconciliationError("Mutabakat listesi yüklenemedi.");}
+  };
   const [orderFeedback, setOrderFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [returnModalOrder, setReturnModalOrder] = useState<any | null>(null);
   const [returnSelections, setReturnSelections] = useState<Record<number, number>>({});
@@ -419,12 +428,12 @@ export function AdminDashboardClient({
   }, []);
 
   const ORDER_STATUS_LABELS: Record<string, string> = {
-    PENDING: "Ödeme Bekliyor", PAID: "Ödendi", PREPARING: "Hazırlanıyor",
+    BACKORDER: "Stok Bekliyor", PENDING: "Ödeme Bekliyor", PAID: "Ödendi", PREPARING: "Hazırlanıyor",
     READY_FOR_SHIPMENT: "Sevke Hazır", SHIPPED: "Kargoda", DELIVERED: "Teslim Edildi",
     CANCELLED: "İptal", RETURN_REQUESTED: "İade Talebi", RETURNED: "İade Alındı", REFUNDED: "İade Ödendi",
   };
   const ORDER_NEXT: Record<string, string[]> = {
-    PENDING: ["PAID", "CANCELLED"], PAID: ["PREPARING", "CANCELLED"], PREPARING: ["READY_FOR_SHIPMENT", "CANCELLED"],
+    BACKORDER: ["CANCELLED"], PENDING: ["PAID", "CANCELLED"], PAID: ["PREPARING", "CANCELLED"], PREPARING: ["READY_FOR_SHIPMENT", "CANCELLED"],
     READY_FOR_SHIPMENT: ["SHIPPED", "CANCELLED"], SHIPPED: ["DELIVERED"], DELIVERED: [], RETURN_REQUESTED: [], RETURNED: [], CANCELLED: [], REFUNDED: [],
   };
 
@@ -448,6 +457,9 @@ export function AdminDashboardClient({
   }, [activeTab, ordersSubTab, loadReturns]);
 
   const advanceOrder = async (id: number, status: string) => {
+    const ord = orders.find(o => o.id === id);
+    if (ord?.status === "PENDING" && status === "PAID" && !window.confirm(`Banka hesabında ${ord.orderNumber} için ${Number(ord.grandTotal).toFixed(2)} TL ödemenin alındığını kontrol ettiniz mi?`)) return;
+    if (["PENDING", "BACKORDER"].includes(ord?.status || "") && status === "CANCELLED" && !window.confirm(`${ord.orderNumber} siparişi iptal edilecek ve ayrılan stok serbest bırakılacak. Onaylıyor musunuz?`)) return;
     const res = await authFetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -550,10 +562,12 @@ export function AdminDashboardClient({
   };
 
   const returnAction = async (returnId: number, action: string) => {
+    const ret = returnsList.find(r => r.id === returnId);
+    if (action === "REFUND" && !window.confirm(`${Number(ret?.refundAmount || 0).toFixed(2)} TL tutarındaki para iadesini banka veya POS üzerinden gerçekten yaptınız mı? Bu düğme para transferi yapmaz.`)) return;
     const res = await authFetch("/api/returns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, returnId }),
+      body: JSON.stringify({ action, returnId, confirmRefund: action === "REFUND" }),
     });
     const data = await res.json();
     if (data.success) {
@@ -887,6 +901,21 @@ export function AdminDashboardClient({
     if (pData.success) setProducts(pData.data);
   };
 
+  const handleDeleteProduct = async (id: number, name: string) => {
+    if (deletingProductId !== null || !window.confirm(`"${name}" ürününü kalıcı olarak silmek istiyor musunuz? Varyantları ve ürün görsel kayıtları da silinir. Sipariş, stok veya başka ilişkili kaydı olan ürünler silinemez. Bu işlem geri alınamaz.`)) return;
+    setDeletingProductId(id); setCatalogFeedback(null);
+    try {
+      const res = await authFetch("/api/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) { setCatalogFeedback({ text: typeof data.error === "string" ? data.error : "Ürün silinemedi.", isError: true }); return; }
+      setProducts(prev => prev.filter(p => p.id !== id));
+      setInventoryList(prev => prev.filter(row => row.productId !== id));
+      setVariantProductId(prev => prev === String(id) ? "" : prev);
+      setCatalogFeedback({ text: `"${name}" ürünü silindi.`, isError: false });
+    } catch { setCatalogFeedback({ text: "Sunucuya ulaşılamadı; silme sonucu doğrulanamadı. Listeyi yenileyin.", isError: true }); }
+    finally { setDeletingProductId(null); }
+  };
+
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
@@ -960,19 +989,23 @@ export function AdminDashboardClient({
   const handleAddBrandAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandAdmin.trim()) return;
+    if (!newBrandCategories.length) { setCatalogFeedback({ text: "En az bir kategori seçin.", isError: true }); return; }
+    try {
     const res = await authFetch("/api/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newBrandAdmin }),
+      body: JSON.stringify({ name: newBrandAdmin, categoryIds: newBrandCategories }),
     });
     const data = await res.json();
     if (data.success) {
-      if (!data.existed) setBrandsList((prev) => [...prev, data.data]);
+      setBrandsList((prev) => prev.some(b => b.id === data.data.id) ? prev.map(b => b.id === data.data.id ? data.data : b) : [...prev, data.data]);
       setNewBrandAdmin("");
-      setCatalogFeedback({ text: `"${data.data.name}" markası kaydedildi.`, isError: false });
+      setNewBrandCategories([]);
+      setCatalogFeedback({ text: data.existed ? `"${data.data.name}" mevcut markasına seçilen kategoriler eklendi.` : `"${data.data.name}" markası kaydedildi.`, isError: false });
     } else {
-      setCatalogFeedback({ text: data.error?.message || "Marka eklenemedi.", isError: true });
+      setCatalogFeedback({ text: data.error?.message || data.error || "Marka eklenemedi.", isError: true });
     }
+    } catch { setCatalogFeedback({ text: "Sunucuya ulaşılamadı; marka kaydedilemedi.", isError: true }); }
   };
 
   const handleToggleBrand = async (b: any) => {
@@ -995,11 +1028,11 @@ export function AdminDashboardClient({
     const res = await authFetch("/api/brands", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingBrandId, name: editingBrandName.trim() }),
+      body: JSON.stringify({ id: editingBrandId, name: editingBrandName.trim(), categoryIds: editingBrandCategories }),
     });
     const data = await res.json().catch(() => ({}));
     if (data?.success) {
-      setBrandsList((prev) => prev.map((x) => (x.id === editingBrandId ? { ...x, name: data.data.name, slug: data.data.slug } : x)));
+      setBrandsList((prev) => prev.map((x) => (x.id === editingBrandId ? data.data : x)));
       setCatalogFeedback({ text: `Marka güncellendi: "${data.data.name}".`, isError: false });
       setEditingBrandId(null);
       setEditingBrandName("");
@@ -1327,16 +1360,16 @@ export function AdminDashboardClient({
 
   // Dashboard KPI'ları — sunucuda DB'den hesaplanan (tüm zamanlar) gerçek rakamlar.
   // dashboardStats yoksa (eski derleme) istemci tarafında, sınırlı sipariş listesiyle hesaplanır.
-  const clientRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal), 0);
+  const clientRevenue = orders.filter(o => o.paymentStatus === "PAID" && o.status !== "CANCELLED").reduce((sum, o) => sum + Number(o.grandTotal), 0);
   const clientChannel = {
-    pos: orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
-    online: orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
+    pos: orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").reduce((s, o) => s + Number(o.grandTotal), 0),
+    online: orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").reduce((s, o) => s + Number(o.grandTotal), 0),
   };
   const totalRevenue = dashboardStats?.totalRevenue ?? clientRevenue;
-  const salesCount = dashboardStats?.salesCount ?? orders.filter((o) => o.status !== "CANCELLED").length;
+  const salesCount = dashboardStats?.salesCount ?? orders.filter((o) => o.status !== "CANCELLED" && o.paymentStatus === "PAID").length;
   const totalOrders = dashboardStats?.totalOrders ?? orders.length;
-  const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").length;
-  const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").length;
+  const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").length;
+  const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").length;
   const channelRevenue = dashboardStats?.channelRevenue ?? clientChannel;
   const estimatedGrossProfit =
     dashboardStats?.grossProfit ??
@@ -2011,7 +2044,7 @@ export function AdminDashboardClient({
                 <div className="text-xl font-black text-emerald-950 mt-1">{onlineCount} Sipariş</div>
                 <div className="text-sm font-bold text-emerald-800">{channelRevenue.online.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
                 <p className="text-xs text-emerald-800 mt-1">
-                  Kredi Kartı / 3D Secure / Yurtiçi Kargo
+                  Havale / EFT / Yurtiçi Kargo
                 </p>
               </div>
             </div>
@@ -2225,6 +2258,7 @@ export function AdminDashboardClient({
                                 >
                                   <Pencil className="w-3 h-3" /> Düzenle
                                 </button>
+                                {isSuper && <button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId !== null} onClick={() => void handleDeleteProduct(prod.id, prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId === prod.id ? "Siliniyor..." : "Sil"}</button>}
                                 <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
                               </td>
                             </tr>
@@ -2272,6 +2306,7 @@ export function AdminDashboardClient({
                         <th className="py-3 px-3">Kategori</th>
                         <th className="py-3 px-3">Üst</th>
                         <th className="py-3 px-3">Slug</th>
+                        <th className="py-3 px-3">Kategoriler</th>
                         <th className="py-3 px-3">Ürün</th>
                         <th className="py-3 px-3">Durum</th>
                       </tr>
@@ -2313,6 +2348,11 @@ export function AdminDashboardClient({
                     onChange={(e) => setNewBrandAdmin(e.target.value)}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
                   />
+                  <fieldset className="border border-stone-200 rounded-xl p-3 space-y-1 max-h-48 overflow-y-auto">
+                    <legend className="font-bold text-stone-700 px-1">Kategoriler (en az birini seçin)</legend>
+                    {categoriesList.length === 0 && <p>Önce Kategoriler bölümünden kategori ekleyin.</p>}
+                    {categoriesList.map(c => <label key={c.id} className="flex gap-2 items-center"><input type="checkbox" checked={newBrandCategories.includes(c.id)} onChange={e => setNewBrandCategories(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} />{c.parentName ? `${c.parentName} / ` : ""}{c.name}</label>)}
+                  </fieldset>
                   <button type="submit" className="w-full py-2.5 bg-amber-800 text-white text-xs font-bold rounded-xl">Markayı Kaydet</button>
                 </form>
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-stone-200 overflow-hidden">
@@ -2348,6 +2388,9 @@ export function AdminDashboardClient({
                             )}
                           </td>
                           <td className="py-3 px-3 font-mono text-[10px]">{b.slug}</td>
+                          <td className="py-3 px-3 min-w-[150px]">
+                            {isEditing ? <fieldset className="max-h-40 overflow-y-auto space-y-1"><legend className="sr-only">Marka kategorilerini düzenle</legend>{categoriesList.map(c => <label key={c.id} className="flex gap-1 items-center"><input type="checkbox" checked={editingBrandCategories.includes(c.id)} onChange={e => setEditingBrandCategories(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} />{c.parentName ? `${c.parentName} / ` : ""}{c.name}</label>)}</fieldset> : (categoriesList.filter(c => (b.categoryIds || []).includes(c.id)).map(c => c.parentName ? `${c.parentName} / ${c.name}` : c.name).join(", ") || "Atanmamış")}
+                          </td>
                           <td className="py-3 px-3">{products.filter((p) => p.brandId === b.id).length}</td>
                           <td className="py-3 px-3">
                             <button
@@ -2377,7 +2420,7 @@ export function AdminDashboardClient({
                             ) : (
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => { setEditingBrandId(b.id); setEditingBrandName(b.name); setCatalogFeedback(null); }}
+                                  onClick={() => { setEditingBrandId(b.id); setEditingBrandName(b.name); setEditingBrandCategories(b.categoryIds || []); setCatalogFeedback(null); }}
                                   className="flex items-center gap-1 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] font-bold transition"
                                 >
                                   <Pencil className="w-3 h-3" /> Düzenle
@@ -3814,8 +3857,17 @@ export function AdminDashboardClient({
 
             {ordersSubTab === "orders" && (
               <>
+                {["SUPER_ADMIN","STORE_MANAGER"].includes(currentRole) && <section className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+                  <button type="button" onClick={()=>loadReconciliation()} className="font-bold underline">Eski sipariş ve e-posta mutabakatını göster / yenile</button>
+                  {reconciliationError && <p role="alert">{reconciliationError}</p>}
+                  {reconciliation && <div className="space-y-2 mt-2"><p>Toplam {reconciliation.total} incelenecek eski kayıt. Hak kaydının bulunmaması sayaç kullanımını kanıtlamaz; banka ve belgeleri kontrol edin. Buradan otomatik değişiklik yapılmaz.</p>
+                    {reconciliation.rows.map((r:any)=><p key={r.id}><strong>{r.orderNumber}</strong> · {r.status} / {r.paymentStatus} · {Number(r.grandTotal).toFixed(2)} TL · {r.longHold?"uzun süreli rezervasyon · ":""}{r.noClaims&&Number(r.discountTotal)>0?"indirim hakkı belgesiz":""}</p>)}
+                    <div className="flex gap-3"><button disabled={reconciliation.page<=1} onClick={()=>loadReconciliation(reconciliation.page-1)}>← Önceki</button><span>Sayfa {reconciliation.page}</span><button disabled={reconciliation.page*50>=reconciliation.total} onClick={()=>loadReconciliation(reconciliation.page+1)}>Sonraki →</button></div>
+                    <p className="font-bold">Gönderilemeyen/bekleyen e-postalar (en fazla 50)</p>{reconciliation.notices.map((n:any)=><p key={n.id}>{n.orderNumber} · {n.status} · {n.attempts} deneme · {n.lastError||"bekliyor"}</p>)}{!reconciliation.notices.length&&<p>Bekleyen kayıt yok.</p>}
+                  </div>}
+                </section>}
                 <div className="flex flex-wrap gap-1.5">
-                  {["ALL", "PAID", "PREPARING", "READY_FOR_SHIPMENT", "SHIPPED", "DELIVERED", "CANCELLED"].map((s) => (
+                  {["ALL", "BACKORDER", "PENDING", "PAID", "PREPARING", "READY_FOR_SHIPMENT", "SHIPPED", "DELIVERED", "CANCELLED"].map((s) => (
                     <button
                       key={s}
                       onClick={() => setOrderStatusFilter(s)}
@@ -3869,18 +3921,20 @@ export function AdminDashboardClient({
                               }`}>
                                 {ORDER_STATUS_LABELS[ord.status] || ord.status}
                               </span>
+                              {ord.status === "PENDING" && ord.paymentDeadline && <div className="text-[10px] mt-1">Son onay: {new Date(ord.paymentDeadline).toLocaleString("tr-TR")} · müşteriyle iletişim kurun</div>}
+
                             </td>
                             <td className="py-3 px-3">
                               <div className="flex flex-wrap gap-1 items-start">
                                 {(ORDER_NEXT[ord.status] || [])
-                                  .filter((next) => !(ord.status === "READY_FOR_SHIPMENT" && next === "SHIPPED"))
+                                  .filter((next) => !(ord.status === "READY_FOR_SHIPMENT" && next === "SHIPPED") && !(ord.status === "PENDING" && next === "PAID" && !["SUPER_ADMIN", "STORE_MANAGER"].includes(currentRole)) && !(next === "CANCELLED" && ord.paymentStatus === "PAID"))
                                   .map((next) => (
                                   <button
                                     key={next}
                                     onClick={() => void advanceOrder(ord.id, next)}
                                     className={`px-2 py-1 rounded-lg text-[10px] font-bold ${next === "CANCELLED" ? "bg-stone-200 text-stone-600" : "bg-amber-700 text-white"}`}
                                   >
-                                    {ORDER_STATUS_LABELS[next] || next}
+                                    {ord.status === "PENDING" && next === "PAID" ? "Banka ödemesini onayla" : ORDER_STATUS_LABELS[next] || next}
                                   </button>
                                 ))}
                                 {ord.status === "READY_FOR_SHIPMENT" && (() => {
@@ -3981,8 +4035,8 @@ export function AdminDashboardClient({
                             {r.status === "APPROVED" && (
                               <button onClick={() => void returnAction(r.id, "RECEIVE")} className="px-2 py-1 bg-sky-700 text-white rounded-lg text-[10px] font-bold">Teslim Al (+Stok)</button>
                             )}
-                            {r.status === "RECEIVED" && (
-                              <button onClick={() => void returnAction(r.id, "REFUND")} className="px-2 py-1 bg-emerald-700 text-white rounded-lg text-[10px] font-bold">İade Bedeli Öde</button>
+                            {r.status === "RECEIVED" && ["SUPER_ADMIN", "STORE_MANAGER"].includes(currentRole) && (
+                              <button onClick={() => void returnAction(r.id, "REFUND")} className="px-2 py-1 bg-emerald-700 text-white rounded-lg text-[10px] font-bold">Yapılmış İadeyi Onayla</button>
                             )}
                           </div>
                         </td>
@@ -4813,10 +4867,14 @@ export function AdminDashboardClient({
                     onChange={(e) => { productSelectionTouched.current.brand = true; setNewProd({ ...newProd, brandId: e.target.value }); }}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   >
-                    {brandsList.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
+                    <optgroup label="Seçilen kategoriye bağlı markalar">
+                      {brandsList.filter(b => (b.categoryIds || []).includes(Number(newProd.categoryId))).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </optgroup>
+                    <optgroup label="Diğer ve kategorisi atanmamış markalar">
+                      {brandsList.filter(b => !(b.categoryIds || []).includes(Number(newProd.categoryId))).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </optgroup>
                   </select>
+                  <p className="text-[10px] text-stone-500 mt-1">Diğer markalar da seçilebilir; mevcut seçim değiştirilmez.</p>
                 </div>
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Birim:</label>

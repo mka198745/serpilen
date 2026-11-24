@@ -1,0 +1,27 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {randomUUID} from 'node:crypto';import {spawnSync} from 'node:child_process';
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pos-intent-'));process.env.DATABASE_URL=`sqlite:${path.join(dir,'db')}`;
+const migration=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env:process.env,encoding:'utf8'});assert.equal(migration.status,0,migration.stderr);
+const {sqlite}=require('../src/db/index');const {preparePosSale,completePosSale,cancelPosSale}=require('../src/lib/pos-sale-intent');const {releaseReservations,expireReservations}=require('../src/lib/inventory-engine');
+const actor={id:1,name:'Kasiyer',role:'CASHIER'},manager={id:2,name:'Yönetici',role:'STORE_MANAGER'},other={id:3,name:'Diğer',role:'CASHIER'};const tx=<T>(fn:()=>T)=>sqlite.transaction(fn).immediate();
+sqlite.exec(`INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'A','sale-intent-a','intent-a',1,100);
+ INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(2,1,3,0);
+ INSERT INTO customers(id,name,phone,loyalty_points) VALUES(1,'Müşteri','555',50);
+ INSERT INTO coupons(id,code,discount_type,discount_value,usage_limit,used_count) VALUES(1,'SAVE','PERCENT',5,1,0);
+ INSERT INTO promotions(id,name,rule_type,category_id,percent_value,start_date,used_count) VALUES(1,'Promo','PERCENT_CATEGORY',1,10,1,0);
+ INSERT INTO pos_shifts(id,cashier_name,warehouse_id,opening_amount,expected_amount) VALUES(1,'Kasiyer',2,100,100);`);
+function payload(){return {orderType:'POS',posRequestKey:randomUUID(),customerId:1,customerName:'Müşteri',paymentMethod:'SPLIT',splitCash:30,splitCard:52.5,warehouseId:2,posShiftId:1,discountTotal:0,grandTotal:82.5,spentPoints:5,couponCode:'SAVE',items:[{productId:1,variantId:null,productName:'A',sku:'intent-a',unitPrice:100,totalPrice:100,quantity:1}]};}
+function scalar(sql:string,...args:unknown[]){return sqlite.prepare(sql).get(...args) as any;}
+test('stock, coupon, points and price are reserved, rollback is atomic, retry completes exactly once',async()=>{
+ const p=payload();const prepared=tx(()=>preparePosSale(p,actor));assert.equal(prepared.status,'PREPARED');assert.equal(scalar('SELECT reserved_qty FROM inventory WHERE product_id=1').reserved_qty,1);assert.equal(scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,45);assert.equal(scalar('SELECT used_count FROM coupons WHERE id=1').used_count,1);assert.throws(()=>tx(()=>preparePosSale({...payload(),couponCode:'SAVE'},actor)),/kupon/i);
+ await releaseReservations(p.posRequestKey);await expireReservations();assert.equal(scalar('SELECT reserved_qty FROM inventory WHERE product_id=1').reserved_qty,1);
+ assert.throws(()=>tx(()=>completePosSale(p.posRequestKey,other)),/başka kasiyere/);
+ sqlite.exec("UPDATE products SET retail_price=200 WHERE id=1; UPDATE promotions SET is_active=0 WHERE id=1; CREATE TRIGGER fail_pos_item BEFORE INSERT ON order_items BEGIN SELECT RAISE(ABORT,'fault'); END");
+ assert.throws(()=>tx(()=>completePosSale(p.posRequestKey,actor)));assert.equal(scalar('SELECT COUNT(*) n FROM orders').n,0);assert.deepEqual(scalar('SELECT physical_qty,reserved_qty FROM inventory'),{physical_qty:3,reserved_qty:1});assert.equal(scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,45);
+ sqlite.exec('DROP TRIGGER fail_pos_item');const result=tx(()=>completePosSale(p.posRequestKey,actor));assert.equal(Number(result.order.grandTotal),82.5);assert.equal(tx(()=>completePosSale(p.posRequestKey,actor)).alreadyCompleted,true);assert.deepEqual(scalar('SELECT physical_qty,reserved_qty FROM inventory'),{physical_qty:2,reserved_qty:0});assert.equal(scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,53);assert.equal(scalar("SELECT COUNT(*) n FROM loyalty_transactions WHERE type='SPEND' AND order_id=?",result.order.id).n,1);assert.equal(scalar('SELECT total_sales_cash FROM pos_shifts WHERE id=1').total_sales_cash,30);assert.throws(()=>tx(()=>cancelPosSale(p.posRequestKey,actor)),/Tamamlanmış/);
+});
+test('cancel reverses all holds exactly once and a tombstone fences a delayed prepare',()=>{
+ sqlite.exec("UPDATE products SET retail_price=100 WHERE id=1; UPDATE promotions SET is_active=1 WHERE id=1; UPDATE coupons SET usage_limit=3 WHERE id=1");const p=payload(),before=scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,claims=scalar('SELECT used_count FROM coupons WHERE id=1').used_count;
+ tx(()=>preparePosSale(p,actor));assert.throws(()=>tx(()=>cancelPosSale(p.posRequestKey,other)),/başka kasiyere/);tx(()=>cancelPosSale(p.posRequestKey,manager));tx(()=>cancelPosSale(p.posRequestKey,manager));assert.equal(scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,before);assert.equal(scalar('SELECT used_count FROM coupons WHERE id=1').used_count,claims);assert.equal(scalar("SELECT SUM(points) n FROM loyalty_transactions WHERE type IN ('POS_HOLD','POS_HOLD_RELEASE')").n,0);assert.equal(scalar('SELECT reserved_qty FROM inventory').reserved_qty,0);
+ const delayed=payload();tx(()=>cancelPosSale(delayed.posRequestKey,actor,delayed));assert.throws(()=>tx(()=>preparePosSale(delayed,actor)),/iptal edildi/);assert.equal(scalar('SELECT reserved_qty FROM inventory').reserved_qty,0);
+});
+test.after(()=>{sqlite.close();fs.rmSync(dir,{recursive:true,force:true});});

@@ -11,12 +11,16 @@ export const DEFAULT_SETTINGS: Record<string, { value: string; description: stri
   "shipping.free_threshold": { value: "1000", description: "Ücretsiz kargo eşiği (TL)" },
 };
 
-export async function getSettings(): Promise<Record<string, string>> {
-  const rows = await db.select().from(appSettings);
+export function getSettingsSync(): Record<string, string> {
+  const rows = db.select().from(appSettings).all();
   const out: Record<string, string> = {};
   for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) out[k] = def.value;
   for (const r of rows) out[r.key] = r.value;
   return out;
+}
+
+export async function getSettings(): Promise<Record<string, string>> {
+  return getSettingsSync();
 }
 
 export async function saveSettings(patch: Record<string, string>) {

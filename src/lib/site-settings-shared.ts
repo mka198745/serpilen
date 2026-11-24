@@ -30,17 +30,17 @@ export const DEFAULT_SITE_SETTINGS: Record<string, string> = {
   "site.cart.shipping_fee": "59",
   "site.cart.notice": "14 gün içinde koşulsuz iade • Aynı gün hızlı gönderim",
   "site.cart.empty_message": "Dikiş iplikleri, fermuarlar, düğmeler ve örgü malzemelerimize göz atın.",
-  "site.cart.trust_text": "256-Bit SSL & 3D Secure Güvenli Ödeme Altyapısı",
+  "site.cart.trust_text": "Havale / EFT ile sipariş",
   // Güvenli Sipariş Tamamlama & Ödeme (checkout) — Sepetim Ayarı, 2. bölüm
   "site.checkout.title": "Güvenli Sipariş Tamamlama & Ödeme",
   "site.checkout.payment_card_enabled": "true",
   "site.checkout.payment_eft_enabled": "true",
-  "site.checkout.card_note": "3D Secure ile anında onay",
+  "site.checkout.card_note": "Online kart ödemesi kullanılamıyor",
   "site.checkout.eft_note": "Havale / EFT ile transfer",
-  "site.checkout.eft_bank": "Türkiye İş Bankası — Kadıköy Şubesi",
-  "site.checkout.eft_iban": "TR12 0006 4000 0011 2345 6789 01",
-  "site.checkout.eft_account_name": "Serpilen Collection San. ve Tic. Ltd. Şti.",
-  "site.checkout.trust_text": "256-Bit SSL & 3D Secure Güvenli Ödeme",
+  "site.checkout.eft_bank": "",
+  "site.checkout.eft_iban": "",
+  "site.checkout.eft_account_name": "",
+  "site.checkout.trust_text": "Havale / EFT ile sipariş",
   "site.checkout.success_note": "Siparişiniz alındı; ödeme adımınız tamamlandığında depomuz hazırlığa başlar.",
 };
 
@@ -108,4 +108,14 @@ export function shippingCostFor(subtotal: number, cfg: CartSettings): number {
   if (cfg.shippingFee <= 0) return 0;
   if (cfg.freeShippingThreshold > 0 && subtotal >= cfg.freeShippingThreshold) return 0;
   return cfg.shippingFee;
+}
+
+/** Validate a Turkish IBAN before showing bank-transfer instructions. */
+export function validTurkishIban(value: string): boolean {
+  const iban = value.toUpperCase().replace(/\s/g, "");
+  if (!/^TR\d{24}$/.test(iban)) return false;
+  const numeric = (iban.slice(4) + iban.slice(0, 4)).replace(/[A-Z]/g, c => String(c.charCodeAt(0) - 55));
+  let remainder = 0;
+  for (const digit of numeric) remainder = (remainder * 10 + Number(digit)) % 97;
+  return remainder === 1;
 }

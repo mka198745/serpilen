@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric, index, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
 
 // ==========================================
 // 1. KULLANICILAR & ROLLER
@@ -145,6 +145,12 @@ export const brands = sqliteTable("brands", {
   logoUrl: text("logo_url"),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
 });
+
+// A brand can serve several catalog categories; category assignments are advisory.
+export const brandCategories = sqliteTable("brand_categories", {
+  brandId: integer("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").notNull().references(() => categories.id, { onDelete: "cascade" }),
+}, table => [primaryKey({columns:[table.brandId,table.categoryId]}), index("brand_categories_category_idx").on(table.categoryId,table.brandId)]);
 
 // ==========================================
 // 4. ÜRÜNLER & VARYANTLAR
@@ -360,6 +366,15 @@ export const orderItems = sqliteTable("order_items", {
   totalPrice: numeric("total_price").notNull(),
 }, (table) => [index("order_items_order_idx").on(table.orderId, table.id)]);
 
+// Order-owned discount counters, released transactionally if an unpaid order is cancelled.
+export const orderDiscountClaims = sqliteTable("order_discount_claims", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull(),
+  kind: text("kind").notNull(),
+  targetId: integer("target_id").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+}, (table) => [index("order_discount_claims_order_idx").on(table.orderId, table.status), uniqueIndex("order_discount_claims_unique_idx").on(table.orderId, table.kind, table.targetId)]);
+
 // SİPARİŞ DURUM GEÇMİŞİ (audit trail) — FAZ 4
 export const orderStatusHistory = sqliteTable("order_status_history", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -397,6 +412,28 @@ export const orderReturnItems = sqliteTable("order_return_items", {
   quantity: integer("quantity").notNull(),
   refundAmount: numeric("refund_amount").notNull().default("0.00"),
 }, (table) => [index("order_return_items_return_idx").on(table.returnId, table.id)]);
+
+export const posReturnContext = sqliteTable("pos_return_context", {
+  returnId: integer("return_id").primaryKey(),
+  shiftId: integer("shift_id").notNull(),
+  refundMethod: text("refund_method").notNull(),
+});
+
+export const orderNotificationOutbox = sqliteTable("order_notification_outbox", {
+  id: integer("id").primaryKey({autoIncrement:true}), orderId: integer("order_id").notNull(), event: text("event").notNull(),
+  status: text("status").notNull().default("PENDING"), attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: integer("next_attempt_at").notNull().default(sql`(unixepoch())`), leaseToken:text("lease_token"), leaseUntil:integer("lease_until"),
+  lastError:text("last_error"), sentAt:integer("sent_at"), createdAt:integer("created_at").notNull().default(sql`(unixepoch())`),
+}, table=>[uniqueIndex("order_notification_event_idx").on(table.orderId,table.event),index("order_notification_due_idx").on(table.status,table.nextAttemptAt,table.leaseUntil)]);
+export const posSaleRequests = sqliteTable("pos_sale_requests", {
+  requestKey:text("request_key").primaryKey(),requestHash:text("request_hash").notNull(),actorId:integer("actor_id").notNull(),orderId:integer("order_id").notNull().unique(),createdAt:integer("created_at").notNull().default(sql`(unixepoch())`),
+});
+export const posSalePayments = sqliteTable("pos_sale_payments", {
+  orderId:integer("order_id").primaryKey(),cashAmount:integer("cash_amount").notNull(),cardAmount:integer("card_amount").notNull(),
+});
+export const posSaleIntents = sqliteTable("pos_sale_intents", {
+  requestKey:text("request_key").primaryKey(), requestHash:text("request_hash").notNull(),actorId:integer("actor_id").notNull(),actorName:text("actor_name").notNull(),shiftId:integer("shift_id").notNull(),status:text("status").notNull().default("PREPARED"),payloadJson:text("payload_json").notNull(),quoteJson:text("quote_json").notNull(),couponId:integer("coupon_id"),pointsTransactionId:integer("points_transaction_id"),earnPoints:integer("earn_points").notNull().default(0),orderId:integer("order_id"),createdAt:integer("created_at").notNull().default(sql`(unixepoch())`),resolvedAt:integer("resolved_at"),
+}, table=>[index("pos_sale_intents_shift_status_idx").on(table.shiftId,table.status)]);
 
 // ==========================================
 // 7. POS VARDİYA & KASA YÖNETİMİ — FAZ 7

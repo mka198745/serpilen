@@ -65,7 +65,7 @@ export async function GET(request: Request) {
     const since = Date.now() - 30 * 86400000;
     const recentItems = allOrderItems.filter((it) => {
       const o = allOrders.find((x) => x.id === it.orderId);
-      return o && new Date(o.createdAt).getTime() >= since && o.status !== "CANCELLED";
+      return o && new Date(o.createdAt).getTime() >= since && o.status !== "CANCELLED" && o.paymentStatus === "PAID";
     });
 
     const salesByProduct = new Map<number, number>();

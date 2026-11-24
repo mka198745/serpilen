@@ -60,7 +60,7 @@ export interface CustomerDim {
 }
 
 /** İptal/iade hariç geçerli sipariş mi? */
-export const INVALID_ORDER_STATUSES = ["CANCELLED", "REFUNDED"];
+export const INVALID_ORDER_STATUSES = ["BACKORDER", "PENDING", "CANCELLED", "REFUNDED"];
 export function isValidOrder(o: Pick<OrderRow, "status">): boolean {
   return !INVALID_ORDER_STATUSES.includes(o.status);
 }

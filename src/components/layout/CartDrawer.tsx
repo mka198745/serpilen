@@ -271,12 +271,10 @@ export function CartDrawer() {
                   <ArrowRight className="w-4 h-4" />
                 </a>
 
-                {cartCfg.trustText && (
-                  <div className="flex items-center justify-center gap-2 text-[11px] text-gray-500 pt-1">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>{cartCfg.trustText}</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-center gap-2 text-[11px] text-gray-500 pt-1">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Havale / EFT ile sipariş</span>
+                </div>
               </div>
             </div>
           )}

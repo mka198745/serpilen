@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { db } from "@/db";
+import { db, sqlite } from "@/db";
 import { products, productVariants, productImages, categories, brands, inventory, warehouses } from "@/db/schema";
 import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 
-import { requireStaff } from "@/lib/auth";
+import { requireStaff, getUserByToken } from "@/lib/auth";
+import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
+import { deleteProductSafely } from "@/lib/delete-product";
 import { validateProductSpecifications } from "@/lib/product-specifications";
 import { validateNewProductVariants, variantSkuBase, VariantValidationError } from "@/lib/new-product-variants";
 import { publicHttpsUrl, resolvePublicHost } from "@/lib/product-import/safe-fetch";
@@ -427,5 +429,32 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true, data: updated });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
+}
+
+/** A hard delete is restricted to super admins and products without operational history. */
+export async function DELETE(request: Request) {
+  const gate = await requireStaff(request);
+  if (!gate.ok) return gate.response;
+  if (gate.user.role !== "SUPER_ADMIN") return NextResponse.json({success:false,error:"Ürün silme yetkiniz bulunmuyor."},{status:403});
+  const invalid = validateCrmWrite(request);
+  if (invalid) return invalid;
+  if (!request.headers.get("origin")) {
+    const bearer = await getUserByToken(request.headers.get("authorization")?.slice(7).trim());
+    if (!bearer || bearer.id !== gate.user.id) return NextResponse.json({success:false,error:"İstek kaynağı doğrulanamadı."},{status:403});
+  }
+  const parsed = await readCrmJson(request);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value as Record<string,unknown> | null;
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k=>k!=="id") || !Number.isSafeInteger(body.id) || Number(body.id)<1) return NextResponse.json({success:false,error:"Geçerli ürün numarası gereklidir."},{status:422});
+  const current = await requireStaff(request);
+  if (!current.ok || current.user.id !== gate.user.id || current.user.role !== "SUPER_ADMIN") return NextResponse.json({success:false,error:"Ürün silme yetkiniz bulunmuyor."},{status:403});
+  try {
+    const result = deleteProductSafely(sqlite,Number(body.id),current.user);
+    if (result.status !== 200) return NextResponse.json({success:false,error:result.error},{status:result.status,headers:{"Cache-Control":"private, no-store"}});
+    return NextResponse.json({success:true,data:{id:body.id,name:result.name}},{headers:{"Cache-Control":"private, no-store"}});
+  } catch (error) {
+    console.error("Ürün silinemedi:",error instanceof Error ? error.name : "UnknownError");
+    return NextResponse.json({success:false,error:"Ürün silinemedi; hiçbir kayıt değiştirilmedi."},{status:500,headers:{"Cache-Control":"private, no-store"}});
   }
 }

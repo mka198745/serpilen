@@ -5,6 +5,7 @@ import {
   productVariants,
   categories,
   brands,
+  brandCategories,
   warehouses,
   inventory,
   inventoryLedger,
@@ -16,7 +17,7 @@ import {
   coupons,
   posShifts,
 } from "@/db/schema";
-import { desc, sql, count, and, ne, gte, lt, inArray } from "drizzle-orm";
+import { desc, sql, count, and, ne, eq, gte, lt, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getSessionUser, getStaffUserFromKt } from "@/lib/auth";
 import { StripQueryParam } from "@/components/layout/StripQueryParam";
@@ -47,7 +48,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const allProds = await db.select().from(products).orderBy(desc(products.id));
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
-  const allBrands = await db.select().from(brands);
+  const brandRows = await db.select().from(brands);
+  const brandCategoryRows = await db.select().from(brandCategories);
+  const allBrands = brandRows.map(brand => ({...brand, categoryIds:brandCategoryRows.filter(row=>row.brandId===brand.id).map(row=>row.categoryId)}));
   const allWh = await db.select().from(warehouses);
   const allInv = await db.select().from(inventory);
   const allLedger = await db.select().from(inventoryLedger).orderBy(desc(inventoryLedger.id)).limit(30);
@@ -101,11 +104,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   }));
 
   // ---- Gerçek KPI rakamları (tüm zamanlar, LIMIT 50'den bağımsız) ----
-  const notCancelled = ne(orders.status, "CANCELLED");
+  const notCancelled = and(ne(orders.status, "CANCELLED"), eq(orders.paymentStatus, "PAID"));
   const sumGrand = sql<number>`coalesce(sum(${orders.grandTotal}), 0)`;
 
   const [totals] = await db
-    .select({ totalOrders: count(orders.id), salesCount: count(sql`case when ${orders.status} != 'CANCELLED' then 1 end`) })
+    .select({ totalOrders: count(orders.id), salesCount: count(sql`case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' then 1 end`) })
     .from(orders);
   const [revTotal] = await db.select({ v: sumGrand }).from(orders).where(notCancelled);
 

@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useSiteSettings } from "@/lib/use-site-settings";
+import { parseCheckoutSettings, validTurkishIban } from "@/lib/site-settings-shared";
 import {
   PackageSearch,
   Truck,
@@ -31,6 +33,7 @@ export function OrderTrackClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<any | null>(null);
+  const checkout = parseCheckoutSettings(useSiteSettings());
 
   const track = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,6 +128,12 @@ export function OrderTrackClient() {
               </span>
             </div>
 
+            {order.status === "BACKORDER" && <p className="text-xs bg-amber-50 p-3 rounded-xl text-amber-950">Stok bekleme sırasındasınız; henüz ödeme yapmayın. Stok ayrıldığında 24 saatlik ödeme süresi başlar. E-posta bildirimi gönderilmeye çalışılır; ulaşmama ihtimaline karşı bu sayfayı düzenli kontrol edin veya mağazayla görüşün.</p>}
+            {order.status === "PENDING" && <div className="text-xs bg-amber-50 p-3 rounded-xl text-amber-950 space-y-2">
+              <p>Ödeme onayı için son zaman: {order.paymentDeadline ? new Date(order.paymentDeadline).toLocaleString("tr-TR") : "Mağazayla görüşün"}. Banka kontrolü bu sürede tamamlanmalıdır.</p>
+              {!order.detailsRestricted && order.paymentMethod === "EFT_HAVALE" && validTurkishIban(checkout.eftIban) && <p>Havale açıklamasına sipariş numaranızı yazın. {checkout.eftBank} · {checkout.eftAccountName} · <strong>{checkout.eftIban}</strong></p>}
+              {order.detailsRestricted && <p>Ödeme bilgileri ve tutarı için telefon numaranızla tekrar sorgulayın.</p>}
+            </div>}
             {/* Adım çizelgesi */}
             {!isCancelled && currentStepIndex >= 0 && (
               <div className="flex items-center justify-between pt-2">

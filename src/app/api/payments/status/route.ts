@@ -10,6 +10,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
+        cardPaymentsAvailable: false,
         paytr: { enabled: m.paytr.enabled, configured: m.paytr.hasMerchantKey && m.paytr.hasMerchantSalt && Boolean(m.paytr.merchantId), mode: m.paytr.mode },
         iyzico: { enabled: m.iyzico.enabled, configured: m.iyzico.hasApiSecret && Boolean(m.iyzico.apiKey), mode: m.iyzico.mode },
       },

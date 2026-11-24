@@ -5,7 +5,7 @@ import {
   consumeReservation,
   expireReservations,
   releaseReservations,
-  reserveStock,
+  reserveStocks,
 } from "@/lib/inventory-engine";
 import { desc } from "drizzle-orm";
 
@@ -62,29 +62,12 @@ export async function POST(request: Request) {
       ? body.items
       : [{ productId: Number(body.productId), variantId: body.variantId ?? null, qty: Number(body.qty) }];
 
-    const results = [];
-    for (const it of items) {
-      const res = await reserveStock({
-        warehouseId: Number(body.warehouseId || 1),
-        productId: Number(it.productId),
-        variantId: it.variantId ?? null,
-        qty: Number(it.qty),
-        referenceType: body.referenceType || "CART",
-        referenceId: ref,
-        ttlMinutes: body.ttlMinutes,
-      });
-      if (!res.success) {
-        await releaseReservations(ref, "Kısmi rezervasyon hatası");
-        return NextResponse.json({ success: false, error: { code: "STOCK_SHORTAGE", message: res.error } }, { status: 409 });
-      }
-      results.push(res);
-    }
-
-    const [first] = results;
-    return NextResponse.json({
-      success: true,
-      data: { referenceId: ref, count: results.length, expiresAt: first?.reservation?.expiresAt },
-    });
+    const result = reserveStocks(items.map(it => ({
+      warehouseId: Number(body.warehouseId || 1), productId:Number(it.productId), variantId:it.variantId ?? null,
+      qty:Number(it.qty), referenceType:body.referenceType || "CART", referenceId:ref, ttlMinutes:body.ttlMinutes,
+    })));
+    if (!result.success) return NextResponse.json({ success:false, error:{code:"STOCK_SHORTAGE",message:result.error} }, {status:409});
+    return NextResponse.json({ success:true, data:{referenceId:ref,count:result.reservations.length,expiresAt:result.reservations[0]?.expiresAt} });
   }
 
   if (action === "RELEASE") {
