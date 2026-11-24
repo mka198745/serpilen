@@ -20,6 +20,10 @@ test("Üretici sayfalarındaki renk kodları ve eşleşen görseller aktarılır
   const nako = extractProduct(fixture("nako-hercai.html"), "https://www.nako.com.tr/urun/hercai");
   assert.deepEqual(nako.variants?.map(x => x.colorName), ["07252_449022_7799", "76035_449026_7799"]);
   assert.match(nako.variants![0].imageUrl, /37642_logo.jpg/);
+  const noImage = fixture("alize-baby-best.html").replace('<div id="liste">', '<div id="liste"><a id="kesit_resim" data-bilgi="158" data-id=""></a><a id="kesit_resim" data-bilgi="159" data-id="https://bad.example/p.jpg"></a>');
+  const incomplete = extractProduct(noImage, "https://alize.gen.tr/yumak/baby-best");
+  assert.deepEqual(incomplete.variants?.slice(0,2), [{colorName:"158",size:"",imageUrl:""},{colorName:"159",size:"",imageUrl:""}]);
+  assert.match(incomplete.warnings.join(" "), /Bazı varyantların görselleri/);
   assert.equal(extractProduct(fixture("milano-rafya.html"), "https://milanorafya.com/a").variants, undefined);
   for (const product of [alize, himalaya, yarn, nako]) {
     assert.ok(product.variants?.every(v => !('price' in v) && !('stock' in v) && !('sku' in v) && !('barcode' in v)));

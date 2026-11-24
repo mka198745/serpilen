@@ -75,6 +75,7 @@ function variantCollector(warnings: string[]) {
     result() {
       if (overflow) warnings.push("Kaynakta 50'den fazla varyant bulundu; yalnız ilk 50 seçenek getirildi.");
       if (variants.length) warnings.push("Varyant kodları kaynaktan alındı; isim, fotoğraf, fiyat ve stokları kaydetmeden önce kontrol edin. Stoklar sıfır başlar; boş fiyatlar ürün fiyatını kullanır.");
+      if (variants.some(v => !v.imageUrl)) warnings.push("Bazı varyantların görselleri kaynakta bulunamadı; gerekirse elle ekleyin.");
       return variants;
     },
   };
@@ -115,14 +116,12 @@ function extractAlize($: CheerioAPI, page: URL): ImportedProduct | null {
   };
   addImage($("#my_image").first().attr("src") || "");
   // The site's color selector switches its main image to /uploads/<data-id>.
-  $("#home").find('a[id="kesit_resim"][data-id]').slice(0, 500).each((_i, el) => {
-    const filename = $(el).attr("data-id") || "";
-    if (/^[a-z0-9][a-z0-9._-]{0,195}\.(?:jpe?g|png|webp)$/i.test(filename)) {
-      const image = manufacturerImage(`/uploads/${filename}`, page, ["alize.gen.tr", "www.alize.gen.tr"], /^\/uploads\/[^/]+\.(?:jpe?g|png|webp)$/i);
-      const code = $(el).attr("data-bilgi") || "";
-      if (/^[a-z0-9-]{1,40}$/i.test(code)) collected.add(code, image);
-      addImage(`/uploads/${filename}`);
-    }
+  $("#home").find('a[id="kesit_resim"][data-bilgi]').slice(0, 500).each((_i, el) => {
+    const filename = $(el).attr("data-id") || "", code = $(el).attr("data-bilgi") || "";
+    const validFile = /^[a-z0-9][a-z0-9._-]{0,195}\.(?:jpe?g|png|webp)$/i.test(filename);
+    const image = validFile ? manufacturerImage(`/uploads/${filename}`, page, ["alize.gen.tr", "www.alize.gen.tr"], /^\/uploads\/[^/]+\.(?:jpe?g|png|webp)$/i) : null;
+    if (/^[a-z0-9-]{1,40}$/i.test(code)) collected.add(code, image);
+    if (image) addImage(image);
   });
   const variants = collected.result();
   if (images.length) warnings.push("Görseller farklı renklere ait olabilir; kaydetmeden önce uygun fotoğrafları seçin.");

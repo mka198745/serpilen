@@ -88,7 +88,7 @@ export function ProductDetailClient({
 
   const handleSelectVariant = (v: ProductVariant) => {
     setSelectedVariant(v);
-    if (v.imageUrl) setActiveImage(v.imageUrl);
+    setActiveImage(v.imageUrl || uniqueGallery[0]);
   };
 
   const currentPrice = selectedVariant ? Number(selectedVariant.retailPrice) : Number(product.retailPrice);
@@ -265,6 +265,7 @@ export function ProductDetailClient({
                 </span>
               </label>
 
+              {selectedVariant && !selectedVariant.imageUrl && <p className="text-xs text-gray-600">Bu seçenek için ayrı görsel yok; ana ürün görseli gösteriliyor.</p>}
               <div className="flex flex-wrap gap-2">
                 {variants.map((v) => {
                   const isSelected = selectedVariant?.id === v.id;
