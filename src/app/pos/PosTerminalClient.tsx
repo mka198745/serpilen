@@ -1,4 +1,5 @@
 "use client";
+import { variantLabel } from "@/lib/variant-label";
 
 import React, { useState, useRef, useEffect } from "react";
 import { Product, Category, PosShift, ProductVariant } from "@/lib/types";
@@ -147,7 +148,7 @@ export function PosTerminalClient({
     const price = variant ? Number(variant.retailPrice) : Number(product.retailPrice);
     const sku = variant ? variant.sku : product.sku;
     const barcode = variant ? variant.barcode : product.barcode;
-    const variantName = variant ? `${variant.colorName || ""} ${variant.size || ""}`.trim() : null;
+    const variantName = variant ? variantLabel(variant) : null;
 
     setCart((prev) => {
       const idx = prev.findIndex((item) => item.productId === product.id && item.variantId === vId);
@@ -704,9 +705,9 @@ export function PosTerminalClient({
                           key={v.id}
                           onClick={() => handleAddToCart(p, v)}
                           className="px-1.5 py-1 text-[9px] font-bold rounded bg-amber-50 hover:bg-amber-700 hover:text-white border border-amber-200 text-amber-900 transition"
-                          title={`${v.colorName || ""} ${v.size || ""}`}
+                          title={variantLabel(v) || v.sku}
                         >
-                          {v.colorName || v.size}
+                          {variantLabel(v) || v.sku}
                         </button>
                       ))}
                     </div>

@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { Product, ProductVariant, Category, Brand } from "@/lib/types";
+import { variantLabel } from "@/lib/variant-label";
 import { useCart } from "@/context/CartContext";
 import { ReviewsQA } from "@/components/storefront/ReviewsQA";
 import { parseVideoUrl } from "@/lib/video";
@@ -92,7 +93,7 @@ export function ProductDetailClient({
 
   const currentPrice = selectedVariant ? Number(selectedVariant.retailPrice) : Number(product.retailPrice);
   const currentSku = selectedVariant ? selectedVariant.sku : product.sku;
-  const currentBarcode = selectedVariant?.barcode || product.barcode;
+  const currentBarcode = selectedVariant ? selectedVariant.barcode : product.barcode;
   const technicalDetails = parseProductSpecifications(product.technicalDetails);
   const isFavorited = wishlist.includes(product.id);
 
@@ -260,7 +261,7 @@ export function ProductDetailClient({
               <label className="text-xs font-bold text-gray-800 block uppercase tracking-wider">
                 Varyant Seçimi:
                 <span className="text-amber-800 font-bold ml-1">
-                  {selectedVariant ? `${selectedVariant.colorName || ""} ${selectedVariant.size || ""}` : "Seçiniz"}
+                  {selectedVariant ? variantLabel(selectedVariant) : "Seçiniz"}
                 </span>
               </label>
 
@@ -283,7 +284,7 @@ export function ProductDetailClient({
                           style={{ backgroundColor: v.colorHex }}
                         />
                       )}
-                      <span>{v.colorName || v.size}</span>
+                      <span>{variantLabel(v) || v.sku}</span>
                     </button>
                   );
                 })}

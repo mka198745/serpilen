@@ -5,6 +5,7 @@ import { adjustInventory, transferBetweenWarehouses } from "@/lib/inventory-engi
 import { desc, eq } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
+import { variantLabel } from "@/lib/variant-label";
 export async function GET(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
@@ -35,9 +36,9 @@ export async function GET(request: Request) {
       return {
         ...st,
         productName: prod?.name || "Bilinmeyen Ürün",
-        variantName: variant ? `${variant.colorName || ""} ${variant.size || ""}`.trim() : null,
+        variantName: variant ? variantLabel(variant) : null,
         sku: variant?.sku || prod?.sku || "",
-        barcode: variant?.barcode || prod?.barcode || "",
+        barcode: variant ? variant.barcode || "" : prod?.barcode || "",
         warehouseName: wh?.name || "Depo",
         warehouseCode: wh?.code || "",
         unitPrice: variant?.retailPrice || prod?.retailPrice || "0.00",

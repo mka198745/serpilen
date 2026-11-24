@@ -66,6 +66,9 @@ import {
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { AuthorizedProductLinkImport } from "@/components/admin/ProductLinkImport";
+import { NewProductVariants, type VariantDraft } from "@/components/admin/NewProductVariants";
+import { validateNewProductVariants } from "@/lib/new-product-variants";
+import { variantLabel } from "@/lib/variant-label";
 import { ProductTechnicalFields } from "@/components/admin/ProductTechnicalFields";
 import { parseProductSpecifications, type ProductSpecifications } from "@/lib/product-specifications";
 import type { ImportedProduct } from "@/lib/product-import/extract";
@@ -588,6 +591,10 @@ export function AdminDashboardClient({
     videoUrl: "",
   });
   const [newProd, setNewProd] = useState(emptyNewProduct);
+  const [productVariantsDraft, setProductVariantsDraft] = useState<VariantDraft[]>([]);
+  const [productSaving, setProductSaving] = useState(false);
+  const [productSaveError, setProductSaveError] = useState("");
+  const productSavingRef = React.useRef(false);
 
   const productSelectionTouched = React.useRef({ brand: false, category: false });
 
@@ -1348,29 +1355,33 @@ export function AdminDashboardClient({
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (productSavingRef.current) return;
+    try { validateNewProductVariants(productVariantsDraft); }
+    catch (error) { setProductSaveError(error instanceof Error ? error.message : "Varyant bilgileri geçersiz."); return; }
+    productSavingRef.current = true;
+    setProductSaving(true); setProductSaveError("");
     try {
       const { photos, ...rest } = newProd;
       const res = await authFetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, images: photos }),
+        body: JSON.stringify({ ...rest, initialStock: productVariantsDraft.length ? 0 : rest.initialStock, images: photos, variants: productVariantsDraft }),
       });
       const data = await res.json();
-      if (data.success) {
-        alert("Ürün başarıyla oluşturuldu.");
-        setNewProd(emptyNewProduct());
-        productSelectionTouched.current = { brand: false, category: false };
-        setIsAddProductOpen(false);
-        // Refresh product list
+      if (!res.ok || !data.success) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Ürün kaydedilemedi.");
+      alert("Ürün başarıyla oluşturuldu.");
+      setNewProd(emptyNewProduct()); setProductVariantsDraft([]);
+      productSelectionTouched.current = { brand: false, category: false };
+      setIsAddProductOpen(false);
+      // A failed refresh must not be reported as a failed product creation.
+      try {
         const pRes = await authFetch("/api/products");
         const pData = await pRes.json();
         if (pData.success) setProducts(pData.data);
-      } else {
-        alert("Hata: " + data.error);
-      }
-    } catch (err: any) {
-      alert("Hata: " + err.message);
-    }
+      } catch { setCatalogFeedback({ text: "Ürün kaydedildi; listeyi görmek için sayfayı yenileyin.", isError: false }); }
+    } catch (err) {
+      setProductSaveError(err instanceof Error ? err.message : "Ürün kaydedilemedi.");
+    } finally { productSavingRef.current = false; setProductSaving(false); }
   };
 
   const handleTransfer = async (e: React.FormEvent) => {
@@ -2416,7 +2427,7 @@ export function AdminDashboardClient({
                           <td className="py-2.5 px-3">
                             <span className="inline-flex items-center gap-1.5">
                               {v.colorHex && <span className="w-3 h-3 rounded-full border border-stone-300" style={{ backgroundColor: v.colorHex }} />}
-                              {v.colorName || "—"} {v.size ? `· ${v.size}` : ""}
+                              {variantLabel(v) || "—"}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 font-bold">{Number(v.retailPrice).toFixed(2)} TL</td>
@@ -4642,12 +4653,13 @@ export function AdminDashboardClient({
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-stone-100">
               <h3 className="font-black text-base text-stone-900">Yeni Tuhafiye Ürünü Ekle</h3>
-              <button onClick={() => setIsAddProductOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
+              <button disabled={productSaving} onClick={() => setIsAddProductOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddProduct} className="space-y-3 text-xs">
+              <fieldset disabled={productSaving} className="space-y-3">
               <AuthorizedProductLinkImport onImport={applyImportedProduct} />
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ürün Adı:</label>
@@ -4831,11 +4843,14 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
+              <NewProductVariants value={productVariantsDraft} onChange={setProductVariantsDraft} disabled={productSaving} />
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Başlangıç Stoğu:</label>
                   <input
                     type="number"
+                    disabled={productVariantsDraft.length > 0}
                     value={newProd.initialStock}
                     onChange={(e) => setNewProd({ ...newProd, initialStock: e.target.value })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
@@ -4855,12 +4870,15 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
+              {productVariantsDraft.length > 0 && <p className="text-stone-600">Ana ürün stoğu kaydedilmez; her varyantın kendi başlangıç stoğu kullanılır.</p>}
+              {productSaveError && <p role="alert" className="text-rose-700 font-semibold">{productSaveError}</p>}
               <button
                 type="submit"
                 className="w-full py-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition"
               >
-                Ürünü Kaydet & Stoğa Al
+                {productSaving ? "Kaydediliyor…" : "Ürünü Kaydet & Stoğa Al"}
               </button>
+              </fieldset>
             </form>
           </div>
         </div>

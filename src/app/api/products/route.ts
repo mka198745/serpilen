@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { products, productVariants, productImages, categories, brands, inventory } from "@/db/schema";
+import { products, productVariants, productImages, categories, brands, inventory, warehouses } from "@/db/schema";
 import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
 import { validateProductSpecifications } from "@/lib/product-specifications";
+import { validateNewProductVariants, variantSkuBase, VariantValidationError } from "@/lib/new-product-variants";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -227,6 +228,66 @@ export async function POST(request: Request) {
     const galleryUrls = Array.isArray(images)
       ? images.map((u) => String(u || "").trim()).filter(Boolean).slice(0, 6)
       : [];
+
+    let variants;
+    try { variants = validateNewProductVariants(body.variants); }
+    catch (error) { return NextResponse.json({ success: false, error: error instanceof VariantValidationError ? error.message : "Varyant bilgileri geçersiz." }, { status: 422 }); }
+
+    if (variants.length) {
+      const productSku = typeof sku === "string" ? sku.trim() : "";
+      const productBarcode = typeof barcode === "string" ? barcode.trim() : "";
+      const productName = typeof name === "string" ? name.trim() : "";
+      const warehouse = Number(warehouseId);
+      const validPrice = (v: unknown) => /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 100000000;
+      if (!productName || !productSku || productSku.length > 40 || productBarcode.length > 80 || !validPrice(buyPrice) || !validPrice(retailPrice) || !Number.isSafeInteger(warehouse) || warehouse < 1 || Number(initialStock) !== 0) {
+        return NextResponse.json({ success: false, error: "Varyantlı ürün için ad, SKU, geçerli fiyat ve depo gereklidir; ana ürün stoğu 0 olmalıdır." }, { status: 422 });
+      }
+      try {
+        const created = db.transaction((tx) => {
+          if (!tx.select({ id: warehouses.id }).from(warehouses).where(eq(warehouses.id, warehouse)).get()) throw new VariantValidationError("Seçilen depo bulunamadı.");
+          const skuUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.sku, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.sku, value)).get();
+          const barcodeUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.barcode, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.barcode, value)).get();
+          if (skuUsed(productSku)) throw new VariantValidationError("Ürün SKU zaten kullanılıyor.");
+          if (productBarcode && barcodeUsed(productBarcode)) throw new VariantValidationError("Ürün barkodu zaten kullanılıyor.");
+          const [product] = tx.insert(products).values({
+            name: productName,
+            slug: slug || productName.toLowerCase().replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ]+/gi, "-").replace(/(^-|-$)/g, ""),
+            sku: productSku, barcode: productBarcode || null,
+            categoryId: Number(categoryId) || 1, brandId: brandId ? Number(brandId) : null,
+            unit, buyPrice: String(buyPrice), retailPrice: String(retailPrice), shortDescription, description, technicalDetails,
+            imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
+            videoUrl: videoUrl || null, hasVariants: true,
+          }).returning().all();
+          for (const [i, url] of galleryUrls.entries()) tx.insert(productImages).values({ productId: product.id, url, sortOrder: i, isPrimary: i === 0 }).run();
+          for (const [i, variant] of variants.entries()) {
+            let variantSku = variant.sku;
+            if (variantSku && skuUsed(variantSku)) throw new VariantValidationError(`${i + 1}. varyantın SKU değeri zaten kullanılıyor.`);
+            if (!variantSku) {
+              const base = variantSkuBase(productSku, variant);
+              for (let suffix = 1; suffix <= 10000; suffix++) {
+                const candidate = `${base}-${suffix}`;
+                if (!skuUsed(candidate)) { variantSku = candidate; break; }
+              }
+              if (!variantSku) throw new VariantValidationError(`${i + 1}. varyant için uygun SKU üretilemedi.`);
+            }
+            if (variant.barcode && barcodeUsed(variant.barcode)) throw new VariantValidationError(`${i + 1}. varyantın barkodu zaten kullanılıyor.`);
+            const [createdVariant] = tx.insert(productVariants).values({
+              productId: product.id, sku: variantSku, barcode: variant.barcode || null,
+              colorName: variant.colorName || null, colorHex: variant.colorHex || null, size: variant.size || null, length: variant.length || null,
+              buyPrice: variant.buyPrice || String(buyPrice), retailPrice: variant.retailPrice || String(retailPrice), imageUrl: product.imageUrl,
+            }).returning().all();
+            if (variant.initialStock > 0) tx.insert(inventory).values({ warehouseId: warehouse, productId: product.id, variantId: createdVariant.id, physicalQty: variant.initialStock, reservedQty: 0, locationCode: "MRK-A-01-01" }).run();
+          }
+          return product;
+        }, { behavior: "immediate" });
+        return NextResponse.json({ success: true, data: created });
+      } catch (error) {
+        if (error instanceof VariantValidationError) return NextResponse.json({ success: false, error: error.message }, { status: 422 });
+        if (error instanceof Error && /unique constraint/i.test(error.message)) return NextResponse.json({ success: false, error: "Ürün adresi, SKU veya barkod zaten kullanılıyor." }, { status: 409 });
+        console.error("Varyantlı ürün kaydedilemedi:", error instanceof Error ? error.message : "Unknown error");
+        return NextResponse.json({ success: false, error: "Ürün ve varyantlar kaydedilemedi; hiçbir kayıt oluşturulmadı." }, { status: 500 });
+      }
+    }
 
     const [{ id: __newProd_id }] = await db.insert(products).values({
         name,
