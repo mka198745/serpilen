@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { extractProduct } from "../src/lib/product-import/extract";
 import { fetchPublicProductPage, publicHttpsUrl, isPublicAddress, resolvePublicHost } from "../src/lib/product-import/safe-fetch";
 
@@ -54,4 +55,34 @@ test("DNS yanıtları tamamen doğrulanır, adres sabitlenir, yönlendirme yenid
   await assert.rejects(fetchPublicProductPage('https://vendor.example/p',{resolve,get:async()=>({status:200,contentType:'application/json',contentEncoding:'',body:Buffer.from('{}')})}),/HTML ürün sayfası/);
   await assert.rejects(fetchPublicProductPage('https://vendor.example/p',{resolve,get:async()=>({status:200,contentType:'text/html',contentEncoding:'gzip',body:Buffer.alloc(0)})}),/HTML ürün sayfası/);
   await assert.rejects(fetchPublicProductPage('https://vendor.example/p',{resolve:()=>new Promise(()=>{}),timeoutMs:20}),/zamanında/);
+});
+
+test("Himalaya dil oturumu yalnız sabit uç noktaya ve aynı hosta uygulanır, başarısızlık uyarılır", async () => {
+  const initial = readFileSync(new URL("./fixtures/himalaya-arisya.html", import.meta.url));
+  const turkish = readFileSync(new URL("./fixtures/himalaya-arisya-tr.html", import.meta.url));
+  const response = (body: Buffer, setCookie?: string[]) => ({status:200,contentType:"text/html; charset=utf-8",contentEncoding:"",body,setCookie});
+  const calls: Array<{url:string,method:string,cookie?:string,body?:string}> = [];
+  const resolve = async () => [{address:"8.8.8.8",family:4}];
+  const get = async (url:URL, addr:{address:string,family:number}, _signal:AbortSignal, request?:{method:"GET"|"POST",cookie?:string,body?:string}) => {
+    assert.equal(addr.address,"8.8.8.8"); calls.push({url:url.href,method:request?.method || "GET",cookie:request?.cookie,body:request?.body});
+    if (calls.length===1) return response(initial,["PHPSESSID=abc123; path=/; HttpOnly", "other=secret"]);
+    if (calls.length===2) return response(Buffer.alloc(0),["PHPSESSID=new-session; path=/", "other=secret"]);
+    return response(turkish);
+  };
+  const page = await fetchPublicProductPage("https://www.himalaya.com.tr/arisya.html",{resolve,get});
+  assert.deepEqual(calls,[
+    {url:"https://www.himalaya.com.tr/arisya.html",method:"GET",cookie:undefined,body:undefined},
+    {url:"https://www.himalaya.com.tr/process.php?manage=site.site",method:"POST",cookie:"PHPSESSID=abc123",body:"LANG=TR"},
+    {url:"https://www.himalaya.com.tr/arisya.html",method:"GET",cookie:"PHPSESSID=new-session",body:undefined},
+  ]);
+  assert.equal(extractProduct(page.html,page.url).technicalDetails?.composition,"%96 Cotton %4 Glitter");
+  assert.equal(page.warnings, undefined);
+  const wrongLanguage = await fetchPublicProductPage("https://www.himalaya.com.tr/arisya.html",{resolve,get:async (_url,_addr,_sig,request)=>response(request?.method === "POST" ? Buffer.alloc(0) : initial,["PHPSESSID=abc123; path=/"])});
+  assert.match(wrongLanguage.warnings!.join(" "),/dil seçimi doğrulanamadı/);
+  const fallback = await fetchPublicProductPage("https://www.himalaya.com.tr/arisya.html",{resolve,get:async (_url,_addr,_sig,request)=> request?.method === "POST" ? {status:302,location:"https://evil.example/",contentType:"",contentEncoding:"",body:Buffer.alloc(0)} : response(initial,["PHPSESSID=abc123; path=/"])});
+  assert.match(fallback.warnings!.join(" "),/Türkçe sayfasına ulaşılamadı/);
+  assert.deepEqual(extractProduct(fallback.html,fallback.url).technicalDetails,{});
+  const normalCalls:string[]=[];
+  await fetchPublicProductPage("https://other.example/arisya.html",{resolve,get:async (url,_a,_s,request)=>{normalCalls.push(`${request?.method || "GET"} ${url.href}`); return response(initial,["PHPSESSID=secret"]);}});
+  assert.deepEqual(normalCalls,["GET https://other.example/arisya.html"]);
 });

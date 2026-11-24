@@ -55,3 +55,41 @@ test("Yapılandırılmış ürün grubu yalnız aynı sayfayı işaret ederse re
   assert.throws(() => extractProduct(html({...group,url:"https://shop.example.com/other"}),"https://shop.example.com/sweater"), (e: unknown) => e instanceof ProductImportError && e.code === "AMBIGUOUS");
   assert.throws(() => extractProduct(html([group,group]),"https://shop.example.com/sweater"), (e: unknown) => e instanceof ProductImportError && e.code === "AMBIGUOUS");
 });
+
+
+test("Himalaya teknik satırları açık alanlara aktarılır, belirsiz bilgiler tahmin edilmez", () => {
+  const html = fixture("himalaya-arisya.html");
+  const empty = extractProduct(html, "https://www.himalaya.com.tr/arisya.html");
+  assert.deepEqual(empty.technicalDetails, {});
+  assert.match(empty.warnings.join(" "), /aktarılabilir teknik özellik bulunamadı/);
+  const features = `<div class="product-features"><h1>PRODUCT FEATURES</h1>
+    <div class="item"><strong>Mixture ( Materials )</strong><span>: 76% Acrylic 13% Polyamide 11% Wool</span><div class="clearfix"></div></div>
+    <div class="item"><strong>Weight of Ball</strong><span>: 100g - 3.5oz</span></div>
+    <div class="item"><strong>Length of Ball</strong><span>: 153mt - 167yards</span></div>
+    <div class="item"><strong>Needle Size</strong><span>: 6mm - US10</span></div>
+    <div class="item"><strong>Crochet Size</strong><span>: 5.5mm</span></div>
+    <div class="item"><strong>Tickness</strong><span>: 4 Medium</span></div>
+    <div class="item"><strong>Season</strong><span>: Autumn-Winter</span></div>
+    <div class="item"><strong>Product Content</strong><span>: 10x10 cm measure 16 rows 14 stitches.</span></div>
+  </div>`;
+  const populated = html.replace('<div class="product-features"><h1>PRODUCT FEATURES</h1></div>', features);
+  const p = extractProduct(populated, "https://www.himalaya.com.tr/air-wool-drops.html");
+  assert.deepEqual(p.technicalDetails, {composition:"76% Acrylic 13% Polyamide 11% Wool",length:"100g - 3.5oz / 153mt - 167yards",knittingNeedle:"6mm - US10",crochetNeedle:"5.5mm",yarnType:"4 Medium",season:"Autumn-Winter"});
+  assert.match(p.description, /Product Content: 10x10 cm measure/);
+  const ambiguous = populated.replace('<div class="item"><strong>Mixture ( Materials )</strong>', '<div class="item"><strong>Mixture ( Materials )</strong><span>: başka değer</span></div><div class="item"><strong>Mixture ( Materials )</strong>');
+  const conflict = extractProduct(ambiguous, "https://www.himalaya.com.tr/air-wool-drops.html");
+  assert.equal(conflict.technicalDetails?.composition, undefined);
+  assert.match(conflict.warnings.join(" "), /çelişen teknik özellikler/);
+  const onlyContent = html.replace('<div class="product-features"><h1>PRODUCT FEATURES</h1></div>', '<div class="product-features"><div class="item"><strong>Product Content</strong><span>: 10x10 cm</span></div></div>');
+  assert.deepEqual(extractProduct(onlyContent,"https://www.himalaya.com.tr/arisya.html").technicalDetails, {});
+});
+
+test("Arisya Türkçe kaynakta özellikleri ve renk kodlarına ait fotoğrafları getirir", () => {
+  const product = extractProduct(fixture("himalaya-arisya-tr.html"), "https://www.himalaya.com.tr/arisya.html");
+  assert.deepEqual(product.technicalDetails, {composition:"%96 Cotton %4 Glitter",length:"100gr-3,5 oz",knittingNeedle:"5,5 mm",crochetNeedle:"4 mm",yarnType:"2,5",season:"ilkbahar-yaz"});
+  for (const label of ["Nerede Kullanılabilir", "İlmek Bilgisi", "Ürün İçeriği"]) assert.ok(product.description.includes(label));
+  assert.match(product.description, /18 sıra 22 ilmek/);
+  assert.deepEqual(product.variants?.map(v => v.colorName), ["27-01", "27-02"]);
+  assert.match(product.variants![0].imageUrl, /thumb_product_01_/);
+  assert.match(product.variants![1].imageUrl, /thumb_product_02_/);
+});

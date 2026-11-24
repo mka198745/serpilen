@@ -5,6 +5,7 @@ import { extractProduct } from "../src/lib/product-import/extract";
 const urls = [
   "https://alize.gen.tr/yumak/baby-best",
   "https://www.himalaya.com.tr/arisya.html",
+  "https://www.himalaya.com.tr/air-wool-drops.html",
   "https://yarnart.info/urunler/yazlik-ipler/jeans-splash",
   "https://milanorafya.com/milano-rafya--46-benetton-yesili--100-gr---250-metre",
   "https://www.nako.com.tr/urun/hercai",
@@ -14,6 +15,7 @@ async function main() {
     try {
       const page = await fetchPublicProductPage(url);
       const product = extractProduct(page.html, page.url);
+      if (page.warnings) product.warnings.push(...page.warnings);
       const signal = AbortSignal.timeout(4000);
       const hosts = new Map<string, Promise<boolean>>();
       const safe = (image: string) => {
@@ -27,7 +29,7 @@ async function main() {
       const checks = await Promise.all(product.images.map(safe));
       const variants = product.variants || [];
       const variantImages = await Promise.all(variants.map(v => safe(v.imageUrl)));
-      console.log(JSON.stringify({ source: url, result: "OK", finalUrl: page.url, name: product.name, brand: product.brand, imageCount: checks.filter(Boolean).length, variantCount: variants.length, variantImageCount: variantImages.filter(Boolean).length, firstVariants: variants.slice(0, 3).map((v,i) => ({ colorName: v.colorName, size: v.size, imageValidated: variantImages[i] })), warnings: product.warnings }));
+      console.log(JSON.stringify({ source: url, result: "OK", finalUrl: page.url, name: product.name, brand: product.brand, technicalDetails: product.technicalDetails, imageCount: checks.filter(Boolean).length, variantCount: variants.length, variantImageCount: variantImages.filter(Boolean).length, firstVariants: variants.slice(0, 3).map((v,i) => ({ colorName: v.colorName, size: v.size, imageValidated: variantImages[i] })), warnings: product.warnings }));
     } catch (error) {
       console.log(JSON.stringify({ source: url, result: "ERROR", code: error instanceof ProductImportError ? error.code : "UNKNOWN", message: error instanceof Error ? error.message : "Bilinmeyen hata" }));
     }

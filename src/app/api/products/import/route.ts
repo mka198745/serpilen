@@ -65,6 +65,7 @@ async function handleImport(request: Request) {
   try {
     const page = await fetchPublicProductPage(input.url.trim());
     const data = extractProduct(page.html,page.url);
+    if (page.warnings) data.warnings.push(...page.warnings);
     // Check every unique image host, including variant images, without fetching the images.
     const signal = AbortSignal.timeout(4000);
     const hosts = new Map<string, Promise<boolean>>();

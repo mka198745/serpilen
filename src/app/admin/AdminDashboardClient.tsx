@@ -617,7 +617,7 @@ export function AdminDashboardClient({
       if (existingName && existingName !== sourceName) warnings.push("Formdaki ürün adı kaynak ürünle farklı; varyantlar karışmaması için eklenmedi.");
       else if (variantsDraftRef.current.length) warnings.push("Mevcut varyantlar korunuyor; kaynak varyantlar otomatik eklenmedi.");
       else {
-        updateVariantsDraft(product.variants.map(v => ({ colorName: v.colorName, colorHex: "", size: v.size, length: "", sku: "", barcode: "", imageUrl: v.imageUrl, buyPrice: "", retailPrice: "", initialStock: "0", imported: true })));
+        updateVariantsDraft(product.variants.map(v => ({ colorName: v.colorName, colorHex: "", size: v.size, length: "", sku: "", barcode: "", imageUrl: v.imageUrl, previewImageUrl: v.imageUrl, buyPrice: "", retailPrice: "", initialStock: "0", imported: true })));
         warnings.push(`${product.variants.length} varyant taslağa eklendi; stok, fiyat ve fotoğrafları kontrol edin.`);
       }
     } else warnings.push("Kaynak sayfada doğrulanabilir varyant bulunamadı; gerekirse elle ekleyin.");
@@ -4857,7 +4857,7 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
-              <NewProductVariants value={productVariantsDraft} onChange={updateVariantsDraft} disabled={productSaving} />
+              <NewProductVariants value={productVariantsDraft} onChange={updateVariantsDraft} disabled={productSaving} productName={newProd.name} />
 
               <div className="grid grid-cols-2 gap-2">
                 <div>

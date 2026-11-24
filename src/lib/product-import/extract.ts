@@ -137,14 +137,49 @@ function manufacturerImage(raw: string, page: URL, hosts: string[], path: RegExp
     return hosts.includes(image.hostname.toLowerCase()) && path.test(image.pathname) ? image.href : null;
   } catch { return null; }
 }
+/** Himalaya publishes labelled feature rows, with weight and length as separate values. */
+function himalayaSpecifications(pairs: Array<[string, string]>, warnings: string[]): ProductSpecifications {
+  const normalized = (text: string) => text.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/[^a-z0-9]+/g, " ").trim();
+  const read = (...labels: string[]): string => {
+    const matches = [...new Set(pairs.filter(([key]) => labels.includes(normalized(key))).map(([, value]) => value))];
+    if (matches.length > 1) { warnings.push("Kaynakta çelişen teknik özellikler var; ilgili alanı elle kontrol edin."); return ""; }
+    return matches[0] || "";
+  };
+  const specs: ProductSpecifications = {};
+  const composition = read("mixture materials", "karisim", "karisimi", "karisim hammaddesi", "karisimi hammaddesi");
+  const weight = read("weight of ball", "yumak agirligi", "yumak gramaji");
+  const length = read("length of ball", "yumak uzunlugu", "yumak metraji", "etiket metraji");
+  const yarnType = read("tickness", "thickness", "iplik kalinligi");
+  const knittingNeedle = read("needle size", "knitting needle size", "sis no", "sis numarasi");
+  const crochetNeedle = read("crochet size", "crochet hook size", "tig no", "tig numarasi");
+  const season = read("season", "mevsim", "sezon", "kullanim mevsimi");
+  if (composition) specs.composition = composition;
+  if (weight || length) specs.length = [weight, length].filter(Boolean).join(" / ").slice(0, 300);
+  if (yarnType) specs.yarnType = yarnType;
+  if (knittingNeedle) specs.knittingNeedle = knittingNeedle;
+  if (crochetNeedle) specs.crochetNeedle = crochetNeedle;
+  if (season) specs.season = season;
+  return specs;
+}
+
 function extractHimalaya($: CheerioAPI, page: URL): ImportedProduct | null {
   if (!["himalaya.com.tr", "www.himalaya.com.tr"].includes(page.hostname.toLowerCase()) || !/^\/[^/]+\.html$/i.test(page.pathname)) return null;
   const title = $(".page_title h1.red_title"), main = $(".product-image a.fancybox"), details = $(".product-description .detail_description");
   if (title.length !== 1 || main.length !== 1 || details.length !== 1 || !$(".product-features").length) return null;
-  const name = plain(title.text(), 200), description = clean(details.html(), 6000);
+  const name = plain(title.text(), 200);
   if (!name) return null;
+  const warnings: string[] = [], pairs: Array<[string, string]> = [];
+  $(".product-features").first().children(".item").slice(0, 40).each((_i, row) => {
+    const label = plain($(row).children("strong").first().text(),100);
+    const value = plain($(row).children("span").first().text(),300).replace(/^\s*:\s*/, "").trim();
+    if (label && value) pairs.push([label,value]);
+  });
+  const technicalDetails = himalayaSpecifications(pairs, warnings);
+  if (!Object.keys(technicalDetails).length) warnings.push("Bu sayfa yanıtında aktarılabilir teknik özellik bulunamadı; kaynağı kontrol edin.");
+  const sourceDescription = clean(details.html(),6000);
+  const extra = pairs.map(([key,value]) => `${key}: ${value}`).join("\n");
+  const description = [sourceDescription, extra ? `Teknik özellikler:\n${extra}` : ""].filter(Boolean).join("\n\n").slice(0,6000);
   const image = manufacturerImage(main.attr("href") || main.find("img").attr("data-zoom-image") || "", page, ["himalaya.com.tr", "www.himalaya.com.tr"], /^\/uploads\/pictures\/[^/]+\.(?:jpe?g|png|webp)$/i);
-  const warnings = ["Teknik özellikler sayfada açık metin olarak bulunmayabilir; kaydetmeden önce kontrol edin."];
   const collected = variantCollector(warnings);
   main.closest(".container").find('a[href^="javascript:urun_resim("]').slice(0, 500).each((_i, el) => {
     const link = $(el), href = link.attr("href") || "", card = link.parent();
@@ -157,7 +192,7 @@ function extractHimalaya($: CheerioAPI, page: URL): ImportedProduct | null {
   const variants = collected.result();
   if (!image) warnings.push("Uygun ürün fotoğrafı bulunamadı.");
   if (!description) warnings.push("Ürün açıklaması bulunamadı.");
-  return { name, description, sku: "", barcode: "", brand: "Himalaya", category: "", images: image ? [image] : [], warnings, technicalDetails: {}, variants };
+  return { name, description, sku: "", barcode: "", brand: "Himalaya", category: "", images: image ? [image] : [], warnings, technicalDetails, variants };
 }
 
 function extractYarnArt($: CheerioAPI, page: URL): ImportedProduct | null {
