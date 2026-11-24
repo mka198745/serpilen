@@ -4,6 +4,7 @@ import { products, productVariants, productImages, categories, brands, inventory
 import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
+import { validateProductSpecifications } from "@/lib/product-specifications";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -88,6 +89,7 @@ export async function GET(request: Request) {
         categoryId: products.categoryId,
         shortDescription: products.shortDescription,
         description: products.description,
+        technicalDetails: products.technicalDetails,
         unit: products.unit,
         buyPrice: products.buyPrice,
         retailPrice: products.retailPrice,
@@ -213,6 +215,15 @@ export async function POST(request: Request) {
       warehouseId = 1,
     } = body;
 
+    let technicalDetails: string | null = null;
+    if (body.technicalDetails !== undefined) {
+      try {
+        const value = validateProductSpecifications(body.technicalDetails);
+        technicalDetails = value ? JSON.stringify(value) : null;
+      } catch {
+        return NextResponse.json({ success: false, error: "Teknik özellikler geçersiz veya çok uzun." }, { status: 422 });
+      }
+    }
     const galleryUrls = Array.isArray(images)
       ? images.map((u) => String(u || "").trim()).filter(Boolean).slice(0, 6)
       : [];
@@ -229,6 +240,7 @@ export async function POST(request: Request) {
         retailPrice: String(retailPrice),
         shortDescription,
         description,
+        technicalDetails,
         imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
         videoUrl: videoUrl || null,
       }).returning({ id: products.id });
@@ -284,6 +296,14 @@ export async function PATCH(request: Request) {
     if (body.campaignPrice !== undefined) updates.campaignPrice = body.campaignPrice ? String(body.campaignPrice) : null;
     if (body.shortDescription !== undefined) updates.shortDescription = body.shortDescription;
     if (body.description !== undefined) updates.description = body.description;
+    if (body.technicalDetails !== undefined) {
+      try {
+        const value = validateProductSpecifications(body.technicalDetails);
+        updates.technicalDetails = value ? JSON.stringify(value) : null;
+      } catch {
+        return NextResponse.json({ success: false, error: "Teknik özellikler geçersiz veya çok uzun." }, { status: 422 });
+      }
+    }
     if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl;
     if (body.videoUrl !== undefined) updates.videoUrl = body.videoUrl || null;
     if (body.tags !== undefined) updates.tags = body.tags;

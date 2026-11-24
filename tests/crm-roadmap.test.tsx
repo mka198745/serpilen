@@ -81,9 +81,10 @@ test("Zaman çizelgesi iade ve sadakat türleriyle filtrelenebilir", () => {
 
 test("Panel son geliştirmenin ne olduğunu ve yerini açıklar", () => {
   const html = renderToStaticMarkup(<CrmLatestUpdate />);
-  assert.match(html, /Son geliştirme · Sipariş kanalı filtresi/);
-  assert.match(html, /Online, POS, her ikisi, diğer kanal veya hiç bağlı siparişi olmayan kartları/);
-  assert.match(html, /bağlantısız misafir siparişleri dahil değildir/);
+  assert.match(html, /Son geliştirme · Denetim kayıtlarında erişim sınırı/);
+  assert.match(html, /Rol Yetki Matrisi/);
+  assert.match(html, /audit yetkisiyle/);
+  assert.match(html, /değiştirilemezliği garanti edilmez/);
 });
 
 test("Demo uyarısı yalnız özel işaretli kartlarda gösterilmek için eşleşir", () => {

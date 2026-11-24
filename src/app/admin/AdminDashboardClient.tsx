@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
 import { AiAssistantCenter } from "@/components/admin/AiAssistantCenter";
+import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
 import { IntelligenceCenter } from "@/components/admin/intelligence/IntelligenceCenter";
 import {
   LayoutDashboard,
@@ -64,7 +65,9 @@ import {
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
-import { ProductLinkImport } from "@/components/admin/ProductLinkImport";
+import { AuthorizedProductLinkImport } from "@/components/admin/ProductLinkImport";
+import { ProductTechnicalFields } from "@/components/admin/ProductTechnicalFields";
+import { parseProductSpecifications, type ProductSpecifications } from "@/lib/product-specifications";
 import type { ImportedProduct } from "@/lib/product-import/extract";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import { SiteManagement } from "@/components/admin/SiteManagement";
@@ -580,6 +583,7 @@ export function AdminDashboardClient({
     warehouseId: "1",
     shortDescription: "",
     description: "",
+    technicalDetails: {} as ProductSpecifications,
     photos: [] as string[],
     videoUrl: "",
   });
@@ -602,6 +606,10 @@ export function AdminDashboardClient({
       ...prev,
       name: prev.name.trim() ? prev.name : product.name,
       description: prev.description.trim() ? prev.description : product.description,
+      technicalDetails: {
+        ...product.technicalDetails,
+        ...Object.fromEntries(Object.entries(prev.technicalDetails).filter(([, value]) => value?.trim())),
+      },
       sku: prev.sku.trim() ? prev.sku : product.sku,
       barcode: prev.barcode.trim() ? prev.barcode : product.barcode,
       brandId: useBrand ? String(brandMatches[0].id) : prev.brandId,
@@ -748,8 +756,6 @@ export function AdminDashboardClient({
   const [usersBusy, setUsersBusy] = useState(false);
   const [customersList, setCustomersList] = useState<any[]>([]);
   const [customersBusy, setCustomersBusy] = useState(false);
-  const [auditList, setAuditList] = useState<any[]>([]);
-  const [auditBusy, setAuditBusy] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", phone: "", role: "CASHIER", password: "" });
   const [addingUser, setAddingUser] = useState(false);
@@ -783,24 +789,10 @@ export function AdminDashboardClient({
     }
   }, []);
 
-  const loadAudit = React.useCallback(async () => {
-    setAuditBusy(true);
-    try {
-      const res = await authFetch("/api/audit", { cache: "no-store" });
-      const data = await res.json();
-      if (data?.success) setAuditList(data.data || []);
-    } catch {
-      /* sessiz */
-    } finally {
-      setAuditBusy(false);
-    }
-  }, []);
-
   React.useEffect(() => {
     if (activeTab === "users") void loadUsers();
     if (activeTab === "registeredCustomers") void loadCustomers();
-    if (activeTab === "audit") void loadAudit();
-  }, [activeTab, loadUsers, loadCustomers, loadAudit]);
+  }, [activeTab, loadUsers, loadCustomers]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -897,6 +889,7 @@ export function AdminDashboardClient({
         isActive: editingProduct.isActive,
         shortDescription: editingProduct.shortDescription,
         description: editingProduct.description,
+        technicalDetails: parseProductSpecifications(editingProduct.technicalDetails),
       }),
     });
     const data = await res.json();
@@ -4396,7 +4389,7 @@ export function AdminDashboardClient({
               <div>
                 <h2 className="text-xl font-black text-stone-900">Rol Yetki Matrisi</h2>
                 <p className="text-xs text-stone-500">
-                  Sol menüdeki tüm modüllerin hangi rolde görüneceğini buradan belirleyin. Değişiklikler kaydedilince menü anında uygulanır.
+                  Modül ve işlem yetkilerini rollere göre belirleyin. Ürün linkinden bilgi getirme için hem Ürün & Katalog hem de Ürün Linki yetkisi gereklidir. Değişiklikler kaydedilince uygulanır.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -4480,6 +4473,7 @@ export function AdminDashboardClient({
                           <tr key={mod.key} className="hover:bg-stone-50/60">
                             <td className="py-2 px-3">
                               <span className="font-bold text-stone-800 block">{mod.label}</span>
+                              {mod.key === "audit" && <span className="block text-[10px] text-rose-800">Müşteri ve diğer hassas kayıtların tüm ayrıntılarını açar.</span>}
                               <span className="text-[9px] font-mono text-stone-400">{mod.key}</span>
                             </td>
                             {MATRIX_ROLES.map((role) => {
@@ -4526,7 +4520,7 @@ export function AdminDashboardClient({
                 <span className="flex items-center gap-1.5"><Lock className="w-3 h-3 text-amber-700" /> Kilitli hücre (Süper Admin / Genel Bakış)</span>
                 <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-emerald-600" /> Menüde görünür</span>
                 <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-rose-400" /> Menüde gizli</span>
-                <span className="text-stone-400">Matris yalnızca menü/sekme görünürlüğünü yönetir; API uçları kendi personel doğrulamalarını yapar.</span>
+                <span className="text-stone-400">Ürün linki yetkisi görünürlük ve sunucu erişimini sınırlar; diğer API uçları kendi yetki kontrollerini uygular.</span>
               </div>
             </div>
 
@@ -4564,76 +4558,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: DENETİM KAYDI */}
         {/* ============================================================ */}
-        {activeTab === "audit" && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-black text-stone-900">Denetim Kaydı (Audit Log)</h2>
-                <p className="text-xs text-stone-500">
-                  Kritik işlemlerin kim / ne zaman / hangi IP ile yapıldığının değiştirilemez kayıtları.
-                </p>
-              </div>
-              <button
-                onClick={() => void loadAudit()}
-                className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${auditBusy ? "animate-spin" : ""}`} />
-                <span>Yenile</span>
-              </button>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr>
-                      <th className="py-3 px-3">Tarih</th>
-                      <th className="py-3 px-3">İşlem</th>
-                      <th className="py-3 px-3">Kayıt</th>
-                      <th className="py-3 px-3">Detay</th>
-                      <th className="py-3 px-3">IP</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {auditList.map((row) => (
-                      <tr key={row.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 px-3 text-stone-500 whitespace-nowrap">
-                          {new Date(row.createdAt).toLocaleString("tr-TR")}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              String(row.action).includes("FAIL") || String(row.action).includes("LOCK")
-                                ? "bg-rose-100 text-rose-800"
-                                : String(row.action).includes("SUCCESS")
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-stone-100 text-stone-700"
-                            }`}
-                          >
-                            {row.action}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-semibold text-stone-800">{row.userName}</span>
-                          <span className="block text-[10px] text-stone-400 font-mono">{row.entity} #{row.entityId}</span>
-                        </td>
-                        <td className="py-3 px-3 text-stone-500 max-w-md truncate">{row.details}</td>
-                        <td className="py-3 px-3 font-mono text-[10px] text-stone-400">{row.ipAddress}</td>
-                      </tr>
-                    ))}
-                    {auditList.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-stone-400">
-                          {auditBusy ? "Yükleniyor…" : "Henüz denetim kaydı yok."}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === "audit" && matrixLoaded && canSee("audit") && <AuditLogPanel />}
 
         {/* SİTE YÖNETİMİ bölümleri */}
         {activeTab === "siteHeader" && <SiteManagement tab="header" />}
@@ -4701,6 +4626,7 @@ export function AdminDashboardClient({
               <input placeholder="Video URL (YouTube / Dailymotion / Vimeo / TikTok / Instagram / Facebook)" value={editingProduct.videoUrl || ""} onChange={(e) => setEditingProduct({ ...editingProduct, videoUrl: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
               <textarea placeholder="Kısa açıklama" value={editingProduct.shortDescription || ""} onChange={(e) => setEditingProduct({ ...editingProduct, shortDescription: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" rows={2} />
               <textarea placeholder="Detaylı açıklama (ürün sayfasında görünür)" value={editingProduct.description || ""} onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" rows={3} />
+              <ProductTechnicalFields value={editingProduct.technicalDetails && typeof editingProduct.technicalDetails === "object" ? editingProduct.technicalDetails : parseProductSpecifications(editingProduct.technicalDetails)} onChange={(technicalDetails) => setEditingProduct({ ...editingProduct, technicalDetails })} />
               <label className="flex items-center gap-2 font-bold">
                 <input type="checkbox" checked={!!editingProduct.isFeatured} onChange={(e) => setEditingProduct({ ...editingProduct, isFeatured: e.target.checked })} />
                 Öne çıkan ürün
@@ -4722,7 +4648,7 @@ export function AdminDashboardClient({
             </div>
 
             <form onSubmit={handleAddProduct} className="space-y-3 text-xs">
-              <ProductLinkImport onImport={applyImportedProduct} />
+              <AuthorizedProductLinkImport onImport={applyImportedProduct} />
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ürün Adı:</label>
                 <input
@@ -4745,6 +4671,8 @@ export function AdminDashboardClient({
                   className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                 />
               </div>
+
+              <ProductTechnicalFields value={newProd.technicalDetails} onChange={(technicalDetails) => setNewProd(prev => ({ ...prev, technicalDetails }))} />
 
               {/* ÜRÜN FOTOĞRAFLARI — en fazla 6 adet (link veya site deposuna yükleme) */}
               <PhotoManager

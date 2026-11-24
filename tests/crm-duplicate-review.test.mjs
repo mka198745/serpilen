@@ -31,11 +31,12 @@ test('İki kart değerlendirmesi yetkili, eşzamanlılık kontrollü ve birleşt
   const tooLong=()=>new ReadableStream({start(c){c.enqueue(new TextEncoder().encode(' '.repeat(17000)));c.close();}});
   assert.equal((await fetch(bases[0]+endpoint,{method:'POST',headers:{Authorization:`Bearer ${tokens.SUPER_ADMIN}`,'Content-Type':'application/json'},body:tooLong(),duplex:'half'})).status,413);
   const saved=await req(endpoint,'SUPER_ADMIN','POST',payload(p));assert.equal(saved.status,200);const review=(await saved.json()).review;assert.equal(review.status,'DISTINCT');assert.equal(review.revision,1);assert.equal(review.stale,false);
+  const savedList=await(await req('/api/crm/customers/1/duplicate-reviews')).json();assert.equal(savedList.data[0].customer.id,2);assert.equal(savedList.data[0].status,'DISTINCT');assert.equal(savedList.data[0].stale,false);
   assert.equal((await req(endpoint,'SUPER_ADMIN','POST',payload(p))).status,409);
   let reverse=await preview(2,1);assert.equal(reverse.review.status,'DISTINCT');assert.equal(reverse.review.revision,1);assert.equal(reverse.review.stale,false);
   const candidates=await(await req('/api/crm/customers/1/duplicate-candidates')).json();assert.ok(candidates.data.some(x=>x.id===2)); // decision never hides candidate
   const otherDb=new Database(dbPath);otherDb.exec("UPDATE customers SET city='Adana' WHERE id=2");otherDb.close();
-  let stale=await preview();assert.equal(stale.review.stale,true);
+  let stale=await preview();assert.equal(stale.review.stale,true);assert.equal((await(await req('/api/crm/customers/2/duplicate-reviews')).json()).data[0].stale,true);
   assert.equal((await req(endpoint,'SUPER_ADMIN','POST',{...payload(p),expectedRevision:1})).status,409);
   const update=await req(endpoint,'SUPER_ADMIN','POST',payload(stale,'UNSURE'));assert.equal(update.status,200);assert.equal((await update.json()).review.revision,2);
   p=await preview();assert.equal(p.review.status,'UNSURE');assert.equal(p.review.stale,false);

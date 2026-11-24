@@ -28,6 +28,7 @@ export const ADMIN_MODULES: AdminModule[] = [
   { key: "dashboard", label: "Genel Bakış (KPI)", group: "Genel" },
 
   { key: "catalog", label: "Ürün & Katalog", group: "Operasyon" },
+  { key: "productLinkImport", label: "Ürün & Katalog — Ürün Linki ile Bilgi Getirme", group: "Operasyon" },
   { key: "wms", label: "Çoklu Depo & WMS", group: "Operasyon" },
   { key: "barcode", label: "Barkod & Etiket", group: "Operasyon" },
   { key: "pos", label: "POS & Kasalar", group: "Operasyon" },

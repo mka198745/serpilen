@@ -148,6 +148,20 @@
       "when": 1794777826192,
       "tag": "0020_crm_note_edit_state",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1794778826192,
+      "tag": "0021_product_technical_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1794779826192,
+      "tag": "0022_crm_merge_reference_indexes",
+      "breakpoints": true
     }
   ]
 }

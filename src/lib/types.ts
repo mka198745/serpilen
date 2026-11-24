@@ -43,6 +43,7 @@ export interface Product {
   categoryId: number;
   shortDescription: string | null;
   description: string | null;
+  technicalDetails?: string | null;
   unit: string;
   buyPrice: string;
   retailPrice: string;

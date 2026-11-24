@@ -7,6 +7,7 @@ import { ReviewsQA } from "@/components/storefront/ReviewsQA";
 import { parseVideoUrl } from "@/lib/video";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import { ExternalMediaGate } from "@/components/layout/ExternalMediaGate";
+import { PRODUCT_SPECIFICATION_FIELDS, parseProductSpecifications } from "@/lib/product-specifications";
 import {
   ShoppingBag,
   Heart,
@@ -92,6 +93,7 @@ export function ProductDetailClient({
   const currentPrice = selectedVariant ? Number(selectedVariant.retailPrice) : Number(product.retailPrice);
   const currentSku = selectedVariant ? selectedVariant.sku : product.sku;
   const currentBarcode = selectedVariant?.barcode || product.barcode;
+  const technicalDetails = parseProductSpecifications(product.technicalDetails);
   const isFavorited = wishlist.includes(product.id);
 
   const handleAddToCart = () => {
@@ -408,6 +410,12 @@ export function ProductDetailClient({
             <div className="bg-white p-6 rounded-2xl border border-gray-100">
               <table className="w-full text-xs text-left">
                 <tbody className="divide-y divide-gray-100">
+                  {PRODUCT_SPECIFICATION_FIELDS.map(field => technicalDetails[field.key] ? (
+                    <tr key={field.key} className="py-2.5">
+                      <td className="py-2 text-gray-400 font-medium w-48">{field.label}</td>
+                      <td className="py-2 text-gray-900 font-semibold">{technicalDetails[field.key]}</td>
+                    </tr>
+                  ) : null)}
                   <tr className="py-2.5">
                     <td className="py-2 text-gray-400 font-medium w-48">Marka</td>
                     <td className="py-2 text-gray-900 font-semibold">{brand?.name || "Serpilen Collection"}</td>

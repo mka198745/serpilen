@@ -7,10 +7,11 @@ test('Yeni ürün formu bağlantıdan alanları doldurur, elle girilenleri ve ti
  const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});
  for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});
  globalThis.IS_REACT_ACT_ENVIRONMENT=true;globalThis.alert=()=>{}; let resolveImport;let importSignal;let requests=[];let nextImportError=false;let responseOverride=null;
- const imported={name:'Kaynak Ürün',description:'Açıklama\n\nTeknik özellikler:\nMalzeme: Pamuk',sku:'SKU-123',barcode:'8691234567890',brand:'Örnek',category:'Dikiş',images:['https://cdn.example.com/a.jpg','https://cdn.example.com/b.jpg'],warnings:[]};
+ const imported={name:'Kaynak Ürün',description:'Açıklama\n\nTeknik özellikler:\nMalzeme: Pamuk',sku:'SKU-123',barcode:'8691234567890',brand:'Örnek',category:'Dikiş',images:['https://cdn.example.com/a.jpg','https://cdn.example.com/b.jpg'],warnings:[],technicalDetails:{articleNo:'260',composition:'%10 Bambu - %90 Akrilik',length:'100 gr - 240 m',knittingNeedle:'4-5',crochetNeedle:'2-4'}};
  const originalFetch=globalThis.fetch;globalThis.fetch=async(url,opts={})=>{
-  requests.push({url,method:opts.method||'GET'});
+  requests.push({url,method:opts.method||'GET',body:opts.body});
   if(url==='/api/role-matrix')return Response.json({success:true,data:{matrix:{}}});
+  if(url==='/api/products/import'&&opts.method!=='POST')return Response.json({success:true,allowed:true});
   if(url==='/api/products/import')return new Promise(resolve=>{importSignal=opts.signal;resolveImport=()=>resolve(responseOverride ? responseOverride() : nextImportError ? Response.json({success:false,error:'Siteye ulaşılamadı.'},{status:502}) : Response.json({success:true,data:imported}));});
   if(url==='/api/products'&&opts.method==='POST')return Response.json({success:true});
   return Response.json({success:true,data:[]});
@@ -22,18 +23,23 @@ test('Yeni ürün formu bağlantıdan alanları doldurur, elle girilenleri ve ti
   const click=async(label)=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent?.trim()===label);assert.ok(b,label);await act(async()=>b.click());};
   const setInput=async(selector,value)=>{const input=document.querySelector(selector);assert.ok(input,selector);await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));input.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});};
   await act(async()=>root.render(React.createElement(AdminDashboardClient,props)));await wait(()=>document.body.textContent.includes('Ürün & Katalog'));await click('Ürün & Katalog');await click('Yeni Ürün Ekle');
-  assert.ok(document.querySelector('#product-source-url'));assert.ok(document.body.textContent.includes('Ürün Linki ekle'));
+  await wait(()=>!!document.querySelector('#product-source-url'));assert.ok(document.querySelector('#product-source-url'));assert.ok(document.body.textContent.includes('Ürün Linki ekle'));
   await setInput('#product-source-url','https://fixture.example/product');
   const select=[...document.querySelectorAll('form select')].find(x=>[...x.options].some(o=>o.text==='Dikiş')&&[...x.options].some(o=>o.text==='Diğer'));assert.ok(select);
   await act(async()=>{select.value='2';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
   await click('Ürünü getir');await wait(()=>!!resolveImport);
   // User edits during the request; the result must not clobber that edit.
   await setInput('input[placeholder="Örn: Gütermann 100m Dikiş İpliği No: 120"]','Elle girilen ad');
+  const specInput=label=>[...document.querySelectorAll('fieldset label')].find(el=>el.textContent.trim()===label)?.querySelector('input');
+  assert.ok(specInput('Artikel No'));const composition=specInput('Karışım');
+  await act(async()=>{Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(composition,'El ile seçildi');composition.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});
   await act(async()=>resolveImport());await wait(()=>document.body.textContent.includes('Bilgiler forma aktarıldı.'));
   assert.equal(document.querySelector('input[placeholder="Örn: Gütermann 100m Dikiş İpliği No: 120"]').value,'Elle girilen ad');
   assert.match(document.querySelector('textarea[placeholder^="Ürünün detaylı"]').value,/Malzeme: Pamuk/);
   assert.equal(document.querySelector('input[placeholder="GUT-120-SIY"]').value,'SKU-123');
   assert.equal(document.querySelector('input[placeholder="869001122..."]').value,'8691234567890');
+  assert.equal(specInput('Artikel No').value,'260');assert.equal(specInput('Karışım').value,'El ile seçildi');
+  assert.equal(specInput('Metraj / Gramaj').value,'100 gr - 240 m');assert.equal(specInput('Şiş No').value,'4-5');assert.equal(specInput('Tığ No').value,'2-4');
   assert.ok([...document.querySelectorAll('img')].some(x=>x.src==='https://cdn.example.com/a.jpg'));
   const selects=[...document.querySelectorAll('form select')];assert.ok(selects.some(s=>s.value==='2'&&[...s.options].some(o=>o.text==='Örnek')));assert.equal(select.value,'2');assert.match(document.body.textContent,/Kategoriyi kontrol edip seçin/);
   assert.ok([...document.querySelectorAll('input[type=number]')].some(x=>x.value==='30.00'));assert.ok([...document.querySelectorAll('input[type=number]')].some(x=>x.value==='55.00'));assert.ok([...document.querySelectorAll('input[type=number]')].some(x=>x.value==='50'));
@@ -67,6 +73,7 @@ test('Yeni ürün formu bağlantıdan alanları doldurur, elle girilenleri ve ti
   // The only write below is a mocked fetch, never a database operation.
   await act(async()=>document.querySelector('#product-source-url').closest('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
   await wait(()=>!document.querySelector('#product-source-url'));assert.equal(requests.filter(x=>x.url==='/api/products'&&x.method==='POST').length,1);
+  const saved=JSON.parse(requests.find(x=>x.url==='/api/products'&&x.method==='POST').body);assert.equal(saved.technicalDetails.articleNo,'260');assert.equal(saved.technicalDetails.composition,'El ile seçildi');assert.equal(saved.technicalDetails.crochetNeedle,'2-4');
   await click('Yeni Ürün Ekle');assert.equal(document.querySelector('input[placeholder="Örn: Gütermann 100m Dikiş İpliği No: 120"]').value,'');
   resolveImport=null;await setInput('#product-source-url','https://fixture.example/product');await click('Ürünü getir');await wait(()=>!!resolveImport);await act(async()=>resolveImport());await wait(()=>document.body.textContent.includes('Bilgiler forma aktarıldı.'));
   const resetSelect=[...document.querySelectorAll('form select')].find(x=>[...x.options].some(o=>o.text==='Dikiş')&&[...x.options].some(o=>o.text==='Diğer'));assert.equal(resetSelect.value,'1');

@@ -12,6 +12,26 @@ const fail = (status: number, message: string) => NextResponse.json({ success: f
 const recent = new Map<number, number[]>();
 let inFlight = 0;
 
+async function hasImportAccess(role: string): Promise<boolean> {
+  const matrix = await readRoleMatrix();
+  return roleCanAccessModule(matrix, role, "catalog") && roleCanAccessModule(matrix, role, "productLinkImport");
+}
+
+/** The form checks the current session and saved permission, never the draft matrix. */
+export async function GET(request: Request) {
+  try {
+    const gate = await requireStaff(request);
+    if (!gate.ok) {
+      gate.response.headers.set("Cache-Control", "private, no-store");
+      return gate.response;
+    }
+    const allowed = await hasImportAccess(gate.user.role);
+    return NextResponse.json({ success: true, allowed }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch {
+    return fail(500, "Ürün bağlantısı yetkisi doğrulanamadı.");
+  }
+}
+
 export async function POST(request: Request) {
   try {
     return await handleImport(request);
@@ -25,7 +45,7 @@ export async function POST(request: Request) {
 async function handleImport(request: Request) {
   const gate = await requireStaff(request);
   if (!gate.ok) return gate.response;
-  if (!roleCanAccessModule(await readRoleMatrix(), gate.user.role, "catalog")) return fail(403,"Ürün bağlantısını getirmek için katalog yetkisi gerekir.");
+  if (!(await hasImportAccess(gate.user.role))) return fail(403,"Ürün bağlantısından bilgi getirmek için katalog ve ürün linki yetkileri gerekir.");
   const invalid = validateCrmWrite(request);
   if (invalid) return invalid;
   if (!request.headers.get("origin")) {
@@ -52,6 +72,9 @@ async function handleImport(request: Request) {
     }));
     const images = data.images.filter((_url,index) => checks[index]);
     if (images.length < data.images.length) data.warnings.push("Bazı görsel adresleri güvenlik veya erişim nedeniyle aktarılmadı.");
+    // Permission, role or account status may have changed during the network request.
+    const current = await requireStaff(request);
+    if (!current.ok || current.user.id !== gate.user.id || !(await hasImportAccess(current.user.role))) return fail(403, "Ürün bağlantısı yetkiniz değişti; bilgiler aktarılmadı.");
     return NextResponse.json({ success: true, data: { ...data, images } }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof ProductImportError) return fail(["NO_PRODUCT","AMBIGUOUS","INVALID_URL","UNSAFE_HOST"].includes(error.code) ? 422 : 502, error.message);

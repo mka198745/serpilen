@@ -1,8 +1,9 @@
-import { load } from "cheerio";
+import { load, type CheerioAPI } from "cheerio";
 import { publicHttpsUrl, ProductImportError } from "./safe-fetch";
+import { productSpecificationsFromPairs, type ProductSpecifications } from "../product-specifications";
 
 type JsonObject = Record<string, unknown>;
-export type ImportedProduct = { name: string; description: string; sku: string; barcode: string; brand: string; category: string; images: string[]; warnings: string[] };
+export type ImportedProduct = { name: string; description: string; sku: string; barcode: string; brand: string; category: string; images: string[]; warnings: string[]; technicalDetails?: ProductSpecifications };
 const isObject = (v: unknown): v is JsonObject => !!v && typeof v === "object" && !Array.isArray(v);
 const strings = (v: unknown): string => typeof v === "string" || typeof v === "number" ? String(v) : "";
 function clean(value: unknown, max: number): string {
@@ -56,10 +57,56 @@ function properties(value: unknown): Array<[string, string]> {
   return list.filter(isObject).map(item => [plain(item.name, 100), plain(item.value, 300)] as [string,string]).filter(([a,b]) => !!a && !!b).slice(0, 30);
 }
 
-/** Structured Product, or product-specific OpenGraph/microdata. Never interprets prices or stocks. */
+/** Alize product pages use an h2/breadcrumb, a #t_teknik list and color-photo filenames. */
+function extractAlize($: CheerioAPI, page: URL): ImportedProduct | null {
+  if (!["alize.gen.tr", "www.alize.gen.tr"].includes(page.hostname.toLowerCase()) || !/^\/yumak\/[^/]+\/?$/i.test(page.pathname)) return null;
+  const section = $("#t_teknik");
+  const headings = $("h2.font-36").filter((_i, el) => $(el).parent().find("ol.breadcrumb").length > 0);
+  if (section.length !== 1 || headings.length !== 1) return null;
+  const heading = headings.first();
+  const name = plain(heading.text(), 200);
+  if (!name) return null;
+  const pairs: Array<[string, string]> = [];
+  section.find("h5").slice(0, 40).each((_i, el) => {
+    const label = plain($(el).text(), 100);
+    const value = plain($(el).next("p").text(), 300);
+    if (label && value) pairs.push([label, value]);
+  });
+  const technicalDetails = productSpecificationsFromPairs(pairs);
+  // The title and at least two independently named technical values are needed to avoid importing a generic page.
+  if (Object.keys(technicalDetails).length < 2) return null;
+  const summary = clean(heading.parent().find("ol.breadcrumb li a").first().html(), 6000);
+  const sourceDescription = [technicalDetails.composition, technicalDetails.length].filter(Boolean).join(" / ");
+  const note = clean(heading.parent().find(".urun_yazi").first().html(), 2000);
+  const description = [sourceDescription || summary, sourceDescription && note ? note : ""].filter(Boolean).join("\n\n");
+  const images: string[] = [];
+  const addImage = (raw: string) => {
+    if (!raw || images.length >= 6) return;
+    try {
+      const image = publicHttpsUrl(raw, page.href);
+      if (!["alize.gen.tr", "www.alize.gen.tr"].includes(image.hostname.toLowerCase()) || !/^\/uploads\/[^/]+\.(jpe?g|png|webp)$/i.test(image.pathname)) return;
+      if (!images.includes(image.href)) images.push(image.href);
+    } catch { /* skip unsafe or malformed image URLs */ }
+  };
+  addImage($("#my_image").first().attr("src") || "");
+  // The site's color selector switches its main image to /uploads/<data-id>.
+  $("#home").find('a[id="kesit_resim"][data-id]').slice(0, 50).each((_i, el) => {
+    const filename = $(el).attr("data-id") || "";
+    if (/^[a-z0-9][a-z0-9._-]{0,195}\.(?:jpe?g|png|webp)$/i.test(filename)) addImage(`/uploads/${filename}`);
+  });
+  const warnings = ["Artikel No, SKU veya barkod değildir; SKU ve ticari bilgileri kendiniz kontrol edin."];
+  if (images.length) warnings.push("Görseller farklı renklere ait olabilir; kaydetmeden önce uygun fotoğrafları seçin.");
+  else warnings.push("Uygun ürün fotoğrafı bulunamadı.");
+  if (!description) warnings.push("Ürün açıklaması bulunamadı.");
+  return { name, description, sku: "", barcode: "", brand: "Alize", category: "", images, warnings, technicalDetails };
+}
+
+/** Structured Product, product-specific OpenGraph/microdata, or supported manufacturer pages. Never interprets prices or stocks. */
 export function extractProduct(html: string, pageUrl: string): ImportedProduct {
   const page = publicHttpsUrl(pageUrl);
   const $ = load(html);
+  const alize = extractAlize($, page);
+  if (alize) return alize;
   const candidates: JsonObject[] = [];
   $('script[type="application/ld+json"]').slice(0, 25).each((_index, el) => {
     const text = $(el).text(); if (text.length > 512000) return;
@@ -105,5 +152,5 @@ export function extractProduct(html: string, pageUrl: string): ImportedProduct {
   if (!combined) warnings.push("Açıklama veya teknik özellik bulunamadı.");
   if (!images.length) warnings.push("Uygun görsel bağlantısı bulunamadı.");
   if (gtin && !barcode) warnings.push("Barkod doğrulanamadı, forma aktarılmadı.");
-  return { name, description: combined, sku, barcode, brand, category, images, warnings };
+  return { name, description: combined, sku, barcode, brand, category, images, warnings, technicalDetails: productSpecificationsFromPairs(specs) };
 }

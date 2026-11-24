@@ -17,13 +17,21 @@ export async function validateCrmWriteAccess(request: Request, user: SessionUser
   return null;
 }
 
-/** Call under an immediate SQLite write transaction, before reading or changing CRM data. */
-export function canStillWriteCrm(user: SessionUser): boolean {
+/** Call under an immediate SQLite transaction, before reading or changing CRM data. */
+function currentCrmAccess(user: SessionUser, write: boolean): boolean {
   const actor = sqlite.prepare("SELECT role,is_active AS active FROM users WHERE id=?").get(user.id) as { role: string; active: number } | undefined;
   if (!actor?.active || actor.role !== user.role) return false;
   const setting = sqlite.prepare("SELECT value FROM app_settings WHERE key='admin.role_matrix'").get() as { value: string } | undefined;
   let saved: unknown = null;
   try { if (setting?.value) saved = JSON.parse(setting.value); } catch { /* existing role-matrix defaults */ }
   const matrix = normalizeRoleMatrix(saved);
-  return roleCanAccessModule(matrix, actor.role, "crm") && roleCanAccessModule(matrix, actor.role, "crmWrite");
+  return roleCanAccessModule(matrix, actor.role, "crm") && (!write || roleCanAccessModule(matrix, actor.role, "crmWrite"));
+}
+
+export function canStillReadCrm(user: SessionUser): boolean {
+  return currentCrmAccess(user, false);
+}
+
+export function canStillWriteCrm(user: SessionUser): boolean {
+  return currentCrmAccess(user, true);
 }

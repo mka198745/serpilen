@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { readCrmJson } from "@/lib/crm-write";
-import { validateCrmWriteAccess, canStillWriteCrm } from "@/lib/crm-write-access";
+import { validateCrmWriteAccess, canStillReadCrm, canStillWriteCrm } from "@/lib/crm-write-access";
 import { requireCrmAccess } from "@/lib/crm-access";
 import { crmNoteColumns, crmNoteFrom } from "@/lib/crm-note-query";
 
@@ -19,14 +19,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const page = Number(pageText), limit = 20;
   try {
     const result = sqlite.transaction(() => {
-      if (!sqlite.prepare("SELECT 1 FROM customers WHERE id=?").get(Number(id))) return null;
+      if (!canStillReadCrm(gate.user)) return { status: 403 } as const;
+      if (!sqlite.prepare("SELECT 1 FROM customers WHERE id=?").get(Number(id))) return { status: 404 } as const;
       const total = (sqlite.prepare("SELECT COUNT(*) AS n FROM crm_customer_notes WHERE customer_id=?").get(Number(id)) as { n: number }).n;
       const data = sqlite.prepare(`SELECT ${crmNoteColumns} FROM ${crmNoteFrom} WHERE n.customer_id=? ORDER BY n.created_at DESC,n.id DESC LIMIT ? OFFSET ?`).all(Number(id), limit, (page - 1) * limit);
       sqlite.prepare("INSERT INTO audit_logs (user_id,user_name,action,entity,entity_id,details) VALUES (?,?,'CRM_NOTES_VIEW','Customer',?,?)").run(String(gate.user.id), gate.user.name, id, `CRM notları, sayfa ${page}`);
-      return { data, pagination: { page, limit, total } };
-    })();
-    if (!result) return NextResponse.json({ success: false, error: "Müşteri bulunamadı." }, { status: 404 });
-    return NextResponse.json({ success: true, ...result }, { headers: { "Cache-Control": "private, no-store" } });
+      return { status: 200, data, pagination: { page, limit, total } } as const;
+    }).immediate();
+    if (result.status === 403) return NextResponse.json({ success: false, error: "CRM erişim yetkiniz bulunmuyor." }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+    if (result.status === 404) return NextResponse.json({ success: false, error: "Müşteri bulunamadı." }, { status: 404, headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ success: true, data: result.data, pagination: result.pagination }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("CRM notes listing failed", error);
     return NextResponse.json({ success: false, error: "Notlar yüklenemedi." }, { status: 500 });

@@ -159,6 +159,7 @@ export const products = sqliteTable("products", {
   categoryId: integer("category_id").notNull(),
   shortDescription: text("short_description"),
   description: text("description"),
+  technicalDetails: text("technical_details"), // İsteğe bağlı, doğrulanmış teknik özellik JSON'u
   unit: text("unit").default("Adet").notNull(), // Adet, Metre, Paket, Kutu, Rulo, Bobin
   buyPrice: numeric("buy_price").notNull().default("0.00"),
   retailPrice: numeric("retail_price").notNull().default("0.00"),
@@ -395,7 +396,7 @@ export const orderReturnItems = sqliteTable("order_return_items", {
   productName: text("product_name").notNull(),
   quantity: integer("quantity").notNull(),
   refundAmount: numeric("refund_amount").notNull().default("0.00"),
-});
+}, (table) => [index("order_return_items_return_idx").on(table.returnId, table.id)]);
 
 // ==========================================
 // 7. POS VARDİYA & KASA YÖNETİMİ — FAZ 7
@@ -534,7 +535,7 @@ export const accountTransactions = sqliteTable("account_transactions", {
   paidAt: integer("paid_at", { mode: "timestamp" }),
   createdBy: text("created_by").default("Sistem"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("account_transactions_customer_idx").on(table.customerId, table.id)]);
 
 // ==========================================
 // 9. KAMPANYALAR, KUPONLAR & SADAKAT
@@ -613,7 +614,7 @@ export const loyaltyTransactions = sqliteTable("loyalty_transactions", {
   description: text("description"),
   orderId: integer("order_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-}, (table) => [index("loyalty_transactions_customer_created_idx").on(table.customerId, table.createdAt, table.id)]);
+}, (table) => [index("loyalty_transactions_customer_created_idx").on(table.customerId, table.createdAt, table.id), index("loyalty_transactions_order_idx").on(table.orderId, table.customerId)]);
 
 // ==========================================
 // 10. CMS: BLOG & KURUMSAL İÇERİK
