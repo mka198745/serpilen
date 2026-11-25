@@ -2,8 +2,8 @@
 // Offline only: all app processes and external writers MUST be stopped.
 // Explicit user approval required. Never used by application startup.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
-const [mode,dbArg,backupArg,appArg,confirm]=process.argv.slice(2);
-if(!['inspect','backup','apply'].includes(mode)||![dbArg,appArg].every(p=>p&&path.isAbsolute(p))||(mode!=='inspect'&&(!backupArg||!path.isAbsolute(backupArg)))||(mode==='apply'&&confirm!=='URUN-SATIS-MUSTERI-VE-ANALIZLERI-SIL'))throw Error('Kullanım: inspect|backup|apply MUTLAK_DB MUTLAK_YEDEK MUTLAK_STANDALONE [ONAY]');
+const [mode,dbArg,backupArg,appArg,confirm,reservedApproval]=process.argv.slice(2);
+if(!['inspect','backup','apply'].includes(mode)||![dbArg,appArg].every(p=>p&&path.isAbsolute(p))||(mode!=='inspect'&&(!backupArg||!path.isAbsolute(backupArg)))||(mode==='apply'&&confirm!=='URUN-SATIS-MUSTERI-VE-ANALIZLERI-SIL')||(reservedApproval&&reservedApproval!=='11-AYRILMIS-STOK-YUKUMLULUK-YOK')||(mode!=='apply'&&reservedApproval))throw Error('Kullanım: inspect|backup|apply MUTLAK_DB MUTLAK_YEDEK MUTLAK_STANDALONE [ONAY]');
 const dbPath=fs.realpathSync(dbArg), app=fs.realpathSync(appArg);
 if(!fs.statSync(dbPath).isFile())throw Error('Canlı DB dosyası bulunamadı.');
 const digest=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
@@ -30,6 +30,7 @@ function validate(db){
   acik_iade:count(db,'order_returns',"WHERE status IS NULL OR status NOT IN ('REFUNDED','REJECTED')"),
   aktif_rezervasyon:count(db,'inventory_reservations',"WHERE status='ACTIVE' OR status IS NULL"),
   ayrilmis_stok:count(db,'inventory','WHERE reserved_qty<>0 OR reserved_qty IS NULL'),
+  gecersiz_stok_sayaci:count(db,'inventory','WHERE reserved_qty IS NULL OR reserved_qty<0 OR physical_qty IS NULL OR physical_qty<0'),
   acik_pos_satis:count(db,'pos_sale_intents',"WHERE status IS NULL OR status NOT IN ('COMPLETED','CANCELLED')"),
   gonderilmemis_bildirim:count(db,'order_notification_outbox',"WHERE status IS NULL OR status NOT IN ('SENT','CANCELLED')"),
   tamamlanmamis_satin_alma:count(db,'purchase_orders',"WHERE status IS NULL OR status NOT IN ('RECEIVED','CANCELLED')"),
@@ -72,7 +73,14 @@ async function main(){
   db.prepare('ATTACH DATABASE ? AS saved_backup').run(path.join(dir,'backup.db'));
   db.transaction(()=>{
    const report=validate(db);sameSnapshot(db);
-   const failed=Object.entries(report.blockers).filter(([,v])=>v>0);if(failed.length)throw Error('İşlem durduruldu; açık işlem veya incelenmesi gereken kayıt: '+JSON.stringify(Object.fromEntries(failed)));
+   // This exception is bound to the operator's specifically reviewed live counts,
+   // and never clears or invents individual reservations or affects other blockers.
+   if(reservedApproval){
+    const expected={products:10,customers:3,orders:2,inventory:34,pos_shifts:2,purchase_orders:1,goods_receipts:1,product_variants:21,product_images:9,musteri_giris_hesabi:2,korunacak_personel:2,fiziksel_stok_kaydi:32};
+    for(const [key,value] of Object.entries(expected))if(report.counts[key]!==value)throw Error(`Onaylanan canlı sayı değişmiş: ${key}; işlem durduruldu.`);
+    if(report.blockers.ayrilmis_stok!==11||count(db,'inventory_reservations')!==0)throw Error('Onaylanan 11 stok sayacı veya rezervasyon durumu değişmiş; işlem durduruldu.');
+   }
+   const failed=Object.entries(report.blockers).filter(([k,v])=>v>0&&!(k==='ayrilmis_stok'&&reservedApproval));if(failed.length)throw Error('İşlem durduruldu; açık işlem veya incelenmesi gereken kayıt: '+JSON.stringify(Object.fromEntries(failed)));
    const staffBefore=count(db,'users',"WHERE role<>'B2C_CUSTOMER'");
    db.exec("DELETE FROM admin_sessions WHERE user_id IN (SELECT id FROM users WHERE role='B2C_CUSTOMER'); DELETE FROM auth_nonces WHERE user_id IN (SELECT id FROM users WHERE role='B2C_CUSTOMER'); UPDATE users SET customer_id=NULL WHERE customer_id IS NOT NULL; DELETE FROM users WHERE role='B2C_CUSTOMER'; DELETE FROM promotions WHERE product_id IS NOT NULL;");
    for(const table of clear)db.prepare(`DELETE FROM ${q(table)}`).run();
@@ -80,7 +88,7 @@ async function main(){
    for(const stmt of fs.readFileSync(sqlPath,'utf8').split('--> statement-breakpoint').map(x=>x.trim()).filter(Boolean))db.exec(stmt);
    db.prepare('INSERT INTO __migrations(tag) VALUES(?)').run(journal[27].tag);
    if(db.pragma('foreign_key_check').length||db.pragma('integrity_check',{simple:true})!=='ok'||count(db,'users',"WHERE role<>'B2C_CUSTOMER'")!==staffBefore||count(db,'customers')||clear.some(t=>count(db,t))||count(db,'users',"WHERE role='B2C_CUSTOMER'"))throw Error('Son kontrol başarısız; tüm işlem geri alındı.');
-   db.prepare("INSERT INTO audit_logs(user_id,user_name,action,entity,details) VALUES('SYSTEM','Sistem','LIVE_RESET','System',?)").run('Onaylı sıfırlama: ürünler, müşteri hesapları, tamamlanmış sipariş ve satın almalar, ilişkili stok ve analiz geçmişi; 0027 uygulandı.');
+   db.prepare("INSERT INTO audit_logs(user_id,user_name,action,entity,details) VALUES('SYSTEM','Sistem','LIVE_RESET','System',?)").run('Onaylı sıfırlama: ürünler, müşteri hesapları, tamamlanmış sipariş ve satın almalar, ilişkili stok ve analiz geçmişi; 0027 uygulandı.'+(reservedApproval?' 11 ayrılmış stok satırı için yükümlülük olmadığı işletme tarafından doğrulandı.':''));
   }).immediate();
   console.log('Sıfırlama ve 0027 tek işlemde tamamlandı; bütünlük kontrolü: ok.');
  }finally{if(db)db.close();if(dir)fs.rmSync(dir,{recursive:true,force:true});}
