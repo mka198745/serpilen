@@ -213,6 +213,8 @@ export function AdminDashboardClient({
   const [brandsList, setBrandsList] = useState(brands);
   const [categoriesList, setCategoriesList] = useState(categories);
   const [warehousesList, setWarehousesList] = useState(warehouses);
+  const defaultWarehouseId = String((warehousesList.filter((w) => w.isActive !== false).sort((a, b) => Number(b.type === "CENTRAL") - Number(a.type === "CENTRAL") || a.id - b.id)[0])?.id || "");
+  const secondWarehouseId = String(warehousesList.find((w) => w.isActive !== false && String(w.id) !== defaultWarehouseId)?.id || defaultWarehouseId);
   const [catalogSubTab, setCatalogSubTab] = useState<"products" | "categories" | "brands" | "variants">("products");
   const [catalogBrandFilter, setCatalogBrandFilter] = useState("ALL");
   const [catalogCatFilter, setCatalogCatFilter] = useState("ALL");
@@ -260,8 +262,8 @@ export function AdminDashboardClient({
   const [countBarcodeInput, setCountBarcodeInput] = useState("");
   const [countQtyInput, setCountQtyInput] = useState("1");
   const [countedItems, setCountedItems] = useState<any[]>([]);
-  const [newTransfer, setNewTransfer] = useState({ fromWarehouseId: "1", toWarehouseId: "2", productId: "", qty: "10", note: "" });
-  const [newLocation, setNewLocation] = useState({ warehouseId: "1", zone: "A", aisle: "01", rack: "01", shelf: "01" });
+  const [newTransfer, setNewTransfer] = useState({ fromWarehouseId: defaultWarehouseId, toWarehouseId: secondWarehouseId, productId: "", qty: "10", note: "" });
+  const [newLocation, setNewLocation] = useState({ warehouseId: defaultWarehouseId, zone: "A", aisle: "01", rack: "01", shelf: "01" });
   const [newWarehouseForm, setNewWarehouseForm] = useState({ name: "", type: "CENTRAL", address: "" });
   const [addingWarehouseForm, setAddingWarehouseForm] = useState(false);
 
@@ -312,7 +314,7 @@ export function AdminDashboardClient({
   const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "30 Gün Vade", rating: "4.5" });
   const [isCreatePOOpen, setIsCreatePOOpen] = useState(false);
-  const [poWizard, setPoWizard] = useState({ supplierId: "", warehouseId: "1", expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] as any[] });
+  const [poWizard, setPoWizard] = useState({ supplierId: "", warehouseId: defaultWarehouseId, expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] as any[] });
   const [receiveModalPO, setReceiveModalPO] = useState<any | null>(null);
   const [receiveLines, setReceiveLines] = useState<Record<number, number>>({});
 
@@ -369,7 +371,7 @@ export function AdminDashboardClient({
     const data = await res.json();
     if (data.success) {
       setIsCreatePOOpen(false);
-      setPoWizard({ supplierId: "", warehouseId: "1", expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] });
+      setPoWizard({ supplierId: "", warehouseId: defaultWarehouseId, expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] });
       setPurchasingFeedback({ text: `Sipariş oluşturuldu: ${data.data.poNumber}`, isError: false });
       void loadPurchasing();
     } else {
@@ -597,7 +599,7 @@ export function AdminDashboardClient({
     buyPrice: "30.00",
     retailPrice: "55.00",
     initialStock: "50",
-    warehouseId: "1",
+    warehouseId: defaultWarehouseId,
     shortDescription: "",
     description: "",
     technicalDetails: {} as ProductSpecifications,
@@ -655,15 +657,15 @@ export function AdminDashboardClient({
   };
 
   const [transferData, setTransferData] = useState({
-    fromWarehouseId: "1",
-    toWarehouseId: "2",
+    fromWarehouseId: defaultWarehouseId,
+    toWarehouseId: secondWarehouseId,
     productId: products[0]?.id || 1,
     quantity: 10,
     note: "Mağaza Kasa İhtiyacı İçin Sevk",
   });
 
   const [adjustData, setAdjustData] = useState({
-    warehouseId: "1",
+    warehouseId: defaultWarehouseId,
     productId: products[0]?.id || 1,
     quantityDelta: 5,
     reason: "SAYIM",
@@ -1161,14 +1163,14 @@ export function AdminDashboardClient({
       note: newTransfer.note || "Depolar arası sevk",
       items: [{ productId: Number(newTransfer.productId), variantId: null, qty: Number(newTransfer.qty) }],
     });
-    setNewTransfer({ fromWarehouseId: "1", toWarehouseId: "2", productId: "", qty: "10", note: "" });
+    setNewTransfer({ fromWarehouseId: defaultWarehouseId, toWarehouseId: secondWarehouseId, productId: "", qty: "10", note: "" });
   };
 
   const handleStartCount = async () => {
     const res = await authFetch("/api/counts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "START", warehouseId: Number(selectedWhFilter === "ALL" ? "1" : selectedWhFilter) }),
+      body: JSON.stringify({ action: "START", warehouseId: Number(selectedWhFilter === "ALL" ? defaultWarehouseId : selectedWhFilter) }),
     });
     const data = await res.json();
     if (data.success) {
@@ -1297,17 +1299,28 @@ export function AdminDashboardClient({
   };
 
   const handleDeleteWarehouse = async (id: number, name: string) => {
-    if (typeof window !== "undefined" && !window.confirm(`"${name}" deposu silinsin mi? Bu işlem geri alınamaz.`)) return;
+    if (typeof window !== "undefined" && !window.confirm(`"${name}" deposu ve boş lokasyon tanımları silinsin mi? Stok veya geçmiş hareketi olan depolar silinmez. Bu işlem geri alınamaz.`)) return;
     setWmsFeedback(null);
     try {
-      const res = await authFetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/warehouses?id=${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
       const data = await res.json();
       if (!data.success) {
         setWmsFeedback({ text: data?.error?.message || "Depo silinemedi.", isError: true });
         return;
       }
-      setWarehousesList((prev) => prev.filter((w) => w.id !== id));
-      setWmsFeedback({ text: `Depo silindi: ${name}`, isError: false });
+      const remaining = warehousesList.filter((w) => w.id !== id);
+      const fallback = String(remaining.filter((w) => w.isActive !== false).sort((a, b) => Number(b.type === "CENTRAL") - Number(a.type === "CENTRAL") || a.id - b.id)[0]?.id || "");
+      const other = String(remaining.find((w) => w.isActive !== false && String(w.id) !== fallback)?.id || fallback);
+      setWarehousesList(remaining);
+      setSelectedWhFilter("ALL");
+      setLocationsList((prev) => prev.filter((location) => location.warehouseId !== id));
+      setNewLocation((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setNewTransfer((prev) => ({ ...prev, fromWarehouseId: prev.fromWarehouseId === String(id) ? fallback : prev.fromWarehouseId, toWarehouseId: prev.toWarehouseId === String(id) ? other : prev.toWarehouseId }));
+      setTransferData((prev) => ({ ...prev, fromWarehouseId: prev.fromWarehouseId === String(id) ? fallback : prev.fromWarehouseId, toWarehouseId: prev.toWarehouseId === String(id) ? other : prev.toWarehouseId }));
+      setAdjustData((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setNewProd((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setPoWizard((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setWmsFeedback({ text: `Depo silindi: ${name}. ${data.data?.deletedLocations || 0} boş lokasyon kaldırıldı. Varsayılan depo: ${remaining.find((w) => String(w.id) === fallback)?.name || "yok"}. İşlem yapmadan önce seçimi kontrol edin.`, isError: false });
     } catch {
       setWmsFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
     }
@@ -1319,7 +1332,7 @@ export function AdminDashboardClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "RESERVE",
-        warehouseId: Number(selectedWhFilter === "ALL" ? "1" : selectedWhFilter),
+        warehouseId: Number(selectedWhFilter === "ALL" ? defaultWarehouseId : selectedWhFilter),
         productId: products[0]?.id,
         qty: 2,
         referenceType: "CHECKOUT",
@@ -2776,7 +2789,7 @@ export function AdminDashboardClient({
                       {warehousesList.map((w) => (
                         <tr key={w.id} className="hover:bg-stone-50/50">
                           <td className="py-2.5 px-3 font-mono font-bold">{w.code}</td>
-                          <td className="py-2.5 px-3 font-semibold text-stone-800">{w.name}</td>
+                          <td className="py-2.5 px-3 font-semibold text-stone-800">{w.name}{(w.id === 2 || w.id === 3) && <span className="block text-xs text-amber-700">{w.id === 2 ? "POS için gerekli" : "Online satış için gerekli"}</span>}</td>
                           <td className="py-2.5 px-3">
                             <span className="bg-stone-100 text-stone-800 px-2 py-0.5 rounded font-bold text-[10px]">{w.type}</span>
                           </td>
@@ -2793,6 +2806,7 @@ export function AdminDashboardClient({
                               <button
                                 type="button"
                                 onClick={() => handleToggleWarehouse(w.id, w.isActive === false)}
+                                disabled={(w.id === 2 || w.id === 3) && w.isActive !== false}
                                 title={w.isActive === false ? "Depoyu aktif yap" : "Depoyu pasife al"}
                                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border transition ${
                                   w.isActive === false
@@ -2806,7 +2820,8 @@ export function AdminDashboardClient({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteWarehouse(w.id, w.name)}
-                                title="Depoyu sil"
+                                disabled={w.id === 2 || w.id === 3}
+                                title={w.id === 2 ? "POS için gerekli depo silinemez" : w.id === 3 ? "Online satış için gerekli depo silinemez" : "Depoyu sil"}
                                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 transition"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -2916,7 +2931,7 @@ export function AdminDashboardClient({
                   {!activeCountSession ? (
                     <>
                       <p className="text-xs text-stone-500">
-                        Seçili depo ({warehousesList.find((w) => String(w.id) === (selectedWhFilter === "ALL" ? "1" : selectedWhFilter))?.name || "Merkez"}) için sayım başlatın; ardından barkod okutup adet girin.
+                        Seçili depo ({warehousesList.find((w) => String(w.id) === (selectedWhFilter === "ALL" ? defaultWarehouseId : selectedWhFilter))?.name || "depo seçilmedi"}) için sayım başlatın; ardından barkod okutup adet girin.
                       </p>
                       <button onClick={() => void handleStartCount()} className="w-full py-2.5 bg-amber-800 text-white text-xs font-bold rounded-xl">
                         Sayım Başlat

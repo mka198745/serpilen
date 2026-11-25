@@ -172,7 +172,7 @@ export async function POST(request: Request) {
       grandTotal: grandTotalIn,
       shippingAddress = null,
       notes: notesIn = null,
-      warehouseId = 1, // 1: Merkez, 2: Kadıköy Mağaza, 3: Online
+      warehouseId = orderType === "POS" ? 2 : 3, // POS ve online siparişin kendi deposu
       posShiftId = null,
       spentPoints = 0,
       couponCode = null,

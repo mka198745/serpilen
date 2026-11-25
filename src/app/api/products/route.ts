@@ -1,6 +1,7 @@
+import { resolveActiveWarehouse } from "@/lib/warehouse-policy";
 import { NextResponse } from "next/server";
 import { db, sqlite } from "@/db";
-import { products, productVariants, productImages, categories, brands, inventory, warehouses } from "@/db/schema";
+import { products, productVariants, productImages, categories, brands, inventory } from "@/db/schema";
 import { eq, or, desc, sql, and, asc } from "drizzle-orm";
 
 import { requireStaff, getUserByToken } from "@/lib/auth";
@@ -216,7 +217,7 @@ export async function POST(request: Request) {
       videoUrl,
       images,
       initialStock = 50,
-      warehouseId = 1,
+      warehouseId,
     } = body;
 
     let technicalDetails: string | null = null;
@@ -236,11 +237,14 @@ export async function POST(request: Request) {
     try { variants = validateNewProductVariants(body.variants); }
     catch (error) { return NextResponse.json({ success: false, error: error instanceof VariantValidationError ? error.message : "Varyant bilgileri geçersiz." }, { status: 422 }); }
 
+    const resolvedWarehouse = resolveActiveWarehouse(warehouseId);
+    if (!resolvedWarehouse) return NextResponse.json({ success: false, error: "Geçerli ve aktif bir depo seçin." }, { status: 422 });
+
     if (variants.length) {
       const productSku = typeof sku === "string" ? sku.trim() : "";
       const productBarcode = typeof barcode === "string" ? barcode.trim() : "";
       const productName = typeof name === "string" ? name.trim() : "";
-      const warehouse = Number(warehouseId);
+      const warehouse = resolvedWarehouse;
       const validPrice = (v: unknown) => /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 100000000;
       if (!productName || !productSku || productSku.length > 40 || productBarcode.length > 80 || !validPrice(buyPrice) || !validPrice(retailPrice) || !Number.isSafeInteger(warehouse) || warehouse < 1 || Number(initialStock) !== 0) {
         return NextResponse.json({ success: false, error: "Varyantlı ürün için ad, SKU, geçerli fiyat ve depo gereklidir; ana ürün stoğu 0 olmalıdır." }, { status: 422 });
@@ -261,7 +265,7 @@ export async function POST(request: Request) {
       }
       try {
         const created = db.transaction((tx) => {
-          if (!tx.select({ id: warehouses.id }).from(warehouses).where(eq(warehouses.id, warehouse)).get()) throw new VariantValidationError("Seçilen depo bulunamadı.");
+          if (!resolveActiveWarehouse(warehouse)) throw new VariantValidationError("Seçilen depo bulunamadı.");
           const skuUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.sku, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.sku, value)).get();
           const barcodeUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.barcode, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.barcode, value)).get();
           if (skuUsed(productSku)) throw new VariantValidationError("Ürün SKU zaten kullanılıyor.");
@@ -293,7 +297,7 @@ export async function POST(request: Request) {
               colorName: variant.colorName || null, colorHex: variant.colorHex || null, size: variant.size || null, length: variant.length || null,
               buyPrice: variant.buyPrice || String(buyPrice), retailPrice: variant.retailPrice || String(retailPrice), imageUrl: variant.imageUrl || null,
             }).returning().all();
-            if (variant.initialStock > 0) tx.insert(inventory).values({ warehouseId: warehouse, productId: product.id, variantId: createdVariant.id, physicalQty: variant.initialStock, reservedQty: 0, locationCode: "MRK-A-01-01" }).run();
+            if (variant.initialStock > 0) tx.insert(inventory).values({ warehouseId: warehouse, productId: product.id, variantId: createdVariant.id, physicalQty: variant.initialStock, reservedQty: 0, locationCode: null }).run();
           }
           return product;
         }, { behavior: "immediate" });
@@ -306,7 +310,9 @@ export async function POST(request: Request) {
       }
     }
 
-    const [{ id: __newProd_id }] = await db.insert(products).values({
+    const newProd = db.transaction((tx) => {
+      if (!resolveActiveWarehouse(resolvedWarehouse)) throw new Error("Seçilen depo artık aktif değil.");
+      const [newProd] = tx.insert(products).values({
         name,
         slug: slug || name.toLowerCase().replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ]+/gi, "-").replace(/(^-|-$)/g, ""),
         sku,
@@ -321,29 +327,31 @@ export async function POST(request: Request) {
         technicalDetails,
         imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
         videoUrl: videoUrl || null,
-      }).returning({ id: products.id });
-    const [newProd] = await db.select().from(products).where(eq(products.id, __newProd_id));
+      }).returning().all();
 
     // Insert gallery images (tek tek; köprü uyumluluğu için çoklu VALUES yok)
     for (const [i, url] of galleryUrls.entries()) {
-      await db.insert(productImages).values({
+      tx.insert(productImages).values({
         productId: newProd.id,
         url,
         sortOrder: i,
         isPrimary: i === 0,
-      });
+      }).run();
     }
 
     // Insert initial inventory
     if (initialStock > 0) {
-      await db.insert(inventory).values({
-        warehouseId: Number(warehouseId),
+      tx.insert(inventory).values({
+        warehouseId: resolvedWarehouse,
         productId: newProd.id,
         physicalQty: Number(initialStock),
         reservedQty: 0,
-        locationCode: "MRK-A-01-01",
-      });
+        locationCode: null,
+      }).run();
     }
+
+      return newProd;
+    }, { behavior: "immediate" });
 
     return NextResponse.json({ success: true, data: newProd });
   } catch (err: any) {

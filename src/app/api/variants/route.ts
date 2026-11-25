@@ -1,3 +1,4 @@
+import { resolveActiveWarehouse } from "@/lib/warehouse-policy";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { productVariants, products, inventory } from "@/db/schema";
@@ -69,8 +70,12 @@ export async function POST(request: Request) {
   const barcode = body.barcode || `869${Date.now().toString().slice(-10)}`;
   const retailPrice = String(body.retailPrice || prod.retailPrice);
 
+  const warehouse = Number(body.initialStock || 0) > 0 ? resolveActiveWarehouse(body.warehouseId) : null;
+  if (Number(body.initialStock || 0) > 0 && !warehouse) return NextResponse.json({ success:false, error:{code:"VALIDATION_ERROR",message:"Geçerli ve aktif bir depo seçin."} }, {status:422});
   try {
-    const [{ id: __created_id }] = await db.insert(productVariants).values({
+    const created = db.transaction((tx) => {
+    if (warehouse && !resolveActiveWarehouse(warehouse)) throw new Error("Seçilen depo artık aktif değil.");
+    const [created] = tx.insert(productVariants).values({
         productId,
         sku,
         barcode,
@@ -81,22 +86,23 @@ export async function POST(request: Request) {
         buyPrice: body.buyPrice ? String(body.buyPrice) : prod.buyPrice,
         retailPrice,
         imageUrl: body.imageUrl || prod.imageUrl,
-      }).returning({ id: productVariants.id });
-    const [created] = await db.select().from(productVariants).where(eq(productVariants.id, __created_id));
+      }).returning().all();
 
-    await db.update(products).set({ hasVariants: true }).where(eq(products.id, productId));
+    tx.update(products).set({ hasVariants: true }).where(eq(products.id, productId)).run();
 
     const stockQty = Number(body.initialStock || 0);
     if (stockQty > 0) {
-      await db.insert(inventory).values({
-        warehouseId: Number(body.warehouseId || 1),
+      tx.insert(inventory).values({
+        warehouseId: warehouse!,
         productId,
         variantId: created.id,
         physicalQty: stockQty,
         reservedQty: 0,
-        locationCode: "MRK-A-01-01",
-      });
+        locationCode: null,
+      }).run();
     }
+    return created;
+    }, { behavior: "immediate" });
 
     return NextResponse.json({ success: true, data: created });
   } catch (err: any) {

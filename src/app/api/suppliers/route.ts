@@ -1,3 +1,4 @@
+import { resolveActiveWarehouse } from "@/lib/warehouse-policy";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import {
@@ -178,7 +179,9 @@ export async function POST(request: Request) {
 
     /* ---------- DOĞRUDAN PO ---------- */
     if (action === "CREATE_PO") {
-      const { supplierId, warehouseId = 1, items = [], notes = "", expectedDate } = body;
+      const { supplierId, items = [], notes = "", expectedDate } = body;
+      const warehouseId = resolveActiveWarehouse(body.warehouseId);
+      if (!warehouseId) return NextResponse.json({success:false,error:"Geçerli ve aktif bir depo seçin."},{status:422});
       const valid = items.filter((i: any) => Number(i.quantity) > 0);
       if (!valid.length) return NextResponse.json({ success: false, error: "Kalem ekleyin." }, { status: 422 });
       const poNumber = `SAT-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;

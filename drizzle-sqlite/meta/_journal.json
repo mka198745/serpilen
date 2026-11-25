@@ -197,6 +197,13 @@
       "when": 1794784826192,
       "tag": "0027_pos_screen_pin",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1794785826192,
+      "tag": "0028_warehouse_reference_guards",
+      "breakpoints": true
     }
   ]
 }
