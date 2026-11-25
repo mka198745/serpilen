@@ -88,7 +88,6 @@ export async function PATCH(request: Request) {
       { status: 422 }
     );
   }
-  if (body?.isActive === false && protectedWarehouseReason(id)) return NextResponse.json({success:false,error:{code:"SYSTEM_WAREHOUSE",message:protectedWarehouseReason(id)}},{status:409});
   if (typeof body?.isActive !== "boolean") {
     return NextResponse.json(
       { success: false, error: { code: "VALIDATION_ERROR", message: "isActive (true/false) zorunludur." } },
@@ -96,19 +95,23 @@ export async function PATCH(request: Request) {
     );
   }
   try {
-    const [existing] = await db.select().from(warehouses).where(eq(warehouses.id, id));
-    if (!existing) {
-      return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Depo bulunamadı." } },
-        { status: 404 }
-      );
-    }
-    await db.update(warehouses).set({ isActive: body.isActive }).where(eq(warehouses.id, id));
-    const [updated] = await db.select().from(warehouses).where(eq(warehouses.id, id));
-    return NextResponse.json({ success: true, data: updated });
-  } catch (err: any) {
-    console.error("Warehouse patch error:", err);
-    return NextResponse.json({ success: false, error: { code: "INTERNAL_ERROR", message: err?.message || "Depo güncellenemedi." } }, { status: 500 });
+    const result = sqlite.transaction(() => {
+      const actor=sqlite.prepare("SELECT role,is_active FROM users WHERE id=?").get(__gate.user.id) as {role:string;is_active:number}|undefined;
+      const setting=sqlite.prepare("SELECT value FROM app_settings WHERE key='admin.role_matrix'").get() as {value:string}|undefined;
+      let saved:unknown=null;try{if(setting?.value)saved=JSON.parse(setting.value);}catch{/* defaults */}
+      if(!actor?.is_active||actor.role!==__gate.user.role||!roleCanAccessModule(normalizeRoleMatrix(saved),actor.role,"wms"))return {status:403,error:"Depo yönetimi yetkiniz yok."};
+      const existing=db.select().from(warehouses).where(eq(warehouses.id,id)).get();
+      if(!existing)return {status:404,error:"Depo bulunamadı."};
+      const reason=body.isActive===false?protectedWarehouseReason(id):null;
+      if(reason)return {status:409,error:reason};
+      const updated=db.update(warehouses).set({isActive:body.isActive}).where(eq(warehouses.id,id)).returning().get();
+      return {status:200,data:updated};
+    }).immediate();
+    if(result.status!==200)return NextResponse.json({success:false,error:{code:"WAREHOUSE_ERROR",message:result.error}},{status:result.status});
+    return NextResponse.json({success:true,data:result.data});
+  } catch (error) {
+    console.error("Warehouse patch error:",error instanceof Error?error.name:"UnknownError");
+    return NextResponse.json({success:false,error:{code:"INTERNAL_ERROR",message:"Depo güncellenemedi."}},{status:500});
   }
 }
 

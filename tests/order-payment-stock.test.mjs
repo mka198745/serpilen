@@ -16,10 +16,10 @@ test('Havale beklerken stok tutulur, banka onayı ve iptal atomiktir; stok aşı
  try{
   const mig=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(mig.status,0,mig.stderr);db=new Database(file);
   const tokens={},grants={};for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER']){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)').run(role,role+'@test.invalid','x',role).lastInsertRowid;tokens[role]=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(tokens[role]).digest('hex'),Math.floor(Date.now()/1000)+3600);grants[role]=testPosGrant(db,id,tokens[role]);}
-  db.exec(`INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'One','one','S1',1,10),(2,'Two','two','S2',1,10),(3,'Three','three','S3',1,10);
+  db.exec(`INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','M'),(3,'Online','O'); INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'One','one','S1',1,10),(2,'Two','two','S2',1,10),(3,'Three','three','S3',1,10);
    INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(3,1,1,0),(3,2,3,0),(3,3,0,0),(2,1,2,0);
-   INSERT INTO pos_shifts(id,cashier_name,warehouse_id,opening_amount,expected_amount) VALUES(1,'Test',2,100,100);
-   INSERT INTO app_settings(key,value) VALUES('site.checkout.eft_iban','TR330006100519786457841326'),('site.checkout.eft_account_name','Test account'),('site.cart.shipping_fee','0');`);
+   INSERT INTO pos_shifts(id,cashier_name,warehouse_id,opening_amount,expected_amount) VALUES(1,'Test',3,100,100);
+   INSERT INTO app_settings(key,value) VALUES('site.checkout.eft_iban','TR330006100519786457841326'),('site.checkout.eft_account_name','Test account'),('site.cart.shipping_fee','0'),('sales.shared_warehouse_id','3');`);
   const bases=[];for(let i=0;i<2;i++){const p=await port(),s=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(p),NODE_ENV:'production'},stdio:'ignore'});servers.push(s);bases.push(`http://127.0.0.1:${p}`);let ready=false;for(let j=0;j<100;j++){try{await fetch(bases[i]+'/api/products');ready=true;break}catch{await delay(100)}}assert.ok(ready);}
   const auth=role=>({Authorization:`Bearer ${tokens[role]}`,'X-Pos-Grant':grants[role],'Content-Type':'application/json'});
   const line=id=>({productId:id,productName:'forged',sku:'fake',unitPrice:10,quantity:1,totalPrice:10});
@@ -61,10 +61,11 @@ test('Havale beklerken stok tutulur, banka onayı ve iptal atomiktir; stok aşı
   db.prepare('UPDATE inventory SET physical_qty=1 WHERE warehouse_id=3 AND product_id=3').run();
   const [ordinary,orderRace]=await Promise.all([fetch(bases[1]+'/api/reservations',{method:'POST',headers:auth('SUPER_ADMIN'),body:JSON.stringify({action:'RESERVE',warehouseId:3,productId:3,qty:1,referenceId:'OTHER'})}),post(bases[0],[line(3)])]);
   assert.ok([200,409].includes(ordinary.status));assert.equal(orderRace.status,200);assert.deepEqual(db.prepare('SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=3 AND product_id=3').get(),{physical_qty:1,reserved_qty:1});
-  const posPayload={orderType:'POS',paymentMethod:'CASH',warehouseId:2,posShiftId:1,posRequestKey:crypto.randomUUID(),items:[line(1)],subtotal:10,discountTotal:0,grandTotal:10};
+  db.prepare('UPDATE inventory SET physical_qty=2 WHERE warehouse_id=3 AND product_id=2').run();
+  const posPayload={orderType:'POS',paymentMethod:'CASH',warehouseId:3,posShiftId:1,posRequestKey:crypto.randomUUID(),items:[line(2)],subtotal:10,discountTotal:0,grandTotal:10};
   const posSale=payload=>fetch(bases[0]+'/api/pos/sale',{method:'POST',headers:auth('CASHIER'),body:JSON.stringify(payload)});
-  const pos=await posSale({action:'PREPARE',payload:posPayload});assert.equal(pos.status,200,await pos.clone().text());const done=await posSale({action:'COMPLETE',key:posPayload.posRequestKey,confirmPayment:true});assert.equal(done.status,200,await done.clone().text());assert.equal((await done.json()).data.order.status,'DELIVERED');assert.equal(db.prepare('SELECT physical_qty FROM inventory WHERE warehouse_id=2 AND product_id=1').get().physical_qty,1);
-  const excessive=await posSale({action:'PREPARE',payload:{...posPayload,posRequestKey:crypto.randomUUID(),items:[{...line(1),quantity:2}],grandTotal:20}});assert.equal(excessive.status,409);
+  const pos=await posSale({action:'PREPARE',payload:posPayload});assert.equal(pos.status,200,await pos.clone().text());const done=await posSale({action:'COMPLETE',key:posPayload.posRequestKey,confirmPayment:true});assert.equal(done.status,200,await done.clone().text());assert.equal((await done.json()).data.order.status,'DELIVERED');assert.equal(db.prepare('SELECT physical_qty FROM inventory WHERE warehouse_id=3 AND product_id=2').get().physical_qty,1);
+  const excessive=await posSale({action:'PREPARE',payload:{...posPayload,posRequestKey:crypto.randomUUID(),items:[{...line(2),quantity:2}],grandTotal:20}});assert.equal(excessive.status,409);
 
  }finally{for(const s of servers)if(s.exitCode===null){s.kill('SIGTERM');await new Promise(r=>s.once('exit',r));}db?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });

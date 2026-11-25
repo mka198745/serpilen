@@ -3,7 +3,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import cryp
 async function port(){const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 test('POS quote, split and concurrent identical retries record one sale and correct shift amounts',{timeout:60000},async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pos-retry-')),file=path.join(dir,'db'),env={...process.env,DATABASE_URL:`sqlite:${file}`},servers=[];let db;
- try{const m=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(m.status,0,m.stderr);db=new Database(file);db.exec(`INSERT INTO users(id,name,email,password_hash,role) VALUES(1,'Cashier','cash@invalid.test','x','CASHIER'),(2,'Admin','admin@invalid.test','x','SUPER_ADMIN');
+ try{const m=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(m.status,0,m.stderr);db=new Database(file);db.exec(`INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','M'),(3,'Diğer','O'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','2'); INSERT INTO users(id,name,email,password_hash,role) VALUES(1,'Cashier','cash@invalid.test','x','CASHIER'),(2,'Admin','admin@invalid.test','x','SUPER_ADMIN');
  INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'Item','pos-quote','posquote',1,100);
  INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(2,1,1,0);
  INSERT INTO pos_shifts(id,cashier_name,warehouse_id,opening_amount,expected_amount) VALUES(1,'Cashier',2,100,100);

@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { NextResponse } from "next/server";
 import { db, sqlite } from "@/db";
 import { posShifts, posCashTransactions, warehouses, orders, auditLogs } from "@/db/schema";
@@ -16,8 +17,8 @@ export async function GET(request: Request) {
   if (!roleCanAccessModule(await readRoleMatrix(),__gate.user.role,"pos")) return NextResponse.json({success:false,error:"POS yetkiniz bulunmuyor."},{status:403});
 
   try {
-    const { searchParams } = new URL(request.url);
-    const warehouseId = searchParams.get("warehouseId") || "2"; // Default Kadıköy Mağaza (id: 2)
+    const warehouseId = sharedSalesWarehouseId();
+    if (!warehouseId) return NextResponse.json({success:false,error:"Ortak satış deposu seçilmemiş."},{status:409});
 
     // Find active open shift
     const openShifts = await db
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
     const {
       action,
       shiftId,
-      warehouseId = 2,
+      warehouseId: requestedWarehouseId,
       openingAmount = "500.00",
       closingAmount,
       terminalCode = "KASA-01",
@@ -93,52 +94,20 @@ export async function POST(request: Request) {
 
     // 1. OPEN SHIFT
     if (action === "OPEN") {
-      // Check if already open shift exists for this terminal/warehouse
-      const existing = await db
-        .select()
-        .from(posShifts)
-        .where(and(eq(posShifts.warehouseId, Number(warehouseId)), eq(posShifts.status, "OPEN")))
-        .limit(1);
-
-      if (existing.length > 0) {
-        return NextResponse.json({
-          success: true,
-          message: "Açık bir vardiya zaten mevcut.",
-          data: existing[0],
-        });
-      }
-
-      const shiftNumber = `VARD-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-
-      const [{ id: __newShift_id }] = await db.insert(posShifts).values({
-          shiftNumber,
-          terminalCode,
-          cashierName: __gate.user.name,
-          warehouseId: Number(warehouseId),
-          openingAmount: String(Number(openingAmount || 500).toFixed(2)),
-          expectedAmount: String(Number(openingAmount || 500).toFixed(2)),
-          totalSalesCash: "0.00",
-          totalSalesCard: "0.00",
-          totalSalesSplit: "0.00",
-          totalReturnsCash: "0.00",
-          totalReturnsCard: "0.00",
-          cashInTotal: "0.00",
-          cashOutTotal: "0.00",
-          status: "OPEN",
-          notes,
-        }).returning({ id: posShifts.id });
-      const [newShift] = await db.select().from(posShifts).where(eq(posShifts.id, __newShift_id));
-
-      await db.insert(auditLogs).values({
-        userId: String(__gate.user.id),
-        userName: __gate.user.name,
-        action: "POS_SHIFT_OPENED",
-        entity: "PosShift",
-        entityId: String(newShift.id),
-        details: `${terminalCode} kasası ${newShift.openingAmount} TL nakit devir ile açıldı (${shiftNumber}).`,
-      });
-
-      return NextResponse.json({ success: true, message: "Kasa vardiyası açıldı.", data: newShift });
+      const result=sqlite.transaction(()=>{
+        const warehouseId=sharedSalesWarehouseId();
+        if(!warehouseId || (requestedWarehouseId != null && Number(requestedWarehouseId)!==warehouseId)) return {error:"Ortak satış deposu değişti; POS ekranını yenileyin."};
+        const existing=db.select().from(posShifts).where(and(eq(posShifts.warehouseId,warehouseId),eq(posShifts.status,"OPEN"))).get();
+        if(existing) return {data:existing, message:"Açık bir vardiya zaten mevcut."};
+        const opening=Number(openingAmount);
+        if(!Number.isFinite(opening)||opening<0||Math.round(opening*100)!==opening*100) return {error:"Geçersiz açılış tutarı."};
+        const shiftNumber = `VARD-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const newShift=db.insert(posShifts).values({shiftNumber,terminalCode,cashierName:__gate.user.name,warehouseId,openingAmount:opening.toFixed(2),expectedAmount:opening.toFixed(2),totalSalesCash:"0.00",totalSalesCard:"0.00",totalSalesSplit:"0.00",totalReturnsCash:"0.00",totalReturnsCard:"0.00",cashInTotal:"0.00",cashOutTotal:"0.00",status:"OPEN",notes}).returning().get();
+        db.insert(auditLogs).values({userId:String(__gate.user.id),userName:__gate.user.name,action:"POS_SHIFT_OPENED",entity:"PosShift",entityId:String(newShift.id),details:`${terminalCode} kasası ${newShift.openingAmount} TL nakit devir ile açıldı (${shiftNumber}).`}).run();
+        return {data:newShift,message:"Kasa vardiyası açıldı."};
+      }).immediate();
+      if('error' in result)return NextResponse.json({success:false,error:result.error},{status:409});
+      return NextResponse.json({success:true,...result});
     }
 
     // Kasa hareketleri ve kapanış aynı SQLite yazma kilidini POS satışlarıyla paylaşır.

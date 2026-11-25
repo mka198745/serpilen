@@ -51,6 +51,7 @@ interface PosTerminalClientProps {
   initialShift: PosShift | null;
   posFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   cashierName: string;
+  warehouseId: number;
 }
 
 export function PosTerminalClient({
@@ -59,6 +60,7 @@ export function PosTerminalClient({
   initialShift,
   posFetch: authFetch,
   cashierName,
+  warehouseId,
 }: PosTerminalClientProps) {
   const [shift, setShift] = useState<PosShift | null>(initialShift);
   const [selectedCat, setSelectedCat] = useState<number | null>(null);
@@ -321,7 +323,7 @@ export function PosTerminalClient({
       localStorage.removeItem("serpilen_pos_pending_sale");setPendingSale(null);
       setReceiptData({orderNumber:data.data.order.orderNumber,date:new Date().toLocaleString("tr-TR"),customerName:payload.customerName,cashierName:data.data.cashierName || cashierName,paymentMethod:payload.paymentMethod==='CASH'?'NAKİT':payload.paymentMethod==='CREDIT_CARD'?'KREDİ KARTI':'PARÇALI',items:payload.items.map((it:any)=>({...it,name:it.productName})),rawSubtotal:payload.subtotal,discountAmount:Number(data.data.order.discountTotal),grandTotal:Number(data.data.order.grandTotal)});
       setCart([]);setOverallDiscount(0);
-      if(shift){const sr=await authFetch("/api/pos/shift?warehouseId=2");const sd=await sr.json();if(sd.success&&sd.currentShift)setShift(sd.currentShift);}
+      if(shift){const sr=await authFetch("/api/pos/shift");const sd=await sr.json();if(sd.success&&sd.currentShift)setShift(sd.currentShift);}
     } catch {alert("Satışın kaydedilip kaydedilmediği bilinmiyor. Yeniden tahsilat yapmayın; aynı kaydı tekrar sorgulayın.");}
     finally {paymentInFlight.current=false;setIsProcessingPayment(false);}
   };
@@ -359,7 +361,7 @@ export function PosTerminalClient({
       if(!Number.isSafeInteger(cash)||cash<=0||cash>=total){alert("Nakit ve kart tutarları sıfırdan büyük olmalı ve toplamla eşleşmelidir.");return;}
       splitCash=cash/100;splitCard=(total-cash)/100;
     }
-    const payload={orderType:"POS",posRequestKey:crypto.randomUUID(),customerId:selectedCustomer?.id||null,customerName:selectedCustomer?.name||"Kasa Misafiri",customerPhone:selectedCustomer?.phone||null,paymentMethod:method,splitCash,splitCard,warehouseId:2,posShiftId:shift.id,subtotal:rawSubtotal,discountTotal:discountAmount,taxTotal:(grandTotal*0.2).toFixed(2),grandTotal,items:cart.map(it=>({productId:it.productId,variantId:it.variantId,productName:it.name,variantName:it.variantName,sku:it.sku,barcode:it.barcode,unitPrice:it.unitPrice,quantity:it.quantity,taxRate:20,totalPrice:it.unitPrice*it.quantity}))};
+    const payload={orderType:"POS",posRequestKey:crypto.randomUUID(),customerId:selectedCustomer?.id||null,customerName:selectedCustomer?.name||"Kasa Misafiri",customerPhone:selectedCustomer?.phone||null,paymentMethod:method,splitCash,splitCard,warehouseId,posShiftId:shift.id,subtotal:rawSubtotal,discountTotal:discountAmount,taxTotal:(grandTotal*0.2).toFixed(2),grandTotal,items:cart.map(it=>({productId:it.productId,variantId:it.variantId,productName:it.name,variantName:it.variantName,sku:it.sku,barcode:it.barcode,unitPrice:it.unitPrice,quantity:it.quantity,taxRate:20,totalPrice:it.unitPrice*it.quantity}))};
     const sale={payload,prepared:false,confirmed:false};
     try {localStorage.setItem("serpilen_pos_pending_sale",JSON.stringify(sale));}catch{alert("Tekrar deneme kaydı oluşturulamadı; tahsilata devam etmeyin.");return;}
     setPendingSale(sale);
@@ -375,7 +377,7 @@ export function PosTerminalClient({
         body: JSON.stringify({
           action: "OPEN",
           // Kasiyer kimliği sunucu tarafından oturumdan atanır.
-          warehouseId: 2,
+          warehouseId,
           openingAmount: openingCashInput,
           terminalCode: "KASA-01",
           notes: "Sabah kasası açıldı.",
@@ -442,7 +444,7 @@ export function PosTerminalClient({
         showFeedback(data.message);
 
         // Refresh shift totals
-        const sRes = await authFetch("/api/pos/shift?warehouseId=2");
+        const sRes = await authFetch("/api/pos/shift");
         const sData = await sRes.json();
         if (sData.success && sData.currentShift) {
           setShift(sData.currentShift);
@@ -521,7 +523,7 @@ export function PosTerminalClient({
       if (!data.success) { alert("İade kaydedilemedi: " + data.error + " Para iadesi yapıldıysa tekrar ödeme yapmayın; aynı kaydı inceleyin."); return; }
       setReturnPrepared(null);setIsReturnModalOpen(false);setReturnOrderData(null);
       showFeedback(`İade kaydedildi (${data.data.refundTotal} TL).`);
-      if (shift) { const sr=await authFetch("/api/pos/shift?warehouseId=2");const sd=await sr.json();if(sd.success&&sd.currentShift)setShift(sd.currentShift); }
+      if (shift) { const sr=await authFetch("/api/pos/shift");const sd=await sr.json();if(sd.success&&sd.currentShift)setShift(sd.currentShift); }
     } catch { alert("Sunucuya ulaşılamadı. Para iadesi yaptıysanız tekrar ödeme yapmayın; aynı kaydı kontrol edin."); }
     finally { setReturnBusy(false); }
   };

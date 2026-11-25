@@ -1,3 +1,5 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 import { resolveActiveWarehouse } from "@/lib/warehouse-policy";
 import { NextResponse } from "next/server";
 import { db, sqlite } from "@/db";
@@ -13,6 +15,13 @@ import { publicHttpsUrl, resolvePublicHost } from "@/lib/product-import/safe-fet
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const allWarehouses = searchParams.get("scope") === "all-warehouses";
+    if (allWarehouses) {
+      const gate=await requireStaff(request); if(!gate.ok)return gate.response;
+      const matrix=await readRoleMatrix();
+      if(!roleCanAccessModule(matrix,gate.user.role,"wms") && !roleCanAccessModule(matrix,gate.user.role,"catalog")) return NextResponse.json({success:false,error:"Stok yetkiniz bulunmuyor."},{status:403});
+    }
+    const salesWarehouse=sharedSalesWarehouseId();
     const query = searchParams.get("q") || "";
     const categorySlug = searchParams.get("category");
     const brandSlug = searchParams.get("brand");
@@ -28,7 +37,8 @@ export async function GET(request: Request) {
       }
       const prod = prodList[0];
       const variants = await db.select().from(productVariants).where(eq(productVariants.productId, prod.id));
-      const stocks = await db.select().from(inventory).where(eq(inventory.productId, prod.id));
+      const allStocks = await db.select().from(inventory).where(eq(inventory.productId, prod.id));
+      const stocks = allWarehouses ? allStocks : allStocks.filter(s=>s.warehouseId===salesWarehouse);
       const gallery = await db
         .select()
         .from(productImages)
@@ -140,7 +150,7 @@ export async function GET(request: Request) {
 
     const enriched = allProducts.map((p) => {
       const pVariants = allVariants.filter((v) => v.productId === p.id);
-      const pStocks = allInventory.filter((i) => i.productId === p.id);
+      const pStocks = allInventory.filter((i) => i.productId === p.id && (allWarehouses || i.warehouseId === salesWarehouse));
       const totalStock = pStocks.reduce((sum, item) => sum + (item.physicalQty - item.reservedQty), 0);
       const cat = allCats.find((c) => c.id === p.categoryId);
       const br = allBrandsList.find((b) => b.id === p.brandId);

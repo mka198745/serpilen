@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
@@ -32,9 +33,10 @@ export async function POST(request:Request) {
         const order=sqlite.prepare("SELECT id FROM orders WHERE order_number=?").get(String(body.orderNumber||"").trim()) as {id:number}|undefined;
         if(!order)throw new ReturnError("Fiş veya sipariş bulunamadı.",404);
         const shiftId=Number(body.posShiftId), method=String(body.refundMethod||"");
-        if(!Number.isSafeInteger(shiftId)||shiftId<=0||!sqlite.prepare("SELECT 1 FROM pos_shifts WHERE id=? AND warehouse_id=2 AND status='OPEN'").get(shiftId)) throw new ReturnError("Açık mağaza vardiyası gerekli.");
+        const warehouseId=sharedSalesWarehouseId();
+        if(!warehouseId||!Number.isSafeInteger(shiftId)||shiftId<=0||!sqlite.prepare("SELECT 1 FROM pos_shifts WHERE id=? AND warehouse_id=? AND status='OPEN'").get(shiftId,warehouseId)) throw new ReturnError("Açık mağaza vardiyası gerekli.");
         if(!["CASH","CREDIT_CARD"].includes(method)) throw new ReturnError("Geçersiz iade yöntemi.",422);
-        const created=createReturn(order.id,body.items,2,true,String(body.reason||"Mağaza iadesi"),actor,true);
+        const created=createReturn(order.id,body.items,warehouseId!,true,String(body.reason||"Mağaza iadesi"),actor,true);
         if(method==='CASH') { const shift=sqlite.prepare("SELECT expected_amount FROM pos_shifts WHERE id=?").get(shiftId) as {expected_amount:number|string}; if(Math.round(Number(shift.expected_amount)*100)<Math.round(Number(created.refundAmount)*100)) throw new ReturnError("Kasada iade için yeterli nakit görünmüyor."); }
         sqlite.prepare("INSERT INTO pos_return_context(return_id,shift_id,refund_method) VALUES(?,?,?)").run(created.id,shiftId,method);
         return created;

@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { NextResponse } from "next/server";
 import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { createHash, randomUUID } from "node:crypto";
@@ -172,7 +173,7 @@ export async function POST(request: Request) {
       grandTotal: grandTotalIn,
       shippingAddress = null,
       notes: notesIn = null,
-      warehouseId = orderType === "POS" ? 2 : 3, // POS ve online siparişin kendi deposu
+      warehouseId: requestedWarehouseId,
       posShiftId = null,
       spentPoints = 0,
       couponCode = null,
@@ -231,13 +232,16 @@ export async function POST(request: Request) {
     } else {
       if (paymentMethod !== "EFT_HAVALE") return NextResponse.json({success:false,error:"Online kart ödemesi henüz kullanılamıyor; havale/EFT seçiniz."},{status:409});
       if (customerId || Number(spentPoints)) return NextResponse.json({success:false,error:"Online siparişte müşteri puanı kullanımı desteklenmiyor."},{status:422});
-      if (Number(warehouseId) !== 3) return NextResponse.json({success:false,error:"Geçersiz online depo."},{status:422});
+
     }
     if (items.length > 100 || items.some((item:any) => !item || !isPositiveId(item.quantity) || Number(item.quantity) > 10000)) return NextResponse.json({success:false,error:"Geçersiz ürün miktarı."},{status:422});
 
     // All database effects of creating an order share one SQLite write transaction.
     // Never await inside this callback: better-sqlite3 transactions are synchronous.
     const newOrder = sqlite.transaction(() => {
+      const warehouseId = sharedSalesWarehouseId();
+      if (!warehouseId) throw new StockShortage("Ortak satış deposu seçilmemiş.");
+      if (orderType === "POS" && Number(requestedWarehouseId) !== warehouseId) throw new StockShortage("Satış deposu değişti; POS ekranını yenileyin.");
       if (orderType === "POS") {
         const prior=sqlite.prepare("SELECT request_hash,actor_id,order_id FROM pos_sale_requests WHERE request_key=?").get(posRequestKey) as {request_hash:string;actor_id:number;order_id:number}|undefined;
         if (prior) {

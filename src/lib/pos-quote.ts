@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { sqlite } from "@/db";
 import { applyPromotionsSync } from "@/lib/promotion-engine";
 import { getSettingsSync } from "@/lib/settings";
@@ -20,8 +21,10 @@ export function posQuote(items:InputLine[], discount:unknown, checkStock=true, c
     const key=`${productId}:${variantId??'base'}`;totals.set(key,(totals.get(key)||0)+quantity);
     return {productId,variantId,quantity,unitPrice:cents/100,categoryId:p.category_id,brandId:p.brand_id};
   });
+  const warehouseId = sharedSalesWarehouseId();
+  if (checkStock && !warehouseId) throw new StockShortage("Ortak satış deposu seçilmemiş.");
   if(checkStock) for(const [key,quantity] of totals) {
-    const [pid,vid]=key.split(':'),stock=sqlite.prepare("SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=2 AND product_id=? AND variant_id IS ? LIMIT 2").all(Number(pid),vid==='base'?null:Number(vid)) as {physical_qty:number;reserved_qty:number}[];
+    const [pid,vid]=key.split(':'),stock=sqlite.prepare("SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=? AND product_id=? AND variant_id IS ? LIMIT 2").all(warehouseId,Number(pid),vid==='base'?null:Number(vid)) as {physical_qty:number;reserved_qty:number}[];
     if(stock.length!==1||stock[0].physical_qty-stock[0].reserved_qty<quantity)throw new StockShortage("POS satışı için kullanılabilir stok yetersiz.");
   }
   const subtotalCents=lines.reduce((a,l)=>a+Math.round(l.unitPrice*100)*l.quantity,0), manualCents=Math.round(Number(discount)*100);

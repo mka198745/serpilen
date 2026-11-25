@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { sqlite } from "@/db";
 import { finishPaymentHolds, reservePaymentStock } from "@/lib/inventory-engine";
 import { enqueueStockReadyNotice } from "@/lib/order-notifications";
@@ -23,9 +24,11 @@ function availability(lines:Line[]): boolean {
     const id = key(line), current = totals.get(id);
     totals.set(id,{line,qty:(current?.qty ?? 0)+line.quantity});
   }
-  const stock = sqlite.prepare("SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=3 AND product_id=? AND variant_id IS ? LIMIT 2");
+  const warehouseId = sharedSalesWarehouseId();
+  if (!warehouseId) return false;
+  const stock = sqlite.prepare("SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=? AND product_id=? AND variant_id IS ? LIMIT 2");
   for (const {line,qty} of totals.values()) {
-    const rows = stock.all(line.product_id,line.variant_id) as {physical_qty:number;reserved_qty:number}[];
+    const rows = stock.all(warehouseId,line.product_id,line.variant_id) as {physical_qty:number;reserved_qty:number}[];
     if (rows.length !== 1 || rows[0].physical_qty-rows[0].reserved_qty < qty) return false;
   }
   return true;
@@ -49,7 +52,9 @@ export function processOrderQueueSync() {
     const lines = linesFor(order.id);
     if (!lines.length) { console.error("Backorder has no items",order.id); continue; }
     if (lines.some(line => blocked.has(key(line))) || !availability(lines)) { for (const line of lines) blocked.add(key(line)); continue; }
-    for (const line of lines) reservePaymentStock({warehouseId:3,productId:line.product_id,variantId:line.variant_id,qty:line.quantity,referenceId:String(order.id),createdBy:"Sistem"});
+    const warehouseId = sharedSalesWarehouseId();
+    if (!warehouseId) throw new Error("Ortak satış deposu seçilmemiş.");
+    for (const line of lines) reservePaymentStock({warehouseId,productId:line.product_id,variantId:line.variant_id,qty:line.quantity,referenceId:String(order.id),createdBy:"Sistem"});
     sqlite.prepare("UPDATE orders SET status='PENDING' WHERE id=? AND status='BACKORDER'").run(order.id);
     sqlite.prepare("INSERT INTO order_status_history(order_id,from_status,to_status,note,changed_by) VALUES(?,'BACKORDER','PENDING',?,'Sistem')").run(order.id,"Stok ayrıldı; havale için 24 saat süre başladı. E-posta bildirimi kuyruğa alındı.");
     enqueueStockReadyNotice(order.id);

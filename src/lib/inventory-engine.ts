@@ -214,17 +214,17 @@ export function finishPaymentHolds(orderId: number, status: "CONSUMED" | "RELEAS
 export function reservePosStock(input: ReserveStockInput) {
   if (!sqlite.inTransaction) throw new Error("POS reservation requires transaction");
   const qty=Number(input.qty), variantId=input.variantId??null;
-  if(!Number.isSafeInteger(qty)||qty<=0||input.warehouseId!==2) throw new StockShortage("Geçersiz POS stok miktarı.");
+  if(!Number.isSafeInteger(qty)||qty<=0||!Number.isSafeInteger(input.warehouseId)||input.warehouseId<=0) throw new StockShortage("Geçersiz POS stok miktarı.");
   const row=stockRow(input.warehouseId,input.productId,variantId);
   if(!row||row.physical_qty-row.reserved_qty<qty)throw new StockShortage("POS satışı için stok yetersiz.");
   const result=sqlite.prepare("INSERT INTO inventory_reservations(warehouse_id,product_id,variant_id,qty,reference_type,reference_id,status,expires_at,created_by) VALUES(?,?,?,?,?,?,'ACTIVE',253402300799,?)").run(input.warehouseId,input.productId,variantId,qty,POS_HOLD,input.referenceId,input.createdBy||"POS");
   sqlite.prepare("UPDATE inventory SET reserved_qty=reserved_qty+?,updated_at=unixepoch() WHERE id=?").run(qty,row.id);
   db.insert(inventoryLedger).values({transactionType:"RESERVATION",warehouseId:input.warehouseId,productId:input.productId,variantId,quantity:qty,referenceType:"RESERVATION",referenceId:String(result.lastInsertRowid),note:`POS hazırlığı ${input.referenceId}`,createdBy:input.createdBy||"POS"}).run();
 }
-export function finishPosStock(key:string, lines:Array<{productId:number;variantId:number|null;quantity:number}>, status:"CONSUMED"|"RELEASED", saleRef:string, user:string) {
+export function finishPosStock(key:string, lines:Array<{productId:number;variantId:number|null;quantity:number}>, status:"CONSUMED"|"RELEASED", saleRef:string, user:string, warehouseId:number) {
   if(!sqlite.inTransaction)throw new Error("POS settlement requires transaction");
   const rows=sqlite.prepare("SELECT * FROM inventory_reservations WHERE reference_type=? AND reference_id=? AND status='ACTIVE' ORDER BY id").all(POS_HOLD,key) as ReservationRow[];
-  if(rows.length!==lines.length||!lines.length||rows.some((r,i)=>r.warehouse_id!==2||r.product_id!==lines[i].productId||r.variant_id!==lines[i].variantId||r.qty!==lines[i].quantity))throw new StockShortage("POS stok rezervasyonu tutarsız; yetkili incelemesi gerekli.");
+  if(rows.length!==lines.length||!lines.length||rows.some((r,i)=>r.warehouse_id!==warehouseId||r.product_id!==lines[i].productId||r.variant_id!==lines[i].variantId||r.qty!==lines[i].quantity))throw new StockShortage("POS stok rezervasyonu tutarsız; yetkili incelemesi gerekli.");
   for(const row of rows)finishReservation(row,status,saleRef,user,"POS_SALE");
 }
 

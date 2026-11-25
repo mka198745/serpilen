@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import React from "react";
 import { db } from "@/db";
 import {
@@ -182,6 +183,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       categories={allCats}
       brands={allBrands}
       warehouses={allWh}
+      initialSalesWarehouseId={sharedSalesWarehouseId()}
       inventory={enrichedInventory}
       ledger={allLedger}
       orders={enrichedOrders}

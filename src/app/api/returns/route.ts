@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { NextResponse } from "next/server";
 import { db, sqlite } from "@/db";
 import { orderReturns, orderReturnItems } from "@/db/schema";
@@ -29,7 +30,7 @@ export async function POST(request:Request) {
       if(action==='CREATE') {
         const order=sqlite.prepare("SELECT order_type FROM orders WHERE id=?").get(Number(body.orderId)) as {order_type:string}|undefined;
         if(order?.order_type==='POS') throw new ReturnError("Mağaza satış iadesini vardiya kaydı için POS ekranından başlatın.");
-        return createReturn(Number(body.orderId),body.items,Number(body.warehouseId||3),body.restock!==false,String(body.reason||"Müşteri iadesi"),actor);
+        return createReturn(Number(body.orderId),body.items,Number(body.warehouseId || sharedSalesWarehouseId()),body.restock!==false,String(body.reason||"Müşteri iadesi"),actor);
       }
       const id=Number(body.returnId);if(!Number.isSafeInteger(id)||id<=0)throw new ReturnError("Geçersiz iade numarası.",422);
       if(action==='APPROVE') {approveReturn(id,actor);return {id,status:'APPROVED'};}

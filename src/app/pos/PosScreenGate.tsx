@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { PosTerminalClient } from "./PosTerminalClient";
 import type { Category, PosShift, Product, ProductVariant } from "@/lib/types";
 
-type Bootstrap={products:(Product & {variants:ProductVariant[]})[];categories:Category[];shift:PosShift|null;cashierName:string};
+type Bootstrap={products:(Product & {variants:ProductVariant[]})[];categories:Category[];shift:PosShift|null;cashierName:string;warehouseId:number};
 const IDLE_MS=60_000;
 export function PosScreenGate() {
  const {user,loading}=useAuth();
@@ -51,7 +51,7 @@ export function PosScreenGate() {
    if(generation.current===attempt)setData(payload.data);
   } catch {lock(false);setError('Sunucuya ulaşılamadı; tekrar deneyin.');} finally {setBusy(false);}
  };
- if(data)return <PosTerminalClient initialProducts={data.products} categories={data.categories} initialShift={data.shift} cashierName={data.cashierName} posFetch={posFetch}/>;
+ if(data)return <PosTerminalClient initialProducts={data.products} categories={data.categories} initialShift={data.shift} cashierName={data.cashierName} warehouseId={data.warehouseId} posFetch={posFetch}/>;
  return <main className="max-w-md mx-auto px-4 py-14"><form onSubmit={unlock} className="rounded-2xl bg-white border border-stone-200 shadow-sm p-6 space-y-4">
   <h1 className="font-black text-xl text-stone-900">POS ekran kilidi</h1><p className="text-sm text-stone-600">{user?.name || 'Personel'} için 6 haneli ekran PIN’inizi girin. 60 saniye işlem yapılmazsa anasayfaya dönülür.</p>
   <label className="block text-sm font-bold">Ekran PIN’i<input aria-label="Ekran PIN’i" type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={pin} onChange={e=>setPin(e.target.value.replace(/\D/g,'').slice(0,6))} className="block w-full mt-2 border border-stone-300 rounded-xl p-3" /></label>

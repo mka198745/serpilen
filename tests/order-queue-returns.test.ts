@@ -15,7 +15,7 @@ const returns=require('../src/lib/order-returns');
 const discounts=require('../src/lib/order-discounts');
 const actor={id:1,name:'Test'};
 const tx=<T>(fn:()=>T)=>sqlite.transaction(fn).immediate();
-sqlite.exec(`INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'A','queue-a','qa',1,10),(2,'B','queue-b','qb',1,10),(3,'C','queue-c','qc',1,10);
+sqlite.exec(`INSERT INTO warehouses(id,name,code,type) VALUES(3,'Online','ONLINE','ONLINE'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','3'); INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'A','queue-a','qa',1,10),(2,'B','queue-b','qb',1,10),(3,'C','queue-c','qc',1,10);
 INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(3,1,1,0),(3,2,0,0),(3,3,1,0);
 INSERT OR IGNORE INTO warehouses(id,name,code,type) VALUES(3,'Online','ONLINE','ONLINE');
 INSERT INTO customers(id,name,phone,loyalty_points) VALUES(1,'Test','555',0);

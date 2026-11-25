@@ -96,7 +96,8 @@ export function receiveReturn(id:number,actor:Actor) {
   if(r.status!=="APPROVED") throw new ReturnError("İade önce onaylanmalı ve yalnız bir kez teslim alınmalıdır.");
   const lines=sqlite.prepare("SELECT * FROM order_return_items WHERE return_id=? ORDER BY id").all(id) as Array<{product_id:number;variant_id:number|null;quantity:number;product_name:string}>;
   if(!lines.length) throw new ReturnError("İade kalemleri eksik; manuel inceleme gerekli.");
-  if(r.restock) for(const it of lines) adjustInventorySync({warehouseId:r.warehouse_id || 3,productId:it.product_id,variantId:it.variant_id,quantityDelta:it.quantity,transactionType:"RETURN",referenceType:"RETURN",referenceId:r.return_number,note:`İade girişi (${r.return_number})`,createdBy:actor.name});
+  if (r.restock && !r.warehouse_id) throw new ReturnError("İade deposu kaydı eksik; manuel inceleme gerekli.");
+  if(r.restock) for(const it of lines) adjustInventorySync({warehouseId:r.warehouse_id!,productId:it.product_id,variantId:it.variant_id,quantityDelta:it.quantity,transactionType:"RETURN",referenceType:"RETURN",referenceId:r.return_number,note:`İade girişi (${r.return_number})`,createdBy:actor.name});
   sqlite.prepare("UPDATE order_returns SET status='RECEIVED' WHERE id=?").run(id);audit(actor,"RETURN_RECEIVED",id,r.return_number);
   processOrderQueueSync();
 }

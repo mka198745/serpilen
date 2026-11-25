@@ -16,6 +16,7 @@ test('Ürün ve varyant stokları tek işlemde kaydedilir; hata hepsini geri al�
   const migration=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(migration.status,0,migration.stderr);
   db=new Database(file);db.pragma('foreign_keys = ON');
   db.prepare("INSERT INTO warehouses(id,name,code) VALUES (1,'Merkez','MRK'),(2,'Mağaza','M2')").run();
+  db.prepare("INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','2')").run();
   const user=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES ('Admin','admin@example.test','hash','SUPER_ADMIN')").run().lastInsertRowid;
   const token=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(user,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);
   const hook=path.join(dir,'dns-hook.cjs');fs.writeFileSync(hook, `const dns=require('node:dns');const orig=dns.promises.lookup.bind(dns.promises);dns.promises.lookup=(host,opts)=>host==='cdn.fixture.example'?Promise.resolve([{address:'8.8.8.8',family:4}]):host==='private.fixture.example'?Promise.resolve([{address:'127.0.0.1',family:4}]):orig(host,opts);`);

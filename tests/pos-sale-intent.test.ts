@@ -3,7 +3,7 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pos-intent-'));process.env.DATAB
 const migration=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env:process.env,encoding:'utf8'});assert.equal(migration.status,0,migration.stderr);
 const {sqlite}=require('../src/db/index');const {preparePosSale,completePosSale,cancelPosSale}=require('../src/lib/pos-sale-intent');const {releaseReservations,expireReservations}=require('../src/lib/inventory-engine');
 const actor={id:1,name:'Kasiyer',role:'CASHIER'},manager={id:2,name:'Yönetici',role:'STORE_MANAGER'},other={id:3,name:'Diğer',role:'CASHIER'};const tx=<T>(fn:()=>T)=>sqlite.transaction(fn).immediate();
-sqlite.exec(`INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'A','sale-intent-a','intent-a',1,100);
+sqlite.exec(`INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','M'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','2'); INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'A','sale-intent-a','intent-a',1,100);
  INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(2,1,3,0);
  INSERT INTO customers(id,name,phone,loyalty_points) VALUES(1,'Müşteri','555',50);
  INSERT INTO coupons(id,code,discount_type,discount_value,usage_limit,used_count) VALUES(1,'SAVE','PERCENT',5,1,0);

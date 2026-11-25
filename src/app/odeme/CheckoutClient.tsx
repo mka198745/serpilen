@@ -140,7 +140,6 @@ export function CheckoutClient() {
         customerPhone: formData.phone,
         paymentMethod: formData.paymentMethod,
         shippingAddress: `${formData.address}, ${formData.district} / ${formData.city}`,
-        warehouseId: 3, // Online E-Ticaret Deposu
         subtotal,
         discountTotal,
         couponCode: appliedCoupon || null,

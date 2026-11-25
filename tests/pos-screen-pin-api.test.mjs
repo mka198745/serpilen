@@ -6,7 +6,7 @@ test('POS PIN kişiye ve oturuma bağlıdır; API kilit, süre, parola, deneme s
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'pos-screen-')),file=path.join(dir,'db'),env={...process.env,DATABASE_URL:`sqlite:${file}`};let db,server;
  try{
   const mig=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(mig.status,0,mig.stderr);db=new Database(file);db.pragma('foreign_keys=ON');
-  db.exec("INSERT INTO categories(id,name,slug) VALUES(1,'Kategori','kategori'); INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','MAG'); INSERT INTO products(id,name,slug,sku,category_id) VALUES(1,'ÖZEL POS ÜRÜNÜ','ozel','OZEL',1)");
+  db.exec("INSERT INTO categories(id,name,slug) VALUES(1,'Kategori','kategori'); INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','MAG'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','2'); INSERT INTO products(id,name,slug,sku,category_id) VALUES(1,'ÖZEL POS ÜRÜNÜ','ozel','OZEL',1)");
   function user(name,role){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)').run(name,`${name}@example.test`,passHash('Password123'),role).lastInsertRowid;return Number(id);}
   function session(id){const t=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(t).digest('hex'),Math.floor(Date.now()/1000)+3600);return t;}
   const a=user('Ayse','SUPER_ADMIN'),b=user('Berk','CASHIER'),customer=user('Mustafa','B2C_CUSTOMER'),ta=session(a),ta2=session(a),tb=session(b),tc=session(customer);

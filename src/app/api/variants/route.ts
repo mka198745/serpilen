@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { resolveActiveWarehouse } from "@/lib/warehouse-policy";
 import { NextResponse } from "next/server";
 import { db } from "@/db";
@@ -17,7 +18,8 @@ export async function GET(request: Request) {
   }
 
   const allProds = await db.select({ id: products.id, name: products.name, sku: products.sku }).from(products);
-  const stocks = await db.select().from(inventory);
+  const salesWarehouse=sharedSalesWarehouseId();
+  const stocks = (await db.select().from(inventory)).filter(s=>s.warehouseId===salesWarehouse);
 
   const data = rows.map((v) => {
     const p = allProds.find((prod) => prod.id === v.productId);
