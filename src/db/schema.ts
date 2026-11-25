@@ -576,6 +576,38 @@ export const goodsReceiptItems = sqliteTable("goods_receipt_items", {
   qty: integer("qty").notNull(),
 });
 
+// Supplier purchase coverage and stock-backed returns (migration 0029).
+export const supplierOrderCoverage = sqliteTable("supplier_order_coverage", {
+  purchaseOrderId: integer("purchase_order_id").primaryKey().references(() => purchaseOrders.id, {onDelete:"restrict"}),
+  expectedDate: text("expected_date"),
+  createdAt: integer("created_at", {mode:"timestamp"}).default(sql`(unixepoch())`).notNull(),
+});
+export const supplierCommandFences = sqliteTable("supplier_command_fences", {
+  requestKey: text("request_key").primaryKey(),
+  createdBy: integer("created_by").notNull().references(() => users.id, {onDelete:"restrict"}),
+  createdAt: integer("created_at", {mode:"timestamp"}).default(sql`(unixepoch())`).notNull(),
+});
+export const supplierReceiptRequests = sqliteTable("supplier_receipt_requests", {
+  requestKey: text("request_key").primaryKey(), payloadHash: text("payload_hash").notNull(),
+  receiptId: integer("receipt_id").notNull().unique().references(() => goodsReceipts.id, {onDelete:"restrict"}),
+  receivedQty: integer("received_qty").notNull(), poStatus: text("po_status").notNull(),
+});
+export const supplierReturns = sqliteTable("supplier_returns", {
+  id: integer("id").primaryKey({autoIncrement:true}), requestKey: text("request_key").notNull().unique(), payloadHash: text("payload_hash").notNull(),
+  receiptId: integer("receipt_id").notNull().references(() => goodsReceipts.id, {onDelete:"restrict"}),
+  supplierId: integer("supplier_id").notNull().references(() => suppliers.id, {onDelete:"restrict"}),
+  warehouseId: integer("warehouse_id").notNull().references(() => warehouses.id, {onDelete:"restrict"}),
+  reason: text("reason").notNull(), createdBy: integer("created_by").notNull().references(() => users.id, {onDelete:"restrict"}),
+  createdAt: integer("created_at", {mode:"timestamp"}).default(sql`(unixepoch())`).notNull(),
+});
+export const supplierReturnItems = sqliteTable("supplier_return_items", {
+  id: integer("id").primaryKey({autoIncrement:true}),
+  supplierReturnId: integer("supplier_return_id").notNull().references(() => supplierReturns.id, {onDelete:"restrict"}),
+  receiptItemId: integer("receipt_item_id").notNull().references(() => goodsReceiptItems.id, {onDelete:"restrict"}),
+  productId: integer("product_id").notNull().references(() => products.id, {onDelete:"restrict"}),
+  variantId: integer("variant_id").references(() => productVariants.id, {onDelete:"restrict"}), qty: integer("qty").notNull(),
+}, (table) => [uniqueIndex("supplier_return_item_unique").on(table.supplierReturnId,table.receiptItemId), index("supplier_return_items_receipt_item_idx").on(table.receiptItemId)]);
+
 // ==========================================
 // CARİ HESAP HAREKETLERİ (borç/alacak defteri)
 export const accountTransactions = sqliteTable("account_transactions", {

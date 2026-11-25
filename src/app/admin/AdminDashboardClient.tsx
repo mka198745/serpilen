@@ -309,7 +309,7 @@ export function AdminDashboardClient({
   };
 
   /* --- FAZ 6: Satın Alma (sipariş→mal kabul + öneriler) --- */
-  const [suppliersList, setSuppliersList] = useState(initialSuppliers);
+  const [suppliersList, setSuppliersList] = useState(initialSuppliers.filter((s: any) => s.isActive !== false).map((s: any) => ({ ...s, rating: null })));
   const [purchasingSubTab, setPurchasingSubTab] = useState<"suggest" | "orders" | "receipts" | "suppliers">("suggest");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [suggestionCount, setSuggestionCount] = useState(0);
@@ -317,11 +317,20 @@ export function AdminDashboardClient({
   const [purchasingBusy, setPurchasingBusy] = useState(false);
   const [purchasingFeedback, setPurchasingFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "30 Gün Vade", rating: "4.5" });
+  const [newSupplier, setNewSupplier] = useState({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "" });
   const [isCreatePOOpen, setIsCreatePOOpen] = useState(false);
   const [poWizard, setPoWizard] = useState({ supplierId: "", warehouseId: defaultWarehouseId, expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] as any[] });
   const [receiveModalPO, setReceiveModalPO] = useState<any | null>(null);
   const [receiveLines, setReceiveLines] = useState<Record<number, number>>({});
+  const [supplierReturnReceipt, setSupplierReturnReceipt] = useState<any | null>(null);
+  const [supplierReturnLines, setSupplierReturnLines] = useState<Record<number, number>>({});
+  const [supplierReturnReason, setSupplierReturnReason] = useState("");
+  const [pendingPurchasing, setPendingPurchasing] = useState<Record<string, any> | null>(null);
+  const [purchasingSubmitting, setPurchasingSubmitting] = useState(false);
+  const purchasingSubmitLock = React.useRef(false);
+  React.useEffect(() => {
+    try { const saved = localStorage.getItem("serpilen.purchasing.pending.v1"); if (saved) setPendingPurchasing(JSON.parse(saved)); } catch { /* storage unavailable */ }
+  }, []);
 
   const loadPurchasing = React.useCallback(async () => {
     setPurchasingBusy(true);
@@ -352,13 +361,27 @@ export function AdminDashboardClient({
     });
     const data = await res.json();
     if (data.success) {
-      setSuppliersList((prev: any[]) => [data.data, ...prev]);
+      setSuppliersList((prev: any[]) => [{ ...data.data, rating: null }, ...prev]);
       setIsAddSupplierOpen(false);
-      setNewSupplier({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "30 Gün Vade", rating: "4.5" });
+      setNewSupplier({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "" });
       setPurchasingFeedback({ text: "Tedarikçi eklendi.", isError: false });
     } else {
       setPurchasingFeedback({ text: data.error || "Tedarikçi eklenemedi.", isError: true });
     }
+  };
+
+  const deleteSupplier = async (supplier: any) => {
+    if (!window.confirm(`${supplier.name} kaldırılsın mı? Geçmişi varsa silinmez, arşivlenir.`)) return;
+    setPurchasingBusy(true);
+    try {
+      const res = await authFetch(`/api/suppliers?id=${encodeURIComponent(supplier.id)}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Tedarikçi kaldırılamadı.");
+      setPurchasingFeedback({ text: data.mode === "archived" ? "Tedarikçi arşivlendi; geçmişi korundu." : "Tedarikçi silindi.", isError: false });
+      await loadPurchasing();
+    } catch (error) {
+      setPurchasingFeedback({text: error instanceof Error ? error.message : "Tedarikçi kaldırılamadı.", isError:true});
+    } finally { setPurchasingBusy(false); }
   };
 
   const handleCreatePO = async (e: React.FormEvent) => {
@@ -391,30 +414,66 @@ export function AdminDashboardClient({
     setReceiveLines(init);
   };
 
+  // Preserve the exact command after a lost response or reload.
+  const sendPurchasingCommand = async (command: Record<string, any>) => {
+    if (purchasingSubmitLock.current) return;
+    purchasingSubmitLock.current = true;
+    setPurchasingSubmitting(true);
+    try {
+      const response = await authFetch("/api/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "İşlem sonucu doğrulanamadı.");
+      }
+      localStorage.removeItem("serpilen.purchasing.pending.v1"); setPendingPurchasing(null);
+      setReceiveModalPO(null); setSupplierReturnReceipt(null);
+      setPurchasingFeedback({text: command.action === "RECEIVE_GOODS" ? `Mal kabul kaydedildi: ${data.data.receipt.receiptNumber}` : `Tedarikçiye iade kaydedildi: #${data.data.id}`, isError:false});
+      await loadPurchasing();
+    } catch (error) {
+      setPurchasingFeedback({text: `${error instanceof Error ? error.message : "Bağlantı hatası."} Sonuç belirsizse aynı işlemi tekrar sorgulayın.`,isError:true});
+    } finally { purchasingSubmitLock.current = false; setPurchasingSubmitting(false); }
+  };
+  const closePendingPurchasing = async () => {
+    if (!pendingPurchasing || purchasingSubmitLock.current || !confirm("İşlemin sonucunu kontrol edip uygulanmadıysa gecikmiş isteği kalıcı olarak durdurmak istiyor musunuz?")) return;
+    purchasingSubmitLock.current = true; setPurchasingSubmitting(true);
+    try {
+      const response = await authFetch("/api/suppliers", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"FENCE_PURCHASING",requestKey:pendingPurchasing.requestKey})});
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "İşlem sonucu doğrulanamadı.");
+      localStorage.removeItem("serpilen.purchasing.pending.v1"); setPendingPurchasing(null);
+      setReceiveModalPO(null); setSupplierReturnReceipt(null);
+      setPurchasingFeedback({text:data.data.status === "completed" ? `İşlem daha önce tamamlanmış: ${data.data.kind === "return" ? "iade" : "mal kabul"} #${data.data.id}.` : "İşlem uygulanmamış; gecikmiş istek güvenli biçimde durduruldu.",isError:false});
+      await loadPurchasing();
+    } catch(error) {setPurchasingFeedback({text:error instanceof Error ? error.message : "Sonuç doğrulanamadı.",isError:true});}
+    finally {purchasingSubmitLock.current = false;setPurchasingSubmitting(false);}
+  };
+  const startPurchasingCommand = async (command: Record<string, any>) => {
+    if (pendingPurchasing || purchasingSubmitting || purchasingSubmitLock.current) return;
+    try {
+      const previous=localStorage.getItem("serpilen.purchasing.pending.v1");
+      if (previous) {setPendingPurchasing(JSON.parse(previous)); setPurchasingFeedback({text:"Önceki işlemi sonuçlandırın.",isError:true});return;}
+      localStorage.setItem("serpilen.purchasing.pending.v1",JSON.stringify(command));
+    }
+    catch { setPurchasingFeedback({text:"İşlem güvenli tekrar için saklanamadı; işlem yapılmadı.",isError:true}); return; }
+    setPendingPurchasing(command);
+    await sendPurchasingCommand(command);
+  };
   const submitReceive = async () => {
     if (!receiveModalPO) return;
-    const lines = Object.entries(receiveLines)
-      .map(([purchaseOrderItemId, qty]) => ({ purchaseOrderItemId: Number(purchaseOrderItemId), qty: Number(qty) }))
-      .filter((l) => l.qty > 0);
-    if (!lines.length) {
-      setPurchasingFeedback({ text: "Kabul edilecek miktar girin.", isError: true });
-      return;
-    }
-    const res = await authFetch("/api/suppliers", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "RECEIVE_GOODS", purchaseOrderId: receiveModalPO.id, lines }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setPurchasingFeedback({ text: `Mal kabul fişi ${data.data.receipt.receiptNumber} — ${data.data.receivedQty} adet stoğa girdi (${data.data.poStatus}).`, isError: false });
-      setReceiveModalPO(null);
-      void loadPurchasing();
-      const invRes = await authFetch("/api/inventory");
-      const invData = await invRes.json();
-      if (invData.success) setInventoryList(invData.inventory);
-    } else {
-      setPurchasingFeedback({ text: data.error || "Mal kabul başarısız.", isError: true });
-    }
+    const lines=Object.entries(receiveLines).map(([id,qty])=>({purchaseOrderItemId:Number(id),qty:Number(qty)})).filter(l=>l.qty>0);
+    if (!lines.length || lines.some(l=>!Number.isSafeInteger(l.qty))) {setPurchasingFeedback({text:"Geçerli kabul miktarı girin.",isError:true});return;}
+    if (!confirm("Seçilen miktarlar stoğa eklensin mi?")) return;
+    await startPurchasingCommand({action:"RECEIVE_GOODS",purchaseOrderId:receiveModalPO.id,lines,requestKey:crypto.randomUUID()});
+  };
+  const openSupplierReturn = (receipt: any) => {
+    setSupplierReturnReceipt(receipt); setSupplierReturnLines({}); setSupplierReturnReason("");
+  };
+  const submitSupplierReturn = async () => {
+    if (!supplierReturnReceipt) return;
+    const lines=Object.entries(supplierReturnLines).map(([id,qty])=>({receiptItemId:Number(id),qty:Number(qty)})).filter(l=>l.qty>0);
+    if (!lines.length || lines.some(l=>!Number.isSafeInteger(l.qty)) || !supplierReturnReason.trim()) {setPurchasingFeedback({text:"İade nedeni ve geçerli miktar girin.",isError:true});return;}
+    if (!confirm("Ürünler tedarikçiye iade olarak kaydedilip bu depodaki kullanılabilir stoktan düşülsün mü?")) return;
+    await startPurchasingCommand({action:"RETURN_TO_SUPPLIER",receiptId:supplierReturnReceipt.id,lines,reason:supplierReturnReason.trim(),requestKey:crypto.randomUUID()});
   };
 
   const loadReport = React.useCallback(async (days: number) => {
@@ -1516,35 +1575,6 @@ export function AdminDashboardClient({
           setInventoryList(invData.inventory);
           setLedger(invData.recentLedger);
         }
-      }
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleReceiveGoods = async (poId: number) => {
-    if (!confirm("Bu satın alma siparişinin mal kabulünü onaylıyor musunuz? (Depo stokları otomatik artacaktır)")) return;
-    try {
-      const res = await authFetch("/api/suppliers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "RECEIVE_GOODS",
-          purchaseOrderId: poId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message);
-        // Refresh POs
-        const poRes = await authFetch("/api/suppliers");
-        const poData = await poRes.json();
-        if (poData.success) setPurchaseOrders(poData.purchaseOrders);
-        const invRes = await authFetch("/api/inventory");
-        const invData = await invRes.json();
-        if (invData.success) setInventoryList(invData.inventory);
-      } else {
-        alert("Hata: " + data.error);
       }
     } catch (err: any) {
       alert(err.message);
@@ -4135,6 +4165,7 @@ export function AdminDashboardClient({
               {purchasingBusy && <span className="text-[10px] text-stone-400 self-center ml-2">Yükleniyor…</span>}
             </div>
 
+            {pendingPurchasing && <div role="alert" className="p-3 rounded-xl bg-amber-100 text-amber-900 text-xs">Önceki mal kabul veya iadenin sonucu doğrulanmalı. Yeni işlem başlatılmadan aynı kayıt güvenle tekrar sorgulanır. <button disabled={purchasingSubmitting} onClick={() => void sendPurchasingCommand(pendingPurchasing)} className="ml-2 font-bold underline">Aynı işlemi tekrar sorgula</button> <button disabled={purchasingSubmitting} onClick={() => void closePendingPurchasing()} className="ml-2 font-bold underline">Sonucu kontrol et ve kapat</button></div>}
             {purchasingFeedback && (
               <div className={`p-2.5 rounded-xl text-xs font-medium border ${purchasingFeedback.isError ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
                 {purchasingFeedback.text}
@@ -4208,18 +4239,19 @@ export function AdminDashboardClient({
               <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr><th className="py-2.5 px-3">Fiş No</th><th className="py-2.5 px-3">PO</th><th className="py-2.5 px-3">Kabul Eden</th><th className="py-2.5 px-3">Tarih</th></tr>
+                    <tr><th className="py-2.5 px-3">Fiş No</th><th className="py-2.5 px-3">PO / Tedarikçi</th><th className="py-2.5 px-3">Kabul Eden</th><th className="py-2.5 px-3">Tarih</th><th className="py-2.5 px-3">İşlem</th></tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     {receiptsList.map((r: any) => (
                       <tr key={r.id}>
                         <td className="py-2.5 px-3 font-mono font-bold">{r.receiptNumber}</td>
-                        <td className="py-2.5 px-3 font-mono">PO #{r.purchaseOrderId}</td>
+                        <td className="py-2.5 px-3">PO #{r.purchaseOrderId} · {r.supplierName}</td>
                         <td className="py-2.5 px-3">{r.receivedBy}</td>
                         <td className="py-2.5 px-3 text-stone-400">{new Date(r.createdAt).toLocaleString("tr-TR")}</td>
+                        <td className="py-2.5 px-3">{r.returns?.map((x:any)=><p key={x.id} className="text-[10px] text-stone-500">İade #{x.id} · {new Date(x.createdAt).toLocaleDateString("tr-TR")} · {x.reason}</p>)}<button disabled={!!pendingPurchasing || purchasingSubmitting || !r.items?.length} onClick={() => openSupplierReturn(r)} className="font-bold text-rose-700 disabled:opacity-50">Tedarikçiye iade</button></td>
                       </tr>
                     ))}
-                    {receiptsList.length === 0 && <tr><td colSpan={4} className="py-8 text-center text-stone-400">Mal kabul fişi yok.</td></tr>}
+                    {receiptsList.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-stone-400">Mal kabul fişi yok.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -4231,10 +4263,12 @@ export function AdminDashboardClient({
                   <div key={sup.id} className="p-4 rounded-2xl border border-stone-200 bg-white space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="font-bold text-sm text-stone-900">{sup.name}</h4>
-                      <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">★ {sup.rating}</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">{sup.rating == null ? "Henüz puanlanmadı" : `★ ${sup.rating}`}</span>
                     </div>
                     <p className="text-xs text-stone-600">Yetkili: {sup.contactPerson || "—"} ({sup.phone || "—"})</p>
-                    <p className="text-[11px] text-stone-400">Vade: {sup.paymentTerms} | Termin: {sup.leadTimeDays} gün | {sup.totalPOs ?? 0} sipariş · %{sup.completionRate ?? 100} tamamlama</p>
+                    <button disabled={purchasingBusy} onClick={() => void deleteSupplier(sup)} className="text-xs font-bold text-rose-700 disabled:opacity-50">Tedarikçiyi sil</button>
+                    {sup.ratingDetails && <p className="text-[11px] text-stone-500">{sup.ratingDetails.score === null ? sup.ratingDetails.missing.join(" · ") : `Son 3 sipariş: zamanında %${Math.round(sup.ratingDetails.delivery*100)}, iadesiz %${Math.round(sup.ratingDetails.returns*100)}, göreli vade %${Math.round(sup.ratingDetails.terms*100)}.`}</p>}
+                    <p className="text-[11px] text-stone-400">Vade: {sup.paymentTerms || "—"} | Termin: {sup.leadTimeDays} gün | {sup.totalPOs ?? 0} sipariş · {sup.completionRate == null ? "tamamlama verisi yok" : `%${sup.completionRate} tamamlama`}</p>
                   </div>
                 ))}
               </div>
@@ -5227,8 +5261,7 @@ export function AdminDashboardClient({
               <div><label className="block font-bold mb-1">E-posta</label><input type="email" value={newSupplier.email} onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
               <div className="grid grid-cols-3 gap-2">
                 <div><label className="block font-bold mb-1">Termin (gün)</label><input type="number" min="1" value={newSupplier.leadTimeDays} onChange={(e) => setNewSupplier({ ...newSupplier, leadTimeDays: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
-                <div><label className="block font-bold mb-1">Vade</label><input value={newSupplier.paymentTerms} onChange={(e) => setNewSupplier({ ...newSupplier, paymentTerms: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
-                <div><label className="block font-bold mb-1">Puan</label><input type="number" step="0.1" min="1" max="5" value={newSupplier.rating} onChange={(e) => setNewSupplier({ ...newSupplier, rating: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
+                <div><label className="block font-bold mb-1">Vade</label><input required placeholder="Örn. 30 Gün Vade / Peşin" value={newSupplier.paymentTerms} onChange={(e) => setNewSupplier({ ...newSupplier, paymentTerms: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
               </div>
               <button type="submit" className="w-full py-3 bg-stone-900 text-white font-bold rounded-xl">Tedarikçiyi Kaydet</button>
             </form>
@@ -5256,6 +5289,7 @@ export function AdminDashboardClient({
                   {warehousesList.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
+              <label className="block font-bold">Beklenen teslim tarihi <input required type="date" value={poWizard.expectedDate} onChange={e=>setPoWizard({...poWizard,expectedDate:e.target.value})} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></label>
               {poWizard.lines.map((ln, i) => (
                 <div key={i} className="grid grid-cols-[1fr_64px_80px_32px] gap-1.5">
                   <select required value={ln.productId} onChange={(e) => { const lines = [...poWizard.lines]; lines[i] = { ...lines[i], productId: e.target.value, unitCost: products.find((p: any) => p.id === Number(e.target.value))?.buyPrice || "" }; setPoWizard({ ...poWizard, lines }); }} className="px-3 py-2 border border-stone-300 rounded-xl">
@@ -5284,18 +5318,34 @@ export function AdminDashboardClient({
               <div><h3 className="font-black text-base text-stone-900">Kısmi Mal Kabul</h3><p className="text-xs text-stone-500 font-mono">{receiveModalPO.poNumber}</p></div>
               <button onClick={() => setReceiveModalPO(null)} className="p-1 text-stone-400 hover:text-stone-700"><X className="w-5 h-5" /></button>
             </div>
+            {purchasingFeedback?.isError && <p role="alert" className="text-xs text-rose-700">{purchasingFeedback.text}</p>}
+            {pendingPurchasing && <div><button disabled={purchasingSubmitting} onClick={()=>void sendPurchasingCommand(pendingPurchasing)} className="text-xs underline">Önceki işlemi tekrar sorgula</button> <button disabled={purchasingSubmitting} onClick={()=>void closePendingPurchasing()} className="text-xs underline">Sonucu kontrol et ve kapat</button></div>}
             <div className="space-y-2">
               {(receiveModalPO.items || []).map((it: any) => {
                 const remaining = it.quantity - (it.receivedQty || 0);
                 return (
                   <div key={it.id} className="flex items-center justify-between gap-2 p-2.5 border border-stone-200 rounded-xl text-xs">
-                    <div className="min-w-0"><span className="font-bold block truncate">{it.productName}</span><span className="text-stone-400">Sipariş {it.quantity} · Alınan {it.receivedQty || 0} · Kalan {remaining}</span></div>
+                    <div className="min-w-0"><span className="font-bold block truncate">{it.productName} {it.variantName && `· ${it.variantName}`} · {it.sku}</span><span className="text-stone-400">Sipariş {it.quantity} · Alınan {it.receivedQty || 0} · Kalan {remaining}</span></div>
                     <input type="number" min="0" max={remaining} value={receiveLines[it.id] ?? remaining} onChange={(e) => setReceiveLines({ ...receiveLines, [it.id]: Math.min(Number(e.target.value), remaining) })} className="w-20 px-2 py-1.5 border border-stone-300 rounded-lg text-center" />
                   </div>
                 );
               })}
             </div>
-            <button onClick={() => void submitReceive()} className="w-full py-3 bg-emerald-700 text-white font-bold rounded-xl text-xs">Kabul Et & Stoğa İşle</button>
+            <button disabled={!!pendingPurchasing || purchasingSubmitting} onClick={() => void submitReceive()} className="w-full py-3 bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs">Kabul Et & Stoğa İşle</button>
+          </div>
+        </div>
+      )}
+
+      {supplierReturnReceipt && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between"><h3 className="font-bold">Tedarikçiye iade · {supplierReturnReceipt.receiptNumber}</h3><button onClick={()=>setSupplierReturnReceipt(null)} aria-label="Kapat">×</button></div>
+            {purchasingFeedback?.isError && <p role="alert" className="text-xs text-rose-700">{purchasingFeedback.text}</p>}
+            {pendingPurchasing && <div><button disabled={purchasingSubmitting} onClick={()=>void sendPurchasingCommand(pendingPurchasing)} className="text-xs underline">Önceki işlemi tekrar sorgula</button> <button disabled={purchasingSubmitting} onClick={()=>void closePendingPurchasing()} className="text-xs underline">Sonucu kontrol et ve kapat</button></div>}
+            <p className="text-xs">Depo: <strong>{supplierReturnReceipt.warehouseName}</strong>. İade onaylandığında bu mal kabulün deposundaki kullanılabilir stok azalır; ayrılmış stok kullanılamaz.</p>
+            {(supplierReturnReceipt.items || []).map((item:any)=><label key={item.id} className="flex justify-between gap-3 text-xs"><span>{item.productName || `Ürün #${item.productId}`} {item.variantId ? `· ${[item.colorName,item.size,item.length].filter(Boolean).join(" / ")} · ${item.sku || `Varyant #${item.variantId}`}` : item.sku ? `· ${item.sku}` : ""} · Kabul {item.qty} · İade {item.returnedQty}</span><input aria-label={`${item.productName} iade miktarı`} type="number" min="0" max={item.qty-item.returnedQty} value={supplierReturnLines[item.id] ?? 0} onChange={e=>setSupplierReturnLines({...supplierReturnLines,[item.id]:Number(e.target.value)})} className="w-20 border rounded p-1" /></label>)}
+            <label className="block text-xs font-bold">İade nedeni <textarea value={supplierReturnReason} maxLength={500} onChange={e=>setSupplierReturnReason(e.target.value)} className="w-full border rounded p-2" /></label>
+            <button disabled={!!pendingPurchasing || purchasingSubmitting} onClick={()=>void submitSupplierReturn()} className="w-full py-3 bg-rose-700 text-white font-bold rounded-xl text-xs disabled:opacity-50">İadeyi Onayla ve Stoktan Düş</button>
           </div>
         </div>
       )}

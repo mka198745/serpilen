@@ -47,6 +47,7 @@ export function adjustInventorySync(input: StockAdjustmentInput) {
 
   if (!Number.isSafeInteger(quantityDelta)) throw new StockShortage("Geçersiz stok miktarı.");
   if (existing.length > 1) throw new StockShortage("Stok kayıtları tutarsız; lütfen yetkiliye başvurun.");
+  if (existing[0] && (!Number.isSafeInteger(existing[0].physicalQty) || !Number.isSafeInteger(existing[0].reservedQty) || existing[0].reservedQty < 0 || existing[0].physicalQty < existing[0].reservedQty || !Number.isSafeInteger(existing[0].physicalQty + quantityDelta))) throw new StockShortage("Stok ve rezervasyon kayıtları tutarsız; işlem yapılmadı.");
   if (quantityDelta < 0 && (!existing[0] || existing[0].physicalQty - existing[0].reservedQty < -quantityDelta)) throw new StockShortage();
   if (existing.length > 0) {
     const current = existing[0];

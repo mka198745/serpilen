@@ -13,8 +13,10 @@ test('0028 hosting migration validates backup, aborts on changed data, and commi
   for(const pkg of ['bindings','file-uri-to-path'])fs.symlinkSync(path.resolve('node_modules',pkg),path.join(app,'node_modules',pkg),'dir');
   for(const binary of ['build/Release/better_sqlite3.node','prebuilds/linux-x64.node'])fs.copyFileSync('hosting/better_sqlite3-linux-x64-glibc228.node',path.join(app,'node_modules/better-sqlite3',binary));
   fs.cpSync('drizzle-sqlite',path.join(app,'drizzle-sqlite'),{recursive:true});
+  // 0028's historical offline script intentionally pins its original journal.
+  fs.copyFileSync('tests/fixtures/journal-0028.json',path.join(app,'drizzle-sqlite/meta/_journal.json'));
   const env={...process.env,DATABASE_URL:`sqlite:${live}`};let r=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
-  const db=new Database(live);for(const x of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'warehouse_guard_%'").all())db.exec(`DROP TRIGGER "${x.name}"`);db.exec("DELETE FROM __migrations WHERE tag='0028_warehouse_reference_guards'; INSERT INTO warehouses(id,name,code) VALUES(1,'Merkez','M')");db.close();
+  const db=new Database(live);for(const x of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'warehouse_guard_%'").all())db.exec(`DROP TRIGGER "${x.name}"`);db.exec("DROP TABLE supplier_command_fences; DROP TABLE supplier_return_items; DROP TABLE supplier_returns; DROP TABLE supplier_receipt_requests; DROP TABLE supplier_order_coverage; DELETE FROM __migrations WHERE tag IN ('0028_warehouse_reference_guards','0029_supplier_returns'); INSERT INTO warehouses(id,name,code) VALUES(1,'Merkez','M')");db.close();
   const run=mode=>spawnSync(process.execPath,['hosting/migrate-0028.cjs',mode,live,backup,app],{encoding:'utf8'});
   r=run('backup');assert.equal(r.status,0,r.stderr);assert.notEqual(run('backup').status,0);
   const changed=new Database(live);changed.prepare("UPDATE warehouses SET name='Değişti' WHERE id=1").run();changed.close();
