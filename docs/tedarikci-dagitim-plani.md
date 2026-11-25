@@ -22,3 +22,10 @@ Node 22 kullanılarak `migrate-0029.cjs inspect|backup|apply MUTLAK_DB MUTLAK_YE
 ## Yerel prova kapsamı
 
 Otomatik testler gerçek SQLite üzerinde stok/rezervasyonlu ve açık satın almalı örnek DB ile yedek almayı; değişen veri/şema/sequence ve farklı yinelenen satırları tespit etmeyi; zorlanan migration hatasında DDL ve tüm veriyi geri almayı; migration sırasında tetikleyiciyle değiştirilmiş stokta hata ile geri dönmeyi; başarıda eski stok ve siparişleri korumayı ve yedek kopyasını geri açmayı denetler. Bunlar canlı veritabanının bizzat incelendiği anlamına gelmez.
+
+## Hazırlanan paket ve ek prova
+
+- Kod sürümü: `dc63597`; paket `hosting/serpilen-tedarikci-dc63597.zip` SHA-256 `05ed07e5549bb5ecf68a2e662090c0163ddf861cb243ec07ecb809df1bc99c13`.
+- `migrate-0029.cjs` SHA-256 `3d717933651b8cd6cff2ddd9fba9b35208d2a530fbe38b2136eb05e311b9f84a`; `0029_supplier_returns.sql` SHA-256 `da7303c863c05972e0d60493c1aa524b02b6e9bbbcf7b509f14bc3f69433e51f`; journal SHA-256 `bb86f7a6ac3652f7bc3de2136426069714d8a2f89a724d1dc0496a2bbc33b95b`.
+- İki SQLite binding SHA-256: `2d5e0ddafab5f642a82ede046bd3b77786c61001ae289bbabf962530ca5831d5`. ZIP bütünlüğü ve iç hash'ler yerelde doğrulandı; çalışma zamanı DB, `.env` ve önceki ZIP dosyaları pakete dahil edilmedi.
+- Ortak depo ID 5, fiziksel stok 8, ayrılmış stok 2 ve açık satın alma içeren sentetik 0028 DB'si üzerinde yedek ve 0029 uygulandı; kayıtlar korundu. Güncel standalone `/`, `/urunler`, health ve seçili ortak depo kontrollerini geçti; satın alma, mal kabul ve stoktan iade yapıldı. Yedek kopyasıyla önceki standalone ayrıca açıldı ve aynı sağlık/sayfa kontrollerini geçti; eski stok 8/2 kaldı. Bu yalnız yerel provadır, gerçek canlı DB'nin kopyası değildir.
