@@ -1,3 +1,4 @@
+import {testPosGrant} from './helpers/pos-grant.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import crypto from 'node:crypto';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import net from 'node:net';import {spawn,spawnSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';import Database from 'better-sqlite3';
 async function port(){const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 test('standalone workers settle expiry once on startup across processes; POS refund confirmation is idempotent',{timeout:60000},async()=>{
@@ -13,11 +14,18 @@ test('standalone workers settle expiry once on startup across processes; POS ref
  const token=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(1,?,?)').run(crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);
  const bases=[];for(let i=0;i<2;i++){let p=await port();let s=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(p),NODE_ENV:'production'},stdio:'ignore'});servers.push(s);bases.push(`http://127.0.0.1:${p}`);for(let j=0;j<100;j++){try{await fetch(bases[i]+'/api/payments/status');break}catch{await delay(100)}}}
  assert.deepEqual(db.prepare('SELECT id,status FROM orders WHERE id IN (1,2) ORDER BY id').all(),[{id:1,status:'CANCELLED'},{id:2,status:'PENDING'}]);assert.deepEqual(db.prepare('SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=3 AND product_id=1').get(),{physical_qty:1,reserved_qty:1});assert.equal(db.prepare("SELECT COUNT(*) n FROM order_status_history WHERE order_id=1 AND to_status='CANCELLED'").get().n,1);
- const post=body=>fetch(bases[0]+'/api/pos/return',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
+ let grant=testPosGrant(db,1,token);
+ const post=body=>fetch(bases[0]+'/api/pos/return',{method:'POST',headers:{Authorization:`Bearer ${token}`,'X-Pos-Grant':grant,'Content-Type':'application/json'},body:JSON.stringify(body)});
  const line=db.prepare('SELECT id FROM order_items WHERE order_id=3').get().id;
  let res=await post({action:'PREPARE',orderNumber:'POS-TEST',items:[{orderItemId:line,quantity:1}],posShiftId:1,refundMethod:'CASH'});assert.equal(res.status,200,await res.clone().text());const prepared=(await res.json()).data;assert.equal(prepared.refundAmount,'10.00');
+ db.prepare('DELETE FROM pos_screen_grants WHERE user_id=1').run();
+ assert.equal((await fetch(bases[0]+'/api/pos/return',{headers:{Authorization:`Bearer ${token}`,'X-Pos-Grant':grant}})).status,403);
+ grant=testPosGrant(db,1,token);
+ let listed=await fetch(bases[0]+'/api/pos/return',{headers:{Authorization:`Bearer ${token}`,'X-Pos-Grant':grant}});assert.equal(listed.status,200);assert.equal((await listed.json()).data[0].id,prepared.id);
+ const close=await fetch(bases[0]+'/api/pos/shift',{method:'POST',headers:{Authorization:`Bearer ${token}`,'X-Pos-Grant':grant,'Content-Type':'application/json'},body:JSON.stringify({action:'CLOSE',shiftId:1,closingAmount:100})});assert.equal(close.status,409);
  assert.equal((await post({action:'COMPLETE',returnId:prepared.id,confirmedAmount:10})).status,422);
  res=await post({action:'COMPLETE',returnId:prepared.id,confirmedAmount:10,confirmRefund:true});assert.equal(res.status,200,await res.clone().text());assert.equal((await post({action:'COMPLETE',returnId:prepared.id,confirmedAmount:10,confirmRefund:true})).status,200);
+ listed=await fetch(bases[0]+'/api/pos/return',{headers:{Authorization:`Bearer ${token}`,'X-Pos-Grant':grant}});assert.equal((await listed.json()).data[0].status,'REFUNDED');
  assert.equal(db.prepare('SELECT physical_qty FROM inventory WHERE warehouse_id=2 AND product_id=1').get().physical_qty,1);assert.deepEqual(db.prepare('SELECT total_returns_cash,expected_amount FROM pos_shifts WHERE id=1').get(),{total_returns_cash:10,expected_amount:90});assert.equal(db.prepare("SELECT COUNT(*) n FROM audit_logs WHERE action='REFUND_CONFIRMED'").get().n,1);
  // No order request: periodic workers must expire and advance a later order.
  db.exec("INSERT INTO orders(id,order_number,order_type,customer_name,status,payment_status,payment_method,grand_total) VALUES(4,'WAIT2','ONLINE_B2C','Test','BACKORDER','PENDING','EFT_HAVALE',10); INSERT INTO order_items(order_id,product_id,product_name,sku,unit_price,quantity,total_price) VALUES(4,1,'Product','wrk',10,1,10); UPDATE inventory_reservations SET expires_at=1 WHERE reference_type='PAYMENT_HOLD' AND reference_id='2'");

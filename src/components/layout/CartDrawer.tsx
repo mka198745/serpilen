@@ -1,5 +1,6 @@
 "use client";
 
+import { PaymentTimeNotice } from "@/components/layout/PaymentTimeNotice";
 import React, { useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { X, Trash2, ShoppingBag, ArrowRight, Tag, Check, ShieldCheck, Ban } from "lucide-react";
@@ -260,6 +261,7 @@ export function CartDrawer() {
                 </div>
               </div>
 
+              <PaymentTimeNotice />
               {/* Action Buttons */}
               <div className="pt-2 flex flex-col gap-2">
                 <a

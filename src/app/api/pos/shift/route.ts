@@ -5,12 +5,15 @@ import { desc, eq, and, sql } from "drizzle-orm";
 
 import { requireStaff, getUserByToken } from "@/lib/auth";
 import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
+import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
+  if (!await hasPosGrant(request, __gate.user.id)) return posLocked();
+  if (!roleCanAccessModule(await readRoleMatrix(),__gate.user.role,"pos")) return NextResponse.json({success:false,error:"POS yetkiniz bulunmuyor."},{status:403});
 
   try {
     const { searchParams } = new URL(request.url);
@@ -66,17 +69,18 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
+  if (!await hasPosGrant(request, __gate.user.id)) return posLocked();
 
   if (!roleCanAccessModule(await readRoleMatrix(),__gate.user.role,"pos")) return NextResponse.json({success:false,error:"POS yetkiniz bulunmuyor."},{status:403});
   const invalid=validateCrmWrite(request);if(invalid)return invalid;
   if(!request.headers.get("origin")){const auth=request.headers.get("authorization")||"";const actor=auth.startsWith("Bearer ")?await getUserByToken(auth.slice(7).trim()):null;if(!actor||actor.id!==__gate.user.id)return NextResponse.json({success:false,error:"İstek kaynağı doğrulanamadı."},{status:403});}
   const parsed=await readCrmJson(request);if(!parsed.ok)return parsed.response;
+  if (!await hasPosGrant(request, __gate.user.id)) return posLocked();
   try {
     const body = parsed.value as Record<string, any>;
     const {
       action,
       shiftId,
-      cashierName = "Kasiyer",
       warehouseId = 2,
       openingAmount = "500.00",
       closingAmount,
@@ -109,7 +113,7 @@ export async function POST(request: Request) {
       const [{ id: __newShift_id }] = await db.insert(posShifts).values({
           shiftNumber,
           terminalCode,
-          cashierName,
+          cashierName: __gate.user.name,
           warehouseId: Number(warehouseId),
           openingAmount: String(Number(openingAmount || 500).toFixed(2)),
           expectedAmount: String(Number(openingAmount || 500).toFixed(2)),
@@ -126,8 +130,8 @@ export async function POST(request: Request) {
       const [newShift] = await db.select().from(posShifts).where(eq(posShifts.id, __newShift_id));
 
       await db.insert(auditLogs).values({
-        userId: "1",
-        userName: cashierName,
+        userId: String(__gate.user.id),
+        userName: __gate.user.name,
         action: "POS_SHIFT_OPENED",
         entity: "PosShift",
         entityId: String(newShift.id),
@@ -160,6 +164,7 @@ export async function POST(request: Request) {
         const shift=db.select().from(posShifts).where(eq(posShifts.id,Number(shiftId))).get();
         if(!shift || shift.status!=='OPEN')return {error:"Açık vardiya bulunamadı."};
         if(sqlite.prepare("SELECT 1 FROM pos_sale_intents WHERE shift_id=? AND status='PREPARED' LIMIT 1").get(shift.id))return {error:"Bu vardiyada sonuçlanmamış POS satış hazırlığı var. Önce tahsilatı kontrol edip satışları tamamlayın veya tahsilat yapılmadıysa iptal edin."};
+        if(sqlite.prepare("SELECT 1 FROM pos_return_context c JOIN order_returns r ON r.id=c.return_id WHERE c.shift_id=? AND r.status IN ('APPROVED','RECEIVED') LIMIT 1").get(shift.id))return {error:"Bu vardiyada sonuçlanmamış POS iadesi var. Para iadesini kontrol edip kaydı tamamlayın veya ödeme yapılmadıysa iptal edin."};
         const counted=Number(closingAmount??shift.expectedAmount??shift.openingAmount),expected=Number(shift.expectedAmount??shift.openingAmount);
         if(!Number.isFinite(counted)||counted<0)return {error:"Geçersiz kasa tutarı."};
         const diff=counted-expected,diffNote=diff===0?'Kasa TAM MUTABIK.':diff>0?`+${diff.toFixed(2)} TL KASA FAZLASI.`:`${diff.toFixed(2)} TL KASA AÇIĞI!`;

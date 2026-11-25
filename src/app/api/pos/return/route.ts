@@ -1,3 +1,4 @@
+import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { requireStaff, getUserByToken } from "@/lib/auth";
@@ -5,12 +6,24 @@ import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
 import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 import { createReturn, rejectReturn, receiveReturn, completeReturn, ReturnError } from "@/lib/order-returns";
 export const dynamic="force-dynamic";
+export async function GET(request:Request) {
+  const gate=await requireStaff(request);if(!gate.ok)return gate.response;
+  if(!roleCanAccessModule(await readRoleMatrix(),gate.user.role,'pos'))return NextResponse.json({success:false,error:'POS yetkiniz bulunmuyor.'},{status:403});
+  if(!await hasPosGrant(request,gate.user.id))return posLocked();
+  const rows=sqlite.prepare(`SELECT r.id,r.return_number AS returnNumber,r.order_number AS orderNumber,r.refund_amount AS refundAmount,r.status,r.created_by AS createdBy,c.refund_method AS refundMethod,c.shift_id AS shiftId
+   FROM order_returns r JOIN pos_return_context c ON c.return_id=r.id
+   WHERE r.status IN ('APPROVED','RECEIVED') OR (r.status='REFUNDED' AND r.resolved_at>=unixepoch()-86400)
+   ORDER BY CASE WHEN r.status='REFUNDED' THEN 1 ELSE 0 END,r.id DESC LIMIT 100`).all();
+  return NextResponse.json({success:true,data:rows},{headers:{'Cache-Control':'private, no-store'}});
+}
 export async function POST(request:Request) {
   const gate=await requireStaff(request);if(!gate.ok)return gate.response;
+ if(!await hasPosGrant(request,gate.user.id))return posLocked();
   if(!roleCanAccessModule(await readRoleMatrix(),gate.user.role,"pos"))return NextResponse.json({success:false,error:"POS iade yetkiniz bulunmuyor."},{status:403});
   const bad=validateCrmWrite(request);if(bad)return bad;
   if(!request.headers.get("origin")){const auth=request.headers.get("authorization")||"";const actor=auth.startsWith("Bearer ")?await getUserByToken(auth.slice(7).trim()):null;if(!actor||actor.id!==gate.user.id)return NextResponse.json({success:false,error:"İstek kaynağı doğrulanamadı."},{status:403});}
   const parsed=await readCrmJson(request);if(!parsed.ok)return parsed.response;
+  if(!await hasPosGrant(request,gate.user.id))return posLocked();
   if(!parsed.value||typeof parsed.value!=="object"||Array.isArray(parsed.value))return NextResponse.json({success:false,error:"Geçersiz istek."},{status:400});
   const body=parsed.value as Record<string,any>,actor={id:gate.user.id,name:gate.user.name};
   try {

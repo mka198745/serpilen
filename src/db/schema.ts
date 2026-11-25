@@ -124,6 +124,25 @@ export const crmDuplicateReviews = sqliteTable("crm_duplicate_reviews", {
   reviewedAt: integer("reviewed_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 }, (table) => [primaryKey({ columns: [table.customerLowId, table.customerHighId] }), index("crm_duplicate_reviews_high_idx").on(table.customerHighId, table.customerLowId)]);
 
+// POS screen PINs are distinct from account passwords. Grants store only hashes.
+export const posScreenPins = sqliteTable("pos_screen_pins", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  pinHash: text("pin_hash").notNull(),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: integer("locked_until").notNull().default(0),
+});
+export const posPinPasswordAttempts = sqliteTable("pos_pin_password_attempts", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: integer("locked_until").notNull().default(0),
+});
+export const posScreenGrants = sqliteTable("pos_screen_grants", {
+  grantHash: text("grant_hash").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sessionHash: text("session_hash").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, t => [index("pos_screen_grants_user_idx").on(t.userId,t.expiresAt)]);
+
 // ==========================================
 // 3. KATEGORİLER & MARKALAR
 // ==========================================

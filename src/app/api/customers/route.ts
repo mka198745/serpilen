@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { sqlite } from "@/db";
 import { requireStaff } from "@/lib/auth";
 import { canStillAccessPos } from "@/lib/pos-access";
@@ -16,11 +17,13 @@ const fail = (status: number, error: string) => NextResponse.json({ success: fal
 export async function POST(request: Request) {
   const gate = await requireStaff(request);
   if (!gate.ok) return gate.response;
+  if (!await hasPosGrant(request, gate.user.id)) return posLocked();
   const invalid = await validateCrmWriteAccess(request, gate.user);
   if (invalid) return invalid;
   if (!roleCanAccessModule(await readRoleMatrix(), gate.user.role, "pos")) return fail(403, "POS yetkiniz bulunmuyor.");
   const parsed = await readCrmJson(request);
   if (!parsed.ok) return parsed.response;
+  if (!await hasPosGrant(request, gate.user.id)) return posLocked();
   const body = parsed.value;
   if (!body || typeof body !== "object" || Array.isArray(body)) return fail(422, "Geçersiz müşteri bilgileri.");
   const input = body as Record<string, unknown>;

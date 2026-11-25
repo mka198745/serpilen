@@ -30,7 +30,7 @@ import {
   Coins,
 } from "lucide-react";
 
-import { authFetch } from "@/lib/client-auth";
+
 import { PosCustomerPicker, type PosCustomer } from "./PosCustomerPicker";
 interface PosCartItem {
   productId: number;
@@ -49,12 +49,16 @@ interface PosTerminalClientProps {
   initialProducts: (Product & { variants: ProductVariant[] })[];
   categories: Category[];
   initialShift: PosShift | null;
+  posFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  cashierName: string;
 }
 
 export function PosTerminalClient({
   initialProducts,
   categories,
   initialShift,
+  posFetch: authFetch,
+  cashierName,
 }: PosTerminalClientProps) {
   const [shift, setShift] = useState<PosShift | null>(initialShift);
   const [selectedCat, setSelectedCat] = useState<number | null>(null);
@@ -115,6 +119,18 @@ export function PosTerminalClient({
   const [returnPrepared, setReturnPrepared] = useState<{id:number;returnNumber:string;refundAmount:string}|null>(null);
   const [returnBusy, setReturnBusy] = useState(false);
   const [returnRefundMethod, setReturnRefundMethod] = useState<"CASH" | "CREDIT_CARD">("CASH");
+  const [recoverableReturns, setRecoverableReturns] = useState<Array<{id:number;returnNumber:string;orderNumber:string;refundAmount:string;status:string;createdBy:string;refundMethod:string;shiftId:number}>|null>(null);
+  const loadRecoverableReturns = async () => {
+    try {const res=await authFetch('/api/pos/return',{cache:'no-store'});const result=await res.json();if(!res.ok||!result.success)throw new Error();setRecoverableReturns(result.data);}
+    catch {alert('İade kayıtları alınamadı. Tekrar ödeme yapmadan önce yöneticiyle kontrol edin.');}
+  };
+  const resolveRecoverableReturn = async (item:NonNullable<typeof recoverableReturns>[number],action:'COMPLETE'|'CANCEL') => {
+    if(returnBusy)return;
+    const question=action==='COMPLETE'?`${item.refundAmount} TL iadenin ${item.refundMethod==='CASH'?'nakit':'karta'} gerçekten yapıldığını doğruluyor musunuz? Tekrar ödeme yapmayın.`:'Bu iade için müşteriye hiç para ödenmediğini doğruluyor musunuz?';
+    if(!window.confirm(question))return;setReturnBusy(true);
+    try {const res=await authFetch('/api/pos/return',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,returnId:item.id,confirmedAmount:item.refundAmount,confirmRefund:action==='COMPLETE'})});const result=await res.json();if(!result.success){alert(result.error||'İade kaydedilemedi.');return;}if(returnPrepared?.id===item.id)setReturnPrepared(null);await loadRecoverableReturns();alert(action==='COMPLETE'?'İade kaydedildi.':'İade iptal edildi.');}
+    catch {alert('Sonuç belirsiz. Tekrar ödeme yapmayın; aynı iade kaydını kontrol edin.');}finally{setReturnBusy(false);}
+  };
   const [returnReason, setReturnReason] = useState("Müşteri İadesi");
   const [isSearchingReturn, setIsSearchingReturn] = useState(false);
 
@@ -303,7 +319,7 @@ export function PosTerminalClient({
       const data=await res.json();
       if (!data.success) { alert("Satış kaydedilemedi: " + (data.error||"Hata") + ". Tahsilat yapıldıysa tekrar tahsil etmeyin; kaydı yöneticiyle inceleyin.");return; }
       localStorage.removeItem("serpilen_pos_pending_sale");setPendingSale(null);
-      setReceiptData({orderNumber:data.data.order.orderNumber,date:new Date().toLocaleString("tr-TR"),customerName:payload.customerName,cashierName:shift?.cashierName||"Kasiyer",paymentMethod:payload.paymentMethod==='CASH'?'NAKİT':payload.paymentMethod==='CREDIT_CARD'?'KREDİ KARTI':'PARÇALI',items:payload.items.map((it:any)=>({...it,name:it.productName})),rawSubtotal:payload.subtotal,discountAmount:Number(data.data.order.discountTotal),grandTotal:Number(data.data.order.grandTotal)});
+      setReceiptData({orderNumber:data.data.order.orderNumber,date:new Date().toLocaleString("tr-TR"),customerName:payload.customerName,cashierName:data.data.cashierName || cashierName,paymentMethod:payload.paymentMethod==='CASH'?'NAKİT':payload.paymentMethod==='CREDIT_CARD'?'KREDİ KARTI':'PARÇALI',items:payload.items.map((it:any)=>({...it,name:it.productName})),rawSubtotal:payload.subtotal,discountAmount:Number(data.data.order.discountTotal),grandTotal:Number(data.data.order.grandTotal)});
       setCart([]);setOverallDiscount(0);
       if(shift){const sr=await authFetch("/api/pos/shift?warehouseId=2");const sd=await sr.json();if(sd.success&&sd.currentShift)setShift(sd.currentShift);}
     } catch {alert("Satışın kaydedilip kaydedilmediği bilinmiyor. Yeniden tahsilat yapmayın; aynı kaydı tekrar sorgulayın.");}
@@ -358,7 +374,7 @@ export function PosTerminalClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "OPEN",
-          cashierName: "Elif Demir (Kasiyer)",
+          // Kasiyer kimliği sunucu tarafından oturumdan atanır.
           warehouseId: 2,
           openingAmount: openingCashInput,
           terminalCode: "KASA-01",
@@ -416,7 +432,6 @@ export function PosTerminalClient({
           type: cashTransType,
           amount: cashTransAmount,
           reason: cashTransReason,
-          cashierName: shift.cashierName,
         }),
       });
       const data = await res.json();
@@ -448,7 +463,7 @@ export function PosTerminalClient({
     setIsSearchingReturn(true);
     setReturnOrderData(null);
     try {
-      const res = await authFetch(`/api/orders?orderNumber=${encodeURIComponent(returnSearchQuery.trim())}`);
+      const res = await authFetch(`/api/pos/order?orderNumber=${encodeURIComponent(returnSearchQuery.trim())}`);
       const data = await res.json();
       setIsSearchingReturn(false);
       if (data.success && data.data && !data.data.detailsRestricted && Array.isArray(data.data.items)) {
@@ -562,7 +577,7 @@ export function PosTerminalClient({
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             </h1>
             <p className="text-[11px] text-stone-400 mt-0.5">
-              Kasiyer: <strong>{shift?.cashierName || "Vardiya Kapalı"}</strong>
+              Kasiyer: <strong>{cashierName}</strong>
               {shift?.shiftNumber && <span className="font-mono text-stone-500 ml-1.5">({shift.shiftNumber})</span>}
             </p>
           </div>
@@ -598,7 +613,7 @@ export function PosTerminalClient({
 
           {/* Return & Exchange Button */}
           <button
-            onClick={() => setIsReturnModalOpen(true)}
+            onClick={() => {setIsReturnModalOpen(true);void loadRecoverableReturns();}}
             className="px-2.5 py-1.5 bg-rose-900/80 hover:bg-rose-800 text-rose-100 font-bold rounded-lg border border-rose-700/60 flex items-center gap-1.5 transition"
           >
             <RotateCcw className="w-3.5 h-3.5 text-rose-300" />
@@ -763,7 +778,7 @@ export function PosTerminalClient({
 
             {/* Customer Switcher + Add Customer Button */}
             <div className="flex items-center gap-1.5">
-              <PosCustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} />
+              <PosCustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} posFetch={authFetch} />
 
               <button
                 onClick={() => { setNewCustomerError(null); setIsNewCustomerModalOpen(true); }}
@@ -1148,6 +1163,12 @@ export function PosTerminalClient({
               </button>
             </div>
 
+            <div className="p-3 rounded-xl bg-amber-50 text-amber-950 text-xs space-y-2" role="status">
+              <p>Önce açık iadeleri kontrol edin. Ödeme durumu belirsizse tekrar para iadesi yapmayın; yöneticiyle inceleyin.</p>
+              <button type="button" className="underline font-bold" onClick={loadRecoverableReturns}>İade kayıtlarını yenile</button>
+              {recoverableReturns?.map(item=><div key={item.id} className="border-t border-amber-200 pt-2"><p>{item.returnNumber} · {item.orderNumber} · {Number(item.refundAmount).toFixed(2)} TL · {item.refundMethod==='CASH'?'Nakit':'Kart'} · {item.createdBy} · {item.status==='REFUNDED'?'Tamamlandı':'Açık'}</p>{item.status==='APPROVED'&&<div className="flex gap-3 mt-1"><button disabled={returnBusy} className="underline font-bold" onClick={()=>resolveRecoverableReturn(item,'COMPLETE')}>Para iadesi yapıldı — kaydet</button><button disabled={returnBusy} className="underline" onClick={()=>resolveRecoverableReturn(item,'CANCEL')}>Para ödenmedi — iptal</button></div>}{item.status==='RECEIVED'&&<p>Yönetici incelemesi gerekli.</p>}</div>)}
+              {recoverableReturns?.length===0&&<p>Açık veya yakın zamanda tamamlanmış POS iadesi yok.</p>}
+            </div>
             {/* Search Order Form */}
             <form onSubmit={handleSearchReturnOrder} className="flex gap-2">
               <input

@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { authFetch } from "@/lib/client-auth";
+
 
 export interface PosCustomer { id: number; name: string; phone: string; companyName: string | null; loyaltyPoints: number }
 interface SearchResult { data: PosCustomer[]; page: number; hasMore: boolean; query: string }
 
-export function PosCustomerPicker({ selected, onSelect }: { selected: PosCustomer | null; onSelect: (customer: PosCustomer | null) => void }) {
+export function PosCustomerPicker({ selected, onSelect, posFetch: authFetch }: { selected: PosCustomer | null; onSelect: (customer: PosCustomer | null) => void; posFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> }) {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);

@@ -1,5 +1,6 @@
 "use client";
 
+import { PaymentTimeNotice } from "@/components/layout/PaymentTimeNotice";
 import React, { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
@@ -402,6 +403,7 @@ export function CheckoutClient() {
             <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-xs space-y-4 sticky top-24">
               <h3 className="font-black text-base text-stone-900">Sipariş Özeti</h3>
 
+              <PaymentTimeNotice />
               {/* Items */}
               <div className="space-y-3 divide-y divide-stone-100 max-h-60 overflow-y-auto text-xs">
                 {items.map((it, i) => (

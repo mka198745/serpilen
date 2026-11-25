@@ -1,3 +1,4 @@
+import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { NextResponse } from "next/server";
 import { sqlite } from "@/db";
 import { requireStaff, getUserByToken } from "@/lib/auth";
@@ -8,6 +9,7 @@ import { StockShortage } from "@/lib/inventory-engine";
 export const dynamic="force-dynamic";
 export async function GET(request:Request) {
  const gate=await requireStaff(request);if(!gate.ok)return gate.response;
+ if(!await hasPosGrant(request,gate.user.id))return posLocked();
  if(!roleCanAccessModule(await readRoleMatrix(),gate.user.role,'pos'))return NextResponse.json({success:false,error:'POS yetkiniz bulunmuyor.'},{status:403});
  const manager=['SUPER_ADMIN','STORE_MANAGER'].includes(gate.user.role);
  const rows=sqlite.prepare(`SELECT request_key AS requestKey,actor_id AS actorId,actor_name AS actorName,shift_id AS shiftId,status,payload_json AS payloadJson,created_at AS createdAt FROM pos_sale_intents WHERE status='PREPARED' ${manager?'':'AND actor_id=?'} ORDER BY created_at LIMIT 100`).all(...(manager?[]:[gate.user.id])) as Array<{payloadJson:string;[k:string]:unknown}>;
@@ -15,10 +17,12 @@ export async function GET(request:Request) {
 }
 export async function POST(request:Request) {
  const gate=await requireStaff(request);if(!gate.ok)return gate.response;
+ if(!await hasPosGrant(request,gate.user.id))return posLocked();
  if(!roleCanAccessModule(await readRoleMatrix(),gate.user.role,'pos'))return NextResponse.json({success:false,error:'POS yetkiniz bulunmuyor.'},{status:403});
  const bad=validateCrmWrite(request);if(bad)return bad;
  if(!request.headers.get('origin')){const auth=request.headers.get('authorization')||'';const user=auth.startsWith('Bearer ')?await getUserByToken(auth.slice(7).trim()):null;if(!user||user.id!==gate.user.id)return NextResponse.json({success:false,error:'İstek kaynağı doğrulanamadı.'},{status:403});}
  const parsed=await readCrmJson(request);if(!parsed.ok)return parsed.response;
+ if(!await hasPosGrant(request,gate.user.id))return posLocked();
  if(!parsed.value||typeof parsed.value!=='object'||Array.isArray(parsed.value))return NextResponse.json({success:false,error:'Geçersiz istek.'},{status:422});
  const body=parsed.value as Record<string,any>,actor={id:gate.user.id,name:gate.user.name,role:gate.user.role};
  try {

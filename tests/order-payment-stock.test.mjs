@@ -1,3 +1,4 @@
+import {testPosGrant} from './helpers/pos-grant.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -14,13 +15,13 @@ test('Havale beklerken stok tutulur, banka onayı ve iptal atomiktir; stok aşı
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'eft-test-')),file=path.join(dir,'db'),env={...process.env,DATABASE_URL:`sqlite:${file}`},servers=[];let db;
  try{
   const mig=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(mig.status,0,mig.stderr);db=new Database(file);
-  const tokens={};for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER']){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)').run(role,role+'@test.invalid','x',role).lastInsertRowid;tokens[role]=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(tokens[role]).digest('hex'),Math.floor(Date.now()/1000)+3600);}
+  const tokens={},grants={};for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER']){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)').run(role,role+'@test.invalid','x',role).lastInsertRowid;tokens[role]=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(tokens[role]).digest('hex'),Math.floor(Date.now()/1000)+3600);grants[role]=testPosGrant(db,id,tokens[role]);}
   db.exec(`INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'One','one','S1',1,10),(2,'Two','two','S2',1,10),(3,'Three','three','S3',1,10);
    INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(3,1,1,0),(3,2,3,0),(3,3,0,0),(2,1,2,0);
    INSERT INTO pos_shifts(id,cashier_name,warehouse_id,opening_amount,expected_amount) VALUES(1,'Test',2,100,100);
    INSERT INTO app_settings(key,value) VALUES('site.checkout.eft_iban','TR330006100519786457841326'),('site.checkout.eft_account_name','Test account'),('site.cart.shipping_fee','0');`);
   const bases=[];for(let i=0;i<2;i++){const p=await port(),s=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(p),NODE_ENV:'production'},stdio:'ignore'});servers.push(s);bases.push(`http://127.0.0.1:${p}`);let ready=false;for(let j=0;j<100;j++){try{await fetch(bases[i]+'/api/products');ready=true;break}catch{await delay(100)}}assert.ok(ready);}
-  const auth=role=>({Authorization:`Bearer ${tokens[role]}`,'Content-Type':'application/json'});
+  const auth=role=>({Authorization:`Bearer ${tokens[role]}`,'X-Pos-Grant':grants[role],'Content-Type':'application/json'});
   const line=id=>({productId:id,productName:'forged',sku:'fake',unitPrice:10,quantity:1,totalPrice:10});
   const post=(base,items,patch={},role)=>fetch(base+'/api/orders',{method:'POST',headers:role?auth(role):{'Content-Type':'application/json'},body:JSON.stringify({orderType:'ONLINE_B2C',paymentMethod:'EFT_HAVALE',customerName:'Test',customerEmail:'buyer@example.test',warehouseId:3,items,subtotal:items.length*10,grandTotal:items.length*10,taxTotal:2,...patch})});
   const patch=(id,status,role='SUPER_ADMIN')=>fetch(bases[0]+'/api/orders',{method:'PATCH',headers:auth(role),body:JSON.stringify({id,status})});

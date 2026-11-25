@@ -190,6 +190,13 @@
       "when": 1794783826192,
       "tag": "0026_brand_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1794784826192,
+      "tag": "0027_pos_screen_pin",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { createHash, randomUUID } from "node:crypto";
 import { db, sqlite } from "@/db";
 import { orders, orderItems, orderStatusHistory, customers, loyaltyTransactions, posShifts, promotions, coupons } from "@/db/schema";
@@ -97,6 +98,7 @@ export async function GET(request: Request) {
       const phoneMatches = phoneDigits.length >= 7 && !!ord.customerPhone &&
         ord.customerPhone.replace(/\D/g, "") === phoneDigits;
       const posOnly = !canOrders && canPos;
+      if(posOnly && staff.ok && !await hasPosGrant(request,staff.user.id)) return posLocked();
       if (!canOrders && !posOnly && phone && !phoneMatches) {
         return NextResponse.json({ success: false, error: "Sipariş bulunamadı. Numara/telefon kontrol edin." }, { status: 404 });
       }

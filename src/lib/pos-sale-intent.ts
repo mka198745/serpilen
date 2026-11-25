@@ -83,7 +83,7 @@ export function cancelPosSale(key:unknown,actor:Actor,payload?:Payload) {
 }
 export function completePosSale(key:unknown,actor:Actor) {
  const intent=fetchIntent(key);access(intent,actor);
- if(intent.status==='COMPLETED' && intent.order_id){const order=db.select().from(orders).where(eq(orders.id,intent.order_id)).get();if(!order)throw new StockShortage('Satış kaydı tutarsız.');return {order,alreadyCompleted:true};}
+ if(intent.status==='COMPLETED' && intent.order_id){const order=db.select().from(orders).where(eq(orders.id,intent.order_id)).get();if(!order)throw new StockShortage('Satış kaydı tutarsız.');return {order,alreadyCompleted:true,cashierName:intent.actor_name};}
  if(intent.status!=='PREPARED')throw new StockShortage('İptal edilmiş satış tamamlanamaz.');
  const p=JSON.parse(intent.payload_json) as Payload,q=JSON.parse(intent.quote_json) as Quote,{cash,card}=split(p,q.grandTotal);
  const shift=sqlite.prepare("SELECT * FROM pos_shifts WHERE id=? AND warehouse_id=2 AND status='OPEN'").get(intent.shift_id) as {total_sales_cash:number;total_sales_card:number;total_sales_split:number;expected_amount:number;opening_amount:number}|undefined;
@@ -104,5 +104,5 @@ export function completePosSale(key:unknown,actor:Actor) {
  sqlite.prepare('INSERT INTO pos_sale_requests(request_key,request_hash,actor_id,order_id) VALUES(?,?,?,?)').run(intent.request_key,intent.request_hash,intent.actor_id,orderId);
  sqlite.prepare("UPDATE pos_sale_intents SET status='COMPLETED',order_id=?,payload_json='{}',resolved_at=unixepoch() WHERE request_key=?").run(orderId,intent.request_key);
  audit(actor,'POS_SALE_COMPLETED',intent.request_key,`${orderNumber}: ${q.grandTotal.toFixed(2)} TL harici tahsilat onayı`);
- return {order:db.select().from(orders).where(eq(orders.id,orderId)).get()!,alreadyCompleted:false};
+ return {order:db.select().from(orders).where(eq(orders.id,orderId)).get()!,alreadyCompleted:false,cashierName:intent.actor_name};
 }

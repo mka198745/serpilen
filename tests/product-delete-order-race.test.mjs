@@ -1,3 +1,4 @@
+import {testPosGrant} from './helpers/pos-grant.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -34,7 +35,8 @@ test('Ürün silme ile eşzamanlı sipariş ve eski sepetler kayıpsız doğrula
   const success=await order([line(2,101),line(3,102)],{orderNumber:reservation.orderNumber,orderNumberToken:reservation.token,couponCode:'TEST'});assert.equal(success.status,200,await success.clone().text());assert.equal(db.prepare('SELECT used FROM order_number_reservations WHERE token=?').get(reservation.token).used,1);assert.equal(db.prepare("SELECT used_count FROM coupons WHERE code='TEST'").get().used_count,1);
   assert.equal((await del(2)).status,409);assert.equal((await del(3)).status,409);
   const posPayload={orderType:'POS',paymentMethod:'CASH',warehouseId:2,posShiftId:1,posRequestKey:crypto.randomUUID(),items:[line(4)],discountTotal:0,grandTotal:10};
-  const sale=body=>fetch(base+'/api/pos/sale',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const grant=testPosGrant(db,uid,token);
+  const sale=body=>fetch(base+'/api/pos/sale',{method:'POST',headers:{'X-Pos-Grant':grant,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
   const pos=await sale({action:'PREPARE',payload:posPayload});assert.equal(pos.status,200,await pos.clone().text());assert.equal((await del(4)).status,409);const posComplete=await sale({action:'COMPLETE',key:posPayload.posRequestKey,confirmPayment:true});assert.equal(posComplete.status,200,await posComplete.clone().text());const posResult=await posComplete.json();assert.match(posResult.data.order.orderNumber,/^POS-/);assert.equal(posResult.data.order.status,'DELIVERED');assert.equal((await del(4)).status,409);
   const stalePos=await sale({action:'PREPARE',payload:{...posPayload,posRequestKey:crypto.randomUUID(),items:[line(1)]}});assert.equal(stalePos.status,409);
 
