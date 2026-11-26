@@ -2523,7 +2523,7 @@ export function AdminDashboardClient({
                           const money=(value:unknown)=>value===null||value===undefined||value===""?"—":`${Number(value).toFixed(2)} TL`;
                           return <tr key={variant?`v-${variant.id}`:`p-${prod.id}`} className="hover:bg-stone-50/50">
                             <td className="py-2.5 px-2">{brand||"—"}</td>
-                            <td className="py-2.5 px-2"><span className="font-bold text-stone-900 block">{prod.name}</span><span className="block text-[10px] text-stone-500 font-mono">{variant?variant.sku:prod.sku}{(variant?variant.barcode:prod.barcode) && ` · ${variant?variant.barcode:prod.barcode}`}</span></td>
+                            <td className="py-2.5 px-2"><span className="font-bold text-stone-900 block">{prod.name}</span></td>
                             <td className="py-2.5 px-2">{variant?(variantLabel(variant)||"—"):"—"}</td>
                             <td className="py-2.5 px-2">{categoriesList.find(c=>String(c.id)===String(prod.categoryId))?.name || prod.categoryName || "—"}</td>
                             <td className="py-2.5 px-2"><div className="font-bold">{money(retailPrice)}</div><div className="text-[10px] text-stone-500">Maliyet {money(buyPrice)}</div></td>
@@ -2534,7 +2534,6 @@ export function AdminDashboardClient({
                               {variant&&<span className="block text-[10px] text-stone-500">Varyant: {variant.isActive===false?"Pasif":"Aktif"}</span>}
                             </td>
                             <td className="py-2.5 px-2 space-y-1">
-                              {variant&&<button type="button" aria-label={`${prod.name} ${variantLabel(variant)||variant.sku} varyantını düzenle`} onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setTableVariantEditor({productId:prod.id,variantId:variant.id,name:prod.name});}} className="block text-amber-800 font-bold hover:underline">Varyantı düzenle</button>}
                               <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
                               {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId!==null} onClick={()=>void handleDeleteProduct(prod.id,prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId===prod.id?"Siliniyor...":variant?"Ürünü sil":"Sil"}</button>}
                               <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
