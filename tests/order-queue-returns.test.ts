@@ -61,7 +61,7 @@ test('discount claims release once and inconsistent counters roll back',()=>{
  assert.equal((sqlite.prepare('SELECT used_count FROM coupons WHERE id=1').get() as {used_count:number}).used_count,0);
  assert.equal((sqlite.prepare('SELECT used_count FROM promotions WHERE id=1').get() as {used_count:number}).used_count,0);
  tx(()=>discounts.claimOrderDiscounts(89,1,[1]));assert.throws(()=>tx(()=>discounts.releaseOrderDiscounts(89)),/inconsistent/);
- assert.equal((sqlite.prepare("SELECT COUNT(*) n FROM order_discount_claims WHERE order_id=89 AND status='ACTIVE'").get() as {n:number}).n,2);
+ assert.equal((sqlite.prepare("SELECT COUNT(*) n FROM order_discount_claims WHERE order_id=89 AND status='ACTIVE'").get() as {n:number}).n,3);
 });
 
 test.after(()=>{sqlite.close();fs.rmSync(dir,{recursive:true,force:true});});

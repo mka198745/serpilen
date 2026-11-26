@@ -432,6 +432,20 @@ export const orderReturnItems = sqliteTable("order_return_items", {
   refundAmount: numeric("refund_amount").notNull().default("0.00"),
 }, (table) => [index("order_return_items_return_idx").on(table.returnId, table.id)]);
 
+// Minimal append-only anti-replay allocations survive future authorized refund deletion.
+export const deletedRefundGuards = sqliteTable("deleted_refund_guards", {
+  returnId: integer("return_id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  refundCents: integer("refund_cents").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+}, table => [index("deleted_refund_guards_order_idx").on(table.orderId)]);
+export const deletedRefundGuardItems = sqliteTable("deleted_refund_guard_items", {
+  returnId: integer("return_id").notNull().references(() => deletedRefundGuards.returnId, {onDelete:"restrict"}),
+  orderItemId: integer("order_item_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  refundCents: integer("refund_cents").notNull(),
+}, table => [primaryKey({columns:[table.returnId,table.orderItemId]}),index("deleted_refund_guard_items_order_item_idx").on(table.orderItemId,table.returnId)]);
+
 export const posReturnContext = sqliteTable("pos_return_context", {
   returnId: integer("return_id").primaryKey(),
   shiftId: integer("shift_id").notNull(),

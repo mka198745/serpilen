@@ -227,6 +227,7 @@ export async function POST(request: Request) {
       if(prior && prior.request_hash===requestHash && prior.actor_id===posActorId) {
         const order=db.select().from(orders).where(eq(orders.id,prior.order_id)).get();
         if(order)return NextResponse.json({success:true,data:{order,documentNumber:order.orderNumber}});
+        return NextResponse.json({success:false,error:"Bu POS işlemi daha önce tamamlandı; satış kaydı erişilemiyor. Tekrar tahsilat yapmayın."},{status:409});
       }
       return NextResponse.json({success:false,error:"POS satışı önce güvenli hazırlık üzerinden başlatılmalıdır; tahsilat yapmayın."},{status:409});
     } else {
@@ -247,7 +248,7 @@ export async function POST(request: Request) {
         if (prior) {
           if (prior.request_hash!==requestHash || prior.actor_id!==posActorId) throw new StockShortage("Bu POS işlem anahtarı farklı bir satışa ait.");
           const order=db.select().from(orders).where(eq(orders.id,prior.order_id)).get();
-          if(!order) throw new StockShortage("POS işlem kaydı tutarsız; yetkiliye başvurun.");
+          if(!order) throw new StockShortage("POS işlemi daha önce tamamlandı; satış kaydı erişilemiyor. Tekrar tahsilat yapmayın ve yetkiliye başvurun.");
           return order;
         }
       }

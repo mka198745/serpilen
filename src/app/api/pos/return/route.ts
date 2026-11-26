@@ -48,7 +48,10 @@ export async function POST(request:Request) {
       if(body.action==='COMPLETE') {
         if(body.confirmRefund!==true)throw new ReturnError("Para iadesinin yapıldığını doğrulayın.",422);
         const r=sqlite.prepare("SELECT status,refund_amount FROM order_returns WHERE id=?").get(id) as {status:string;refund_amount:number|string}|undefined;
-        if(!r)throw new ReturnError("İade bulunamadı.",404);
+        if(!r) {
+          if(sqlite.prepare("SELECT 1 FROM deleted_refund_guards WHERE return_id=?").get(id))throw new ReturnError("Bu iade daha önce tamamlandı; kaydı erişilemiyor. Tekrar para iadesi yapmayın.");
+          throw new ReturnError("İade bulunamadı.",404);
+        }
         if(Math.round(Number(body.confirmedAmount)*100)!==Math.round(Number(r.refund_amount)*100))throw new ReturnError("Onaylanan tutar kayıtla eşleşmiyor.",409);
         if(r.status==='REFUNDED') return completeReturn(id,actor);
         receiveReturn(id,actor);

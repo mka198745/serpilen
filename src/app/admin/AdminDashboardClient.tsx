@@ -66,6 +66,7 @@ import {
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
 import { AuthorizedProductLinkImport } from "@/components/admin/ProductLinkImport";
+import { EditProductVariants } from "@/components/admin/EditProductVariants";
 import { NewProductVariants, type VariantDraft } from "@/components/admin/NewProductVariants";
 import { validateNewProductVariants } from "@/lib/new-product-variants";
 import { variantStockTotal, variantStockTarget } from "@/lib/variant-stock-total";
@@ -225,6 +226,8 @@ export function AdminDashboardClient({
   const [catalogBrandFilter, setCatalogBrandFilter] = useState("ALL");
   const [catalogCatFilter, setCatalogCatFilter] = useState("ALL");
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [variantEditDirty, setVariantEditDirty] = useState(false);
+  const [variantEditBusy, setVariantEditBusy] = useState(false);
   const [variantProductId, setVariantProductId] = useState<string>("");
   const [newVariant, setNewVariant] = useState({
     colorName: "",
@@ -287,6 +290,14 @@ export function AdminDashboardClient({
   const [orderFeedback, setOrderFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [returnModalOrder, setReturnModalOrder] = useState<any | null>(null);
   const [returnSelections, setReturnSelections] = useState<Record<number, number>>({});
+  const [deletionPreview, setDeletionPreview] = useState<{kind:"order"|"return";id:number;number:string;orderNumber:string;returnCount:number;fingerprint:string;rights:{loyalty:{customerId:number;current:number;delta:number;after:number}|null;discounts:{kind:string;id:number;name:string;current:number;after:number}[];legacyReviewRequired:boolean};stocks:{warehouseId:number;warehouseName:string;productId:number;productName:string;variantId:number|null;variantName:string|null;physical:number;reserved:number;delta:number;after:number}[]} | null>(null);
+  const [deletionPhysical, setDeletionPhysical] = useState(false);
+  const [deletionCascade, setDeletionCascade] = useState(false);
+  const [deletionRights, setDeletionRights] = useState(false);
+  const [deletionLegacy, setDeletionLegacy] = useState(false);
+  const [deletionBusy, setDeletionBusy] = useState(false);
+  const deletionLock = React.useRef(false);
+
 
   /* --- FAZ 5: Raporlama Motoru --- */
   const [reportData, setReportData] = useState<any | null>(null);
@@ -523,6 +534,28 @@ export function AdminDashboardClient({
   React.useEffect(() => {
     if (activeTab === "orders" && ordersSubTab === "returns") void loadReturns();
   }, [activeTab, ordersSubTab, loadReturns]);
+
+  const openDeletion = async (kind:"order"|"return",id:number) => {
+    if(deletionLock.current)return;deletionLock.current=true;setDeletionBusy(true);setOrderFeedback(null);
+    try {
+      const res=await authFetch(`/api/order-deletion?kind=${kind}&id=${id}`,{cache:"no-store"});const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success){setOrderFeedback({text:typeof data.error==="string"?data.error:"Silme önizlemesi alınamadı.",isError:true});return;}
+      setDeletionPhysical(false);setDeletionCascade(false);setDeletionRights(false);setDeletionLegacy(false);setDeletionPreview(data.data);
+    } catch {setOrderFeedback({text:"Silme önizlemesi alınamadı; sunucuya ulaşılamadı.",isError:true});}
+    finally {deletionLock.current=false;setDeletionBusy(false);}
+  };
+  const executeDeletion = async () => {
+    const p=deletionPreview;if(!p||deletionLock.current||!deletionPhysical||(p.returnCount>0&&!deletionCascade)||((p.rights.loyalty?.delta||p.rights.discounts.length)&&!deletionRights)||(p.rights.legacyReviewRequired&&!deletionLegacy))return;
+    deletionLock.current=true;setDeletionBusy(true);
+    try {
+      const res=await authFetch("/api/order-deletion",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:p.kind,id:p.id,fingerprint:p.fingerprint,physicalConfirmed:deletionPhysical,cascadeConfirmed:deletionCascade,rightsConfirmed:deletionRights,legacyConfirmed:deletionLegacy})});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success){setDeletionPreview(null);setOrderFeedback({text:typeof data.error==="string"?data.error:"Silme işlemi tamamlanamadı.",isError:true});return;}
+      setDeletionPreview(null);await refreshOrders();await loadReturns();void loadInventory();
+      setOrderFeedback({text:`${p.number} kalıcı olarak silindi.${data.data.promoted?` Stok sırasındaki ${data.data.promoted} siparişe stok ayrıldı.`:""}`,isError:false});
+    } catch {setDeletionPreview(null);setOrderFeedback({text:"Sunucuya ulaşılamadı; işlemin sonucunu doğrulamak için listeleri yenileyin.",isError:true});}
+    finally {deletionLock.current=false;setDeletionBusy(false);}
+  };
 
   const advanceOrder = async (id: number, status: string) => {
     const ord = orders.find(o => o.id === id);
@@ -1030,7 +1063,8 @@ export function AdminDashboardClient({
 
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct) return;
+    if (!editingProduct || variantEditBusy) return;
+    if (variantEditDirty && !window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Yalnızca ürün ana bilgileri kaydedilsin mi?")) return;
     const res = await authFetch("/api/products", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2373,7 +2407,7 @@ export function AdminDashboardClient({
                               </td>
                               <td className="py-3 px-3 space-y-1">
                                 <button
-                                  onClick={() => setEditingProduct({ ...prod })}
+                                  onClick={() => { setVariantEditDirty(false); setVariantEditBusy(false); setEditingProduct({ ...prod }); }}
                                   className="flex items-center gap-1 text-amber-800 font-bold hover:underline"
                                 >
                                   <Pencil className="w-3 h-3" /> Düzenle
@@ -4107,6 +4141,7 @@ export function AdminDashboardClient({
                                     </div>
                                   );
                                 })()}
+                                {(isSuper || (matrixLoaded && myMatrixRow.orders === true && myMatrixRow.orderReturnDelete === true)) && <button type="button" disabled={deletionBusy} onClick={()=>void openDeletion("order",ord.id)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-100 text-rose-800 disabled:opacity-50">Sil</button>}
                                 {ord.status === "DELIVERED" && (
                                   <button onClick={() => openReturnModal(ord)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-600 text-white">
                                     İade Başlat
@@ -4155,6 +4190,7 @@ export function AdminDashboardClient({
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap gap-1">
+                            {(isSuper || (matrixLoaded && myMatrixRow.orders === true && myMatrixRow.orderReturnDelete === true)) && <button type="button" disabled={deletionBusy} onClick={()=>void openDeletion("return",r.id)} className="px-2 py-1 bg-rose-100 text-rose-800 rounded-lg text-[10px] font-bold disabled:opacity-50">Sil</button>}
                             {r.status === "REQUESTED" && (
                               <>
                                 <button onClick={() => void returnAction(r.id, "APPROVE")} className="px-2 py-1 bg-amber-700 text-white rounded-lg text-[10px] font-bold">Onayla</button>
@@ -4687,6 +4723,7 @@ export function AdminDashboardClient({
                               <span className="font-bold text-stone-800 block">{mod.label}</span>
                               {mod.key === "audit" && <span className="block text-[10px] text-rose-800">Müşteri ve diğer hassas kayıtların tüm ayrıntılarını açar.</span>}
                               {mod.key === "productDelete" && <span className="block text-[10px] text-rose-800">Kalıcı silme yetkisidir; katalog erişimi de gerekir. Stok ve geçmiş korumaları sürer.</span>}
+                              {mod.key === "orderReturnDelete" && <span className="block text-[10px] text-rose-800">Sipariş ve iade kalıcı silme yetkisidir; Siparişler erişimi de gerekir. Silme işlemi henüz kullanıma açılmadı.</span>}
                               <span className="text-[9px] font-mono text-stone-400">{mod.key}</span>
                             </td>
                             {MATRIX_ROLES.map((role) => {
@@ -4788,7 +4825,7 @@ export function AdminDashboardClient({
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-stone-100">
               <h3 className="font-black text-base text-stone-900">Ürün Düzenle</h3>
-              <button type="button" onClick={() => setEditingProduct(null)} className="p-1 text-stone-400 hover:text-stone-700">
+              <button type="button" disabled={variantEditBusy} onClick={() => { if (!variantEditDirty || window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Kapatılsın mı?")) setEditingProduct(null); }} className="p-1 text-stone-400 hover:text-stone-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -4844,8 +4881,9 @@ export function AdminDashboardClient({
                 <input type="checkbox" checked={!!editingProduct.isFeatured} onChange={(e) => setEditingProduct({ ...editingProduct, isFeatured: e.target.checked })} />
                 Öne çıkan ürün
               </label>
-              <button type="submit" className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl">Değişiklikleri Kaydet</button>
+              <button type="submit" disabled={variantEditBusy} className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl disabled:opacity-50">Ürün ana bilgilerini kaydet</button>
             </form>
+            {editingProduct.hasVariants && <EditProductVariants key={editingProduct.id} productId={editingProduct.id} onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async () => { await Promise.all([refreshProducts(), loadInventory()]); }} />}
           </div>
         </div>
       )}
@@ -5268,6 +5306,28 @@ export function AdminDashboardClient({
       {/* ============================================================ */}
       {/* FAZ 4 / MODAL: İADE BAŞLAT */}
       {/* ============================================================ */}
+      {deletionPreview && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="order-delete-title">
+          <div className="bg-white rounded-2xl p-5 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+            <h3 id="order-delete-title" className="font-black text-lg">{deletionPreview.kind === "order" ? "Siparişi" : "İadeyi"} kalıcı sil</h3>
+            <p className="text-sm font-bold">{deletionPreview.number} · Sipariş {deletionPreview.orderNumber}</p>
+            <p className="text-xs text-rose-800">Bu işlem geri alınamaz. Bankada tahsilat veya iade yapılmaz; kasa hareketleri ve işlem güvenlik kayıtları korunur.</p>
+            {deletionPreview.returnCount>0 && <p className="text-sm font-bold text-rose-700">Bu siparişe bağlı {deletionPreview.returnCount} sonuçlanmış iade de kalıcı olarak silinecek.</p>}
+            <div className="overflow-x-auto"><table className="w-full text-xs text-left"><thead><tr><th>Depo</th><th>Ürün / varyant</th><th>Fiili</th><th>Ayrılmış</th><th>Değişim</th><th>Sonra</th></tr></thead><tbody>
+              {deletionPreview.stocks.map(x=><tr key={`${x.warehouseId}:${x.productId}:${x.variantId}`}><td>{x.warehouseName} (#{x.warehouseId})</td><td>{x.productName} {x.variantId!==null?`· ${x.variantName || "Varyant"} (#${x.variantId})`:"· ana ürün"}</td><td>{x.physical}</td><td>{x.reserved}</td><td>{x.delta>0?"+":""}{x.delta}</td><td>{x.after}</td></tr>)}
+            </tbody></table>{!deletionPreview.stocks.length&&<p className="text-xs">Terslenecek stok hareketi yok.</p>}</div>
+            <p className="text-xs text-stone-600">Stok geri eklendiğinde bekleyen siparişlere FIFO sırasıyla rezervasyon yapılabilir; bu nedenle sonraki ayrılmış miktar değişebilir.</p>
+            {(deletionPreview.rights.loyalty || deletionPreview.rights.discounts.length>0) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs space-y-1"><p className="font-bold">Puan ve indirim hakları terslenecek</p>{deletionPreview.rights.loyalty && <p>Müşteri #{deletionPreview.rights.loyalty.customerId}: {deletionPreview.rights.loyalty.current} puan → {deletionPreview.rights.loyalty.after} puan (değişim {deletionPreview.rights.loyalty.delta>0?"+":""}{deletionPreview.rights.loyalty.delta}).</p>}{deletionPreview.rights.discounts.map(d=><p key={`${d.kind}:${d.id}`}>{d.kind==="COUPON"?"Kupon":"Kampanya"} {d.name} (#{d.id}): kullanım {d.current} → {d.after}</p>)}</div>}
+            {deletionPreview.rights.legacyReviewRequired && <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900"><p className="font-bold">Eski sipariş: kupon/kampanya geçmişinin eksiksizliği otomatik kanıtlanamıyor.</p><p>{deletionPreview.rights.discounts.length===0 ? "Sistemde kayıtlı kupon veya kampanya hakkı bulunmuyor." : "Sistemde kayıtlı haklar yukarıda listelenmiştir."} Dış belgelerle tüm kullanılan hakları kontrol edin. Eksik hak varsa veya doğrulayamıyorsanız silmeyin.</p></div>}
+            <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionPhysical} onChange={e=>setDeletionPhysical(e.target.checked)} />Depo ve varyant bazındaki fiziksel durumu kontrol ettim; yukarıdaki stok değişimini doğruluyorum.</label>
+            {deletionPreview.returnCount>0 && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionCascade} onChange={e=>setDeletionCascade(e.target.checked)} />Bağlı {deletionPreview.returnCount} iadenin de kalıcı silinmesini ayrıca onaylıyorum.</label>}
+            {((deletionPreview.rights.loyalty?.delta||0)!==0 || deletionPreview.rights.discounts.length>0) && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionRights} onChange={e=>setDeletionRights(e.target.checked)} />Yukarıdaki puan ve indirim hakkı değişikliklerini ayrıca onaylıyorum.</label>}
+            {deletionPreview.rights.legacyReviewRequired && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionLegacy} onChange={e=>setDeletionLegacy(e.target.checked)} />Dış belgeleri inceledim; listelenen kupon ve kampanya haklarının eksiksiz olduğunu ayrıca doğruluyorum.</label>}
+            <div className="flex gap-2"><button type="button" disabled={deletionBusy||!deletionPhysical||(deletionPreview.returnCount>0&&!deletionCascade)||(((deletionPreview.rights.loyalty?.delta||0)!==0||deletionPreview.rights.discounts.length>0)&&!deletionRights)||(deletionPreview.rights.legacyReviewRequired&&!deletionLegacy)} onClick={()=>void executeDeletion()} className="px-4 py-2 rounded-xl bg-rose-700 text-white font-bold disabled:opacity-50">{deletionBusy?"Siliniyor…":"Kalıcı sil"}</button><button type="button" disabled={deletionBusy} onClick={()=>setDeletionPreview(null)} className="px-4 py-2 rounded-xl bg-stone-200">Vazgeç</button></div>
+          </div>
+        </div>
+      )}
+
       {returnModalOrder && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">

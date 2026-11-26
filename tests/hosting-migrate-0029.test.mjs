@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import Database from 'better-sqlite3';
+import {useHistorical0029} from './helpers/sqlite-0029-fixture.mjs';
 
 test('0029 çevrimdışı dağıtımı: yedek, değişiklik tespiti, atomik hata ve geri dönüş', {timeout:60000}, () => {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'migrate-supplier-')),app=path.join(dir,'app'),live=path.join(dir,'live.db'),backup=path.join(dir,'backup.db'),faultBackup=path.join(dir,'fault.db'),mutatingBackup=path.join(dir,'mutating.db');
@@ -12,9 +13,9 @@ test('0029 çevrimdışı dağıtımı: yedek, değişiklik tespiti, atomik hata
   fs.mkdirSync(path.join(app,'node_modules'),{recursive:true});fs.cpSync('node_modules/better-sqlite3',path.join(app,'node_modules/better-sqlite3'),{recursive:true});
   for(const pkg of ['bindings','file-uri-to-path'])fs.symlinkSync(path.resolve('node_modules',pkg),path.join(app,'node_modules',pkg),'dir');
   for(const binary of ['build/Release/better_sqlite3.node','prebuilds/linux-x64.node'])fs.copyFileSync('hosting/better_sqlite3-linux-x64-glibc228.node',path.join(app,'node_modules/better-sqlite3',binary));
-  fs.cpSync('drizzle-sqlite',path.join(app,'drizzle-sqlite'),{recursive:true});
+  fs.cpSync('drizzle-sqlite',path.join(app,'drizzle-sqlite'),{recursive:true});fs.copyFileSync('tests/fixtures/journal-0029.json',path.join(app,'drizzle-sqlite/meta/_journal.json'));
   const env={...process.env,DATABASE_URL:`sqlite:${live}`};let r=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
-  let db=new Database(live);db.pragma('foreign_keys=ON');db.exec(`DROP TABLE supplier_command_fences;DROP TABLE supplier_return_items;DROP TABLE supplier_returns;DROP TABLE supplier_receipt_requests;DROP TABLE supplier_order_coverage;DELETE FROM __migrations WHERE tag='0029_supplier_returns';
+  let db=new Database(live);db.pragma('foreign_keys=ON');useHistorical0029(db);db.exec(`DROP TABLE supplier_command_fences;DROP TABLE supplier_return_items;DROP TABLE supplier_returns;DROP TABLE supplier_receipt_requests;DROP TABLE supplier_order_coverage;DELETE FROM __migrations WHERE tag='0029_supplier_returns';
    INSERT INTO categories(id,name,slug) VALUES(1,'Kategori','kategori');INSERT INTO warehouses(id,name,code) VALUES(5,'Serpilen Collection','SC');
    INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','5');INSERT INTO suppliers(id,name,payment_terms) VALUES(1,'Firma','30 Gün Vade');
    INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(1,'Ürün','urun','urun',1,10);

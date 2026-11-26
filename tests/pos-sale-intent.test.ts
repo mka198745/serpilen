@@ -18,6 +18,20 @@ test('stock, coupon, points and price are reserved, rollback is atomic, retry co
  sqlite.exec("UPDATE products SET retail_price=200 WHERE id=1; UPDATE promotions SET is_active=0 WHERE id=1; CREATE TRIGGER fail_pos_item BEFORE INSERT ON order_items BEGIN SELECT RAISE(ABORT,'fault'); END");
  assert.throws(()=>tx(()=>completePosSale(p.posRequestKey,actor)));assert.equal(scalar('SELECT COUNT(*) n FROM orders').n,0);assert.deepEqual(scalar('SELECT physical_qty,reserved_qty FROM inventory'),{physical_qty:3,reserved_qty:1});assert.equal(scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,45);
  sqlite.exec('DROP TRIGGER fail_pos_item');const result=tx(()=>completePosSale(p.posRequestKey,actor));assert.equal(Number(result.order.grandTotal),82.5);assert.equal(tx(()=>completePosSale(p.posRequestKey,actor)).alreadyCompleted,true);assert.deepEqual(scalar('SELECT physical_qty,reserved_qty FROM inventory'),{physical_qty:2,reserved_qty:0});assert.equal(scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,53);assert.equal(scalar("SELECT COUNT(*) n FROM loyalty_transactions WHERE type='SPEND' AND order_id=?",result.order.id).n,1);assert.equal(scalar('SELECT total_sales_cash FROM pos_shifts WHERE id=1').total_sales_cash,30);assert.throws(()=>tx(()=>cancelPosSale(p.posRequestKey,actor)),/Tamamlanmış/);
+ assert.throws(()=>sqlite.prepare('DELETE FROM pos_sale_requests WHERE request_key=?').run(p.posRequestKey),/pos_request_immutable/);
+ assert.throws(()=>sqlite.prepare("INSERT OR REPLACE INTO pos_sale_requests(request_key,request_hash,actor_id,order_id) VALUES(?,'x',1,?)").run(p.posRequestKey,result.order.id),/pos_request_immutable/);
+ assert.throws(()=>sqlite.prepare("INSERT OR REPLACE INTO pos_sale_requests(request_key,request_hash,actor_id,order_id) VALUES('other','x',1,?)").run(result.order.id),/pos_request_immutable/);
+ assert.throws(()=>sqlite.prepare("INSERT OR REPLACE INTO pos_sale_intents(request_key,request_hash,actor_id,actor_name,shift_id,status,payload_json,quote_json) VALUES(?,'x',1,'A',1,'PREPARED','{}','{}')").run(p.posRequestKey),/completed_pos_intent_immutable/);
+ assert.throws(()=>sqlite.prepare('DELETE FROM pos_sale_intents WHERE request_key=?').run(p.posRequestKey),/completed_pos_intent_immutable/);
+ assert.throws(()=>sqlite.prepare("UPDATE pos_sale_intents SET status='PREPARED' WHERE request_key=?").run(p.posRequestKey),/completed_pos_intent_immutable/);
+ // Simulate a later authorized order removal: both prepare and complete must
+ // stop with an explicit no-recharge warning, without another sale or payment.
+ sqlite.prepare('DELETE FROM orders WHERE id=?').run(result.order.id);
+ const before=scalar('SELECT total_sales_cash,total_sales_card,expected_amount FROM pos_shifts WHERE id=1');
+ assert.throws(()=>tx(()=>preparePosSale(p,actor)),/tekrar tahsilat yapmayın/);
+ assert.throws(()=>tx(()=>completePosSale(p.posRequestKey,actor)),/tekrar tahsilat yapmayın/);
+ assert.deepEqual(scalar('SELECT total_sales_cash,total_sales_card,expected_amount FROM pos_shifts WHERE id=1'),before);
+ assert.equal(scalar('SELECT COUNT(*) n FROM pos_sale_requests WHERE request_key=?',p.posRequestKey).n,1);
 });
 test('cancel reverses all holds exactly once and a tombstone fences a delayed prepare',()=>{
  sqlite.exec("UPDATE products SET retail_price=100 WHERE id=1; UPDATE promotions SET is_active=1 WHERE id=1; UPDATE coupons SET usage_limit=3 WHERE id=1");const p=payload(),before=scalar('SELECT loyalty_points FROM customers WHERE id=1').loyalty_points,claims=scalar('SELECT used_count FROM coupons WHERE id=1').used_count;

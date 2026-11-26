@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import Database from 'better-sqlite3';
+import {useHistorical0029} from './helpers/sqlite-0029-fixture.mjs';
 
 test('0028 hosting migration validates backup, aborts on changed data, and commits atomically', {timeout:30000}, () => {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'migrate-warehouse-')),app=path.join(dir,'app'),live=path.join(dir,'live.db'),backup=path.join(dir,'backup.db');
@@ -16,7 +17,7 @@ test('0028 hosting migration validates backup, aborts on changed data, and commi
   // 0028's historical offline script intentionally pins its original journal.
   fs.copyFileSync('tests/fixtures/journal-0028.json',path.join(app,'drizzle-sqlite/meta/_journal.json'));
   const env={...process.env,DATABASE_URL:`sqlite:${live}`};let r=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
-  const db=new Database(live);for(const x of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'warehouse_guard_%'").all())db.exec(`DROP TRIGGER "${x.name}"`);db.exec("DROP TABLE supplier_command_fences; DROP TABLE supplier_return_items; DROP TABLE supplier_returns; DROP TABLE supplier_receipt_requests; DROP TABLE supplier_order_coverage; DELETE FROM __migrations WHERE tag IN ('0028_warehouse_reference_guards','0029_supplier_returns'); INSERT INTO warehouses(id,name,code) VALUES(1,'Merkez','M')");db.close();
+  const db=new Database(live);useHistorical0029(db);for(const x of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'warehouse_guard_%'").all())db.exec(`DROP TRIGGER "${x.name}"`);db.exec("DROP TABLE supplier_command_fences; DROP TABLE supplier_return_items; DROP TABLE supplier_returns; DROP TABLE supplier_receipt_requests; DROP TABLE supplier_order_coverage; DELETE FROM __migrations WHERE tag IN ('0028_warehouse_reference_guards','0029_supplier_returns'); INSERT INTO warehouses(id,name,code) VALUES(1,'Merkez','M')");db.close();
   const run=mode=>spawnSync(process.execPath,['hosting/migrate-0028.cjs',mode,live,backup,app],{encoding:'utf8'});
   r=run('backup');assert.equal(r.status,0,r.stderr);assert.notEqual(run('backup').status,0);
   const changed=new Database(live);changed.prepare("UPDATE warehouses SET name='Değişti' WHERE id=1").run();changed.close();

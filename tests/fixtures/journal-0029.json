@@ -1,0 +1,216 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1794223224421,
+      "tag": "0000_harsh_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794231903550,
+      "tag": "0001_blog_seo_scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794506797117,
+      "tag": "0002_remove_b2b",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794513457348,
+      "tag": "0003_remove_erp",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794517679137,
+      "tag": "0004_intelligence_engine_faz1",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794593683058,
+      "tag": "0005_commercial_optimization_faz2",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794597030461,
+      "tag": "0006_decision_intelligence_faz3",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794764886006,
+      "tag": "0007_canta_aksesuarlari_kategorisi",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794766075345,
+      "tag": "0008_el_isi_urunler_kategorisi",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794766826192,
+      "tag": "0009_contact_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794767826192,
+      "tag": "0010_order_number_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794768826192,
+      "tag": "0011_crm_order_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794769826192,
+      "tag": "0012_crm_customer_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794770826192,
+      "tag": "0013_crm_timeline_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1794771826192,
+      "tag": "0014_crm_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1794772826192,
+      "tag": "0015_crm_order_items_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794773826192,
+      "tag": "0016_crm_users_customer_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1794774826192,
+      "tag": "0017_crm_duplicate_candidate_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794775826192,
+      "tag": "0018_crm_timeline_transaction_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1794776826192,
+      "tag": "0019_crm_duplicate_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1794777826192,
+      "tag": "0020_crm_note_edit_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1794778826192,
+      "tag": "0021_product_technical_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1794779826192,
+      "tag": "0022_crm_merge_reference_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794780826192,
+      "tag": "0023_order_discount_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794781826192,
+      "tag": "0024_pos_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794782826192,
+      "tag": "0025_pos_sale_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1794783826192,
+      "tag": "0026_brand_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1794784826192,
+      "tag": "0027_pos_screen_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1794785826192,
+      "tag": "0028_warehouse_reference_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1794786826192,
+      "tag": "0029_supplier_returns",
+      "breakpoints": true
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 import Database from 'better-sqlite3';
+import {useHistorical0029} from './helpers/sqlite-0029-fixture.mjs';
 async function freePort(){const s=net.createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 
 test('Stoklu ürün silme ZIP paketi 0029 veritabanı ile güvenli çalışır', {timeout:60000}, async()=>{
@@ -16,7 +17,7 @@ test('Stoklu ürün silme ZIP paketi 0029 veritabanı ile güvenli çalışır',
   const archive=path.resolve('hosting/serpilen-stok-silme-f7bd337.zip');const unzip=spawnSync('unzip',['-q',archive,'-d',dir],{encoding:'utf8'});assert.equal(unzip.status,0,unzip.stderr);
   const app=path.join(dir,'serpilen/.next/standalone'),checker=path.join(dir,'serpilen/revizyon-deploy-check.cjs');
   const env={...process.env,DATABASE_URL:`sqlite:${file}`};const migration=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(migration.status,0,migration.stderr);
-  db=new Database(file);db.exec("INSERT INTO categories(id,name,slug) VALUES(1,'Diğer','diger'); INSERT INTO warehouses(id,name,code) VALUES(5,'Ortak','ORTAK'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','5')");
+  db=new Database(file);useHistorical0029(db);db.exec("INSERT INTO categories(id,name,slug) VALUES(1,'Diğer','diger'); INSERT INTO warehouses(id,name,code) VALUES(5,'Ortak','ORTAK'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','5')");
   const tokens={};for(const role of ['SUPER_ADMIN','STORE_MANAGER']){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)').run(role,role+'@example.test','hash',role).lastInsertRowid;tokens[role]=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(tokens[role]).digest('hex'),Math.floor(Date.now()/1000)+3600);}
   const backup=path.join(dir,'backup.db');for(const mode of ['inspect','backup','check']){const r=spawnSync(process.execPath,[checker,mode,file,mode==='inspect'?'-':backup,app],{encoding:'utf8'});assert.equal(r.status,0,`${mode}: ${r.stderr}`);}
   const port=await freePort();server=spawn(process.execPath,[path.join(app,'server.js')],{cwd:app,env:{...env,PORT:String(port),HOSTNAME:'127.0.0.1',NODE_ENV:'production'},stdio:'ignore'});const base=`http://127.0.0.1:${port}`;let ready=false;for(let i=0;i<100;i++){try{const response=await fetch(base+'/api/health');if(response.ok){const data=await response.json();assert.equal(data.status,'HEALTHY');ready=true;break}}catch{}await delay(100)}assert.ok(ready);

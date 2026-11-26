@@ -37,8 +37,8 @@ function split(p:Payload,total:number) {
 export function preparePosSale(p:Payload,actor:Actor) {
  if(!p || typeof p!=='object' || Array.isArray(p) || p.orderType!=='POS' || !keyValid(p.posRequestKey))throw new StockShortage('Geçersiz POS hazırlığı.');
  const existing=sqlite.prepare('SELECT * FROM pos_sale_intents WHERE request_key=?').get(p.posRequestKey) as Intent|undefined;
- if(existing){access(existing,actor);if(existing.request_hash!==hash(p))throw new StockShortage('İşlem anahtarı başka bir satışa ait.');if(existing.status==='CANCELLED')throw new StockShortage('Bu satış hazırlığı iptal edildi.');return {key:existing.request_key,status:existing.status,quote:JSON.parse(existing.quote_json)};}
- if(sqlite.prepare('SELECT 1 FROM pos_sale_requests WHERE request_key=?').get(p.posRequestKey))throw new StockShortage('İşlem anahtarı daha önce kullanıldı.');
+ if(existing){access(existing,actor);if(existing.request_hash!==hash(p))throw new StockShortage('İşlem anahtarı başka bir satışa ait.');if(existing.status==='CANCELLED')throw new StockShortage('Bu satış hazırlığı iptal edildi.');if(existing.status==='COMPLETED' && (!existing.order_id || !sqlite.prepare('SELECT 1 FROM orders WHERE id=?').get(existing.order_id)))throw new StockShortage('Bu işlem daha önce tamamlandı, satış kaydı erişilemiyor; tekrar tahsilat yapmayın ve yetkiliye başvurun.');return {key:existing.request_key,status:existing.status,quote:JSON.parse(existing.quote_json)};}
+ if(sqlite.prepare('SELECT 1 FROM pos_sale_requests WHERE request_key=?').get(p.posRequestKey))throw new StockShortage('Bu işlem anahtarı daha önce kullanıldı; tekrar tahsilat yapmayın.');
  const warehouseId=sharedSalesWarehouseId();
  const shiftId=Number(p.posShiftId),shift=sqlite.prepare("SELECT id FROM pos_shifts WHERE id=? AND warehouse_id=? AND status='OPEN'").get(shiftId,warehouseId);
  if(!warehouseId||!Number.isSafeInteger(shiftId)||!shift||Number(p.warehouseId)!==warehouseId)throw new StockShortage('Açık mağaza vardiyası gerekli.');
@@ -65,7 +65,7 @@ export function cancelPosSale(key:unknown,actor:Actor,payload?:Payload) {
  if(!intent) {
    // A cancellation tombstone fences a delayed PREPARE after a lost response.
    if(!payload || payload.posRequestKey!==key || payload.orderType!=='POS')throw new StockShortage('Hazırlık verisi gerekli.');
-   if(sqlite.prepare('SELECT 1 FROM pos_sale_requests WHERE request_key=?').get(key))throw new StockShortage('Bu anahtarla tamamlanmış satış var.');
+   if(sqlite.prepare('SELECT 1 FROM pos_sale_requests WHERE request_key=?').get(key))throw new StockShortage('Bu anahtarla tamamlanmış satış var; tekrar tahsilat yapmayın.');
    sqlite.prepare("INSERT INTO pos_sale_intents(request_key,request_hash,actor_id,actor_name,shift_id,status,payload_json,quote_json,resolved_at) VALUES(?,?,?,?,?,'CANCELLED','{}','{}',unixepoch())").run(key,hash(payload),actor.id,actor.name,Number(payload.posShiftId)||0);
    audit(actor,'POS_SALE_CANCELLED',key,'Personel tahsilat yapılmadığını doğruladı; gecikmiş hazırlık engellendi.');
    return {key,status:'CANCELLED'};
@@ -85,7 +85,8 @@ export function cancelPosSale(key:unknown,actor:Actor,payload?:Payload) {
 }
 export function completePosSale(key:unknown,actor:Actor) {
  const intent=fetchIntent(key);access(intent,actor);
- if(intent.status==='COMPLETED' && intent.order_id){const order=db.select().from(orders).where(eq(orders.id,intent.order_id)).get();if(!order)throw new StockShortage('Satış kaydı tutarsız.');return {order,alreadyCompleted:true,cashierName:intent.actor_name};}
+ if(intent.status==='COMPLETED' && intent.order_id){const order=db.select().from(orders).where(eq(orders.id,intent.order_id)).get();if(!order)throw new StockShortage('Bu işlem daha önce tamamlandı, satış kaydı erişilemiyor; tekrar tahsilat yapmayın ve yetkiliye başvurun.');return {order,alreadyCompleted:true,cashierName:intent.actor_name};}
+ if(intent.status==='COMPLETED')throw new StockShortage('Bu işlem daha önce tamamlandı, satış kaydı erişilemiyor; tekrar tahsilat yapmayın ve yetkiliye başvurun.');
  if(intent.status!=='PREPARED')throw new StockShortage('İptal edilmiş satış tamamlanamaz.');
  const p=JSON.parse(intent.payload_json) as Payload,q=JSON.parse(intent.quote_json) as Quote,{cash,card}=split(p,q.grandTotal);
  const shift=sqlite.prepare("SELECT * FROM pos_shifts WHERE id=? AND warehouse_id=? AND status='OPEN'").get(intent.shift_id,Number(p.warehouseId)) as {total_sales_cash:number;total_sales_card:number;total_sales_split:number;expected_amount:number;opening_amount:number}|undefined;

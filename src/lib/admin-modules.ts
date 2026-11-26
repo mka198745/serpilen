@@ -34,6 +34,7 @@ export const ADMIN_MODULES: AdminModule[] = [
   { key: "barcode", label: "Barkod & Etiket", group: "Operasyon" },
   { key: "pos", label: "POS & Kasalar", group: "Operasyon" },
   { key: "orders", label: "Siparişler", group: "Operasyon" },
+  { key: "orderReturnDelete", label: "Siparişler — Sipariş ve İade Silme", group: "Operasyon" },
   { key: "crm", label: "Müşteri CRM", group: "Operasyon" },
   { key: "crmWrite", label: "CRM — Müşteri Kartı / Not / Etiket Değiştirme", group: "Operasyon" },
   { key: "purchasing", label: "Satın Alma & Mal Kabul", group: "Operasyon" },

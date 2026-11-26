@@ -10,6 +10,14 @@ type Return = {id:number;return_number:string;order_id:number;status:string;refu
 type Actor = {id:number;name:string};
 const cents = (value:unknown) => { const n = Math.round(Number(value)*100); if (!Number.isSafeInteger(n) || n < 0) throw new ReturnError("Sipariş tutarları tutarsız; manuel inceleme gerekli."); return n; };
 const money = (n:number) => (n/100).toFixed(2);
+// Guards count only after the original row has been removed; while a guard is
+// being prepared in a transaction the original remains the source of truth.
+function deletedRefundCents(orderId:number):number {
+  const row=sqlite.prepare(`SELECT COALESCE(SUM(g.refund_cents),0) total FROM deleted_refund_guards g
+    WHERE g.order_id=? AND NOT EXISTS (SELECT 1 FROM order_returns r WHERE r.id=g.return_id)`).get(orderId) as {total:number};
+  if(!Number.isSafeInteger(row.total) || row.total<0) throw new ReturnError("Silinmiş iade koruma tutarları tutarsız; manuel inceleme gerekli.");
+  return row.total;
+}
 function orderById(id:number):Order {
   const o=sqlite.prepare("SELECT id,order_number,status,payment_status,grand_total,customer_id FROM orders WHERE id=?").get(id) as Order|undefined;
   if (!o) throw new ReturnError("Sipariş bulunamadı.",404);
@@ -17,7 +25,10 @@ function orderById(id:number):Order {
 }
 function currentReturn(id:number):Return {
   const r=sqlite.prepare("SELECT * FROM order_returns WHERE id=?").get(id) as Return|undefined;
-  if (!r) throw new ReturnError("İade kaydı bulunamadı.",404);
+  if (!r) {
+    if (sqlite.prepare("SELECT 1 FROM deleted_refund_guards WHERE return_id=?").get(id)) throw new ReturnError("Bu iade daha önce tamamlandı; kaydı erişilemiyor. Tekrar para iadesi yapmayın.",409);
+    throw new ReturnError("İade kaydı bulunamadı.",404);
+  }
   return r;
 }
 function audit(actor:Actor, action:string, id:number, details:string) {
@@ -42,20 +53,22 @@ export function createReturn(orderId:number, raw:unknown, warehouseId:number, re
   if (!all.length || [...req.keys()].some(id=>!all.some(it=>it.id===id))) throw new ReturnError("İade kalemi bu siparişe ait değil.",422);
   const amounts=all.map(it=>cents(it.total_price));const subtotal=amounts.reduce((a,b)=>a+b,0), total=cents(order.grand_total);
   if (!Number.isSafeInteger(subtotal) || subtotal<=0 || !Number.isSafeInteger(subtotal*total)) throw new ReturnError("Sipariş tutarları otomatik iade için uygun değil; manuel inceleme gerekli.");
-  const already=sqlite.prepare(`SELECT COALESCE(SUM(ri.quantity),0) qty FROM order_return_items ri JOIN order_returns r ON r.id=ri.return_id WHERE ri.order_item_id=? AND r.status<>'REJECTED'`);
+  const already=sqlite.prepare(`SELECT
+    COALESCE((SELECT SUM(ri.quantity) FROM order_return_items ri JOIN order_returns r ON r.id=ri.return_id WHERE ri.order_item_id=? AND r.status<>'REJECTED'),0)
+    + COALESCE((SELECT SUM(gi.quantity) FROM deleted_refund_guard_items gi WHERE gi.order_item_id=? AND NOT EXISTS (SELECT 1 FROM order_returns r WHERE r.id=gi.return_id)),0) AS qty`);
   const booked=sqlite.prepare("SELECT COALESCE(SUM(CAST(refund_amount AS REAL)),0) total FROM order_returns WHERE order_id=? AND status<>'REJECTED'").get(orderId) as {total:number};
   const rows:Array<{item:Item;quantity:number;refund:number}>=[];let cumulative=0;
   for(let i=0;i<all.length;i++) {
     const it=all[i],lineTotal=amounts[i],lineStart=cumulative;cumulative+=lineTotal;
     const lineBudget=Math.round(cumulative*total/subtotal)-Math.round(lineStart*total/subtotal);
     if (!req.has(it.id)) continue;
-    const used=Number((already.get(it.id) as {qty:number}).qty),qty=req.get(it.id)!;
+    const used=Number((already.get(it.id,it.id) as {qty:number}).qty),qty=req.get(it.id)!;
     if (!Number.isSafeInteger(used)||used<0||!Number.isSafeInteger(it.quantity)||it.quantity<=0||used+qty>it.quantity) throw new ReturnError("İade adedi, önceki taleplerle birlikte satın alınan adedi aşıyor.");
     const refund=Math.round((used+qty)*lineBudget/it.quantity)-Math.round(used*lineBudget/it.quantity);
     rows.push({item:it,quantity:qty,refund});
   }
   const amount=rows.reduce((n,r)=>n+r.refund,0);
-  if (cents(booked.total)+amount > total) throw new ReturnError("Önceki iadelerle birlikte iade tutarı sipariş tutarını aşıyor.");
+  if (cents(booked.total)+deletedRefundCents(orderId)+amount > total) throw new ReturnError("Önceki iadelerle birlikte iade tutarı sipariş tutarını aşıyor.");
   const returnNumber=`IAD-${randomUUID().replace(/-/g,"").slice(0,16).toUpperCase()}`;
   const result=sqlite.prepare("INSERT INTO order_returns(return_number,order_id,order_number,reason,status,refund_amount,restock,warehouse_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)").run(returnNumber,order.id,order.order_number,reason.slice(0,500),approved?"APPROVED":"REQUESTED",money(amount),restock?1:0,warehouseId,actor.name);
   const returnId=Number(result.lastInsertRowid),insert=sqlite.prepare("INSERT INTO order_return_items(return_id,order_item_id,product_id,variant_id,product_name,quantity,refund_amount) VALUES(?,?,?,?,?,?,?)");
@@ -79,7 +92,8 @@ export function rejectReturn(id:number,actor:Actor) {
   // The cent allocation uses ordered quantity slots. Removing an earlier slot
   // while a later request survives would change its rounding allocation.
   const later = sqlite.prepare(`SELECT 1 FROM order_return_items mine JOIN order_return_items other ON other.order_item_id=mine.order_item_id JOIN order_returns later ON later.id=other.return_id WHERE mine.return_id=? AND later.id>? AND later.status<>'REJECTED' LIMIT 1`).get(id,id);
-  if (later) throw new ReturnError("Bu kalem için daha sonra oluşturulmuş aktif iade var; tutar bütünlüğü için önce sonraki talepleri sonuçlandırın veya manuel inceleyin.");
+  const deletedLater = sqlite.prepare(`SELECT 1 FROM order_return_items mine JOIN deleted_refund_guard_items other ON other.order_item_id=mine.order_item_id WHERE mine.return_id=? AND other.return_id>? AND NOT EXISTS (SELECT 1 FROM order_returns r WHERE r.id=other.return_id) LIMIT 1`).get(id,id);
+  if (later || deletedLater) throw new ReturnError("Bu kalem için daha sonra oluşturulmuş aktif iade var; tutar bütünlüğü için önce sonraki talepleri sonuçlandırın veya manuel inceleyin.");
   sqlite.prepare("UPDATE order_returns SET status='REJECTED',resolved_at=unixepoch() WHERE id=?").run(id);audit(actor,"RETURN_REJECTED",id,r.return_number);
   restoreOrderStatus(r.order_id,actor.name);
 }
@@ -108,7 +122,7 @@ function correctLoyalty(order:Order, currentCents:number, actor:Actor) {
   const totals=sqlite.prepare(`SELECT type,COALESCE(SUM(points),0) points FROM loyalty_transactions WHERE order_id=? AND customer_id=? AND type IN ('EARN','SPEND','RETURN_REVERSE_EARN','RETURN_RESTORE_SPEND') GROUP BY type`).all(order.id,order.customer_id) as {type:string;points:number}[];
   const map=new Map(totals.map(x=>[x.type,x.points]));const earned=Math.max(0,map.get("EARN")||0),spent=Math.max(0,-(map.get("SPEND")||0));
   const previous=sqlite.prepare("SELECT COALESCE(SUM(CAST(refund_amount AS REAL)),0) total FROM order_returns WHERE order_id=? AND status='REFUNDED'").get(order.id) as {total:number};
-  const paid=cents(order.grand_total), cumulative=Math.min(paid,cents(previous.total)+currentCents);
+  const paid=cents(order.grand_total), cumulative=Math.min(paid,cents(previous.total)+deletedRefundCents(order.id)+currentCents);
   if(paid<=0) return;
   const reverseEarn=Math.floor(earned*cumulative/paid)+Math.min(0,map.get("RETURN_REVERSE_EARN")||0);
   const restoreSpend=Math.floor(spent*cumulative/paid)-Math.max(0,map.get("RETURN_RESTORE_SPEND")||0);
@@ -123,7 +137,7 @@ export function completeReturn(id:number,actor:Actor,method?:string,shiftId?:num
   const order=orderById(r.order_id);ensureEligible(order);if(r.status!=="RECEIVED") throw new ReturnError("İade önce teslim alınmalıdır.");
   const refund=cents(r.refund_amount);
   const existing=sqlite.prepare("SELECT COALESCE(SUM(CAST(refund_amount AS REAL)),0) total FROM order_returns WHERE order_id=? AND status='REFUNDED'").get(order.id) as {total:number};
-  if(cents(existing.total)+refund>cents(order.grand_total)) throw new ReturnError("Toplam iade, ödenen tutarı aşıyor.");
+  if(cents(existing.total)+deletedRefundCents(order.id)+refund>cents(order.grand_total)) throw new ReturnError("Toplam iade, ödenen tutarı aşıyor.");
   if(method) {
     if(!["CASH","CREDIT_CARD"].includes(method)) throw new ReturnError("Geçersiz iade yöntemi.",422);
     if (shiftId) {
@@ -138,7 +152,7 @@ export function completeReturn(id:number,actor:Actor,method?:string,shiftId?:num
   correctLoyalty(order,refund,actor);
   sqlite.prepare("UPDATE order_returns SET status='REFUNDED',resolved_at=unixepoch() WHERE id=?").run(id);
   audit(actor,"REFUND_CONFIRMED",id,`${r.return_number}: ${money(refund)} TL manuel iade onayı${method?` (${method})`:""}`);
-  const remaining=sqlite.prepare(`SELECT 1 FROM order_items i WHERE i.order_id=? AND i.quantity > COALESCE((SELECT SUM(ri.quantity) FROM order_return_items ri JOIN order_returns r ON r.id=ri.return_id WHERE ri.order_item_id=i.id AND r.status='REFUNDED'),0) LIMIT 1`).get(order.id);
+  const remaining=sqlite.prepare(`SELECT 1 FROM order_items i WHERE i.order_id=? AND i.quantity > COALESCE((SELECT SUM(ri.quantity) FROM order_return_items ri JOIN order_returns r ON r.id=ri.return_id WHERE ri.order_item_id=i.id AND r.status='REFUNDED'),0) + COALESCE((SELECT SUM(gi.quantity) FROM deleted_refund_guard_items gi WHERE gi.order_item_id=i.id AND NOT EXISTS (SELECT 1 FROM order_returns r WHERE r.id=gi.return_id)),0) LIMIT 1`).get(order.id);
   if(!remaining) {
     sqlite.prepare("UPDATE orders SET status='REFUNDED',payment_status='REFUNDED' WHERE id=?").run(order.id);
     sqlite.prepare("INSERT INTO order_status_history(order_id,from_status,to_status,note,changed_by) VALUES(?,?,'REFUNDED',?,?)").run(order.id,order.status,`Tüm ürünler için iade tamamlandı: ${r.return_number}`,actor.name);

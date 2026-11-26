@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 const dir=fs.mkdtempSync(path.join(os.tmpdir(),'notice-'));process.env.DATABASE_URL=`sqlite:${path.join(dir,'db')}`;
 assert.equal(spawnSync(process.execPath,['scripts/db-apply.mjs'],{env:process.env}).status,0);
 const {sqlite}=require('../src/db/index');const {enqueueStockReadyNotice,sendOneStockReadyNotice}=require('../src/lib/order-notifications');
-sqlite.exec(`INSERT INTO orders(id,order_number,customer_name,customer_email,status,payment_status,payment_method) VALUES(1,'NOTICE-1','Test','buyer@example.test','PENDING','PENDING','EFT_HAVALE'),(2,'NOTICE-2','Test','buyer@example.test','PENDING','PENDING','EFT_HAVALE');
+sqlite.exec(`INSERT INTO warehouses(id,name,code) VALUES(3,'Online','ONLINE'); INSERT INTO orders(id,order_number,customer_name,customer_email,status,payment_status,payment_method) VALUES(1,'NOTICE-1','Test','buyer@example.test','PENDING','PENDING','EFT_HAVALE'),(2,'NOTICE-2','Test','buyer@example.test','PENDING','PENDING','EFT_HAVALE');
  INSERT INTO inventory_reservations(warehouse_id,product_id,qty,reference_type,reference_id,status,expires_at) VALUES(3,1,1,'PAYMENT_HOLD','1','ACTIVE',unixepoch()+86400),(3,1,1,'PAYMENT_HOLD','2','ACTIVE',unixepoch()+86400)`);
 sqlite.transaction(()=>{enqueueStockReadyNotice(1);enqueueStockReadyNotice(1);enqueueStockReadyNotice(2);}).immediate();
 test('SMTP failures retry without leaking secrets; leased worker sends once and stale orders are cancelled',{timeout:30000},async()=>{

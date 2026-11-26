@@ -8,7 +8,7 @@ import Database from 'better-sqlite3';
 
 async function fixture() {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'release-migration-')),app=path.join(dir,'standalone'),dbfile=path.join(dir,'live.db'),backup=path.join(dir,'backup.db');
- fs.mkdirSync(path.join(app,'node_modules'),{recursive:true});fs.cpSync('node_modules/better-sqlite3',path.join(app,'node_modules/better-sqlite3'),{recursive:true});fs.copyFileSync('hosting/better_sqlite3-linux-x64-glibc228.node',path.join(app,'node_modules/better-sqlite3/prebuilds/linux-x64.node'));fs.cpSync('drizzle-sqlite',path.join(app,'drizzle-sqlite'),{recursive:true});
+ fs.mkdirSync(path.join(app,'node_modules'),{recursive:true});fs.cpSync('node_modules/better-sqlite3',path.join(app,'node_modules/better-sqlite3'),{recursive:true});fs.copyFileSync('hosting/better_sqlite3-linux-x64-glibc228.node',path.join(app,'node_modules/better-sqlite3/prebuilds/linux-x64.node'));fs.cpSync('drizzle-sqlite',path.join(app,'drizzle-sqlite'),{recursive:true});fs.copyFileSync('tests/fixtures/journal-0026.json',path.join(app,'drizzle-sqlite/meta/_journal.json'));
  const db=new Database(dbfile);db.pragma('journal_mode = WAL');db.pragma('foreign_keys = ON');db.exec('CREATE TABLE __migrations(tag TEXT PRIMARY KEY NOT NULL)');
  const entries=JSON.parse(fs.readFileSync('drizzle-sqlite/meta/_journal.json','utf8')).entries.filter(e=>e.idx<=22);
  for(const e of entries){for(const s of fs.readFileSync(`drizzle-sqlite/${e.tag}.sql`,'utf8').split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))db.exec(s);db.prepare('INSERT INTO __migrations VALUES(?)').run(e.tag);}
