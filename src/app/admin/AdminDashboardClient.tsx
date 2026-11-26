@@ -126,6 +126,9 @@ interface AdminDashboardClientProps {
   };
 }
 
+// Distinguish unlabelled variants without colliding with an actual color name.
+const variantColorKey = (color: unknown) => typeof color === "string" && color.trim() ? `color:${color.trim().toLocaleLowerCase("tr-TR")}` : "unlabelled";
+
 export function AdminDashboardClient({
   currentRole = "SUPER_ADMIN",
   currentUserName = "Yönetici",
@@ -225,8 +228,12 @@ export function AdminDashboardClient({
   const [catalogSubTab, setCatalogSubTab] = useState<"products" | "categories" | "brands" | "variants">("products");
   const [catalogBrandFilter, setCatalogBrandFilter] = useState("ALL");
   const [catalogCatFilter, setCatalogCatFilter] = useState("ALL");
+  const [variantFilters, setVariantFilters] = useState({category:"",brand:"",product:"",color:"",warehouse:""});
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [variantEditDirty, setVariantEditDirty] = useState(false);
+  const [tableVariantEditor, setTableVariantEditor] = useState<{productId:number;variantId:number;name:string}|null>(null);
+  const [deletingVariantId, setDeletingVariantId] = useState<number|null>(null);
+  const deletingVariantLock = React.useRef(false);
   const [variantEditBusy, setVariantEditBusy] = useState(false);
   const [variantProductId, setVariantProductId] = useState<string>("");
   const [newVariant, setNewVariant] = useState({
@@ -250,6 +257,32 @@ export function AdminDashboardClient({
   const deletingProductLock = React.useRef(false);
   const [catalogFeedback, setCatalogFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [inventoryList, setInventoryList] = useState(initialInventory);
+  const variantProducts = React.useMemo(() => products.filter(p => (p.variants || []).length > 0), [products]);
+  const variantColors = React.useMemo(() => {
+    const colors = new Map<string,string>();
+    for (const p of variantProducts) for (const v of p.variants || []) {
+      const key=variantColorKey(v.colorName);
+      if(!colors.has(key)) colors.set(key, typeof v.colorName === "string" && v.colorName.trim() ? v.colorName.trim() : "Renk belirtilmemiş");
+    }
+    return [...colors].sort((a,b)=>a[1].localeCompare(b[1],"tr"));
+  }, [variantProducts]);
+  const variantTableRows = React.useMemo(() => {
+    const stocksByVariant = new Map<number, typeof inventoryList>();
+    for (const stock of inventoryList) if (stock.variantId != null) {
+      const rows=stocksByVariant.get(stock.variantId) || [];rows.push(stock);stocksByVariant.set(stock.variantId,rows);
+    }
+    return variantProducts.flatMap(p => {
+      if (variantFilters.category && String(p.categoryId)!==variantFilters.category) return [];
+      if (variantFilters.brand && (variantFilters.brand==="unassigned" ? p.brandId!=null : String(p.brandId)!==variantFilters.brand)) return [];
+      if (variantFilters.product && String(p.id)!==variantFilters.product) return [];
+      return (p.variants || []).flatMap((v:any) => {
+        if (variantFilters.color && variantColorKey(v.colorName)!==variantFilters.color) return [];
+        const stocks=(stocksByVariant.get(v.id)||[]).slice().sort((a,b)=>a.warehouseId-b.warehouseId||a.id-b.id);
+        const visible = !variantFilters.warehouse ? (stocks.length?stocks:[null]) : variantFilters.warehouse==="unassigned" ? (stocks.length?[]:[null]) : stocks.filter(s=>String(s.warehouseId)===variantFilters.warehouse);
+        return visible.map(stock=>({p,v,stock}));
+      });
+    });
+  }, [variantProducts,inventoryList,variantFilters]);
   const [ledger, setLedger] = useState(initialLedger);
   const [orders, setOrders] = useState(initialOrders);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
@@ -1061,6 +1094,27 @@ export function AdminDashboardClient({
     finally { deletingProductLock.current = false; setDeletingProductId(null); }
   };
 
+  const handleDeleteVariant = async (id:number) => {
+    if (deletingVariantLock.current) return;
+    deletingVariantLock.current=true; setDeletingVariantId(id); setCatalogFeedback(null);
+    try {
+      const res=await authFetch(`/api/variant-deletion?id=${id}`,{cache:"no-store"});const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success){setCatalogFeedback({text:data.error||"Varyant silme bilgileri alınamadı.",isError:true});return;}
+      const p=data.data as import("@/lib/delete-variant").VariantDeletionPreview;
+      const clean=(s:string)=>s.replace(/[\r\n\t]/g," ");
+      const stock=p.stocks.length?p.stocks.map(s=>`• ${clean(s.warehouseName || "Bilinmeyen depo")} (ID ${s.warehouseId}): ${s.physicalQty} adet`).join("\n"):"Stok kaydı yok.";
+      const base=p.lastVariant?`\n\nBu son varyant: Ürün varyantsız kalacak, ana ürün SKU/barkodu ve fiyatları geçerli olacak (satış ${clean(p.baseRetailPrice)} TL${p.baseCampaignPrice!==null?`, kampanya ${clean(p.baseCampaignPrice)} TL`:"; kampanya fiyatı yok"}). Varyant stoğu ana ürüne aktarılmaz. Mevcut ana ürün stokları:\n${p.baseStocks.length?p.baseStocks.map(s=>`• ${clean(s.warehouseName || "Bilinmeyen depo")} (ID ${s.warehouseId}): fiili ${s.physicalQty}, ayrılmış ${s.reservedQty}`).join("\n"):"Ana ürün stok kaydı yok."}\nSatış deposunda kullanılabilir ana stok varsa bekleyen siparişlere ayrılabilir.`:"";
+      if(!window.confirm(`"${clean(p.productName)} — ${clean(p.variantName)}" (SKU ${clean(p.sku)}) varyantı kalıcı olarak silinsin mi?\n\nAşağıdaki stok kayıtları silinecek (toplam ${p.totalStock} adet):\n${stock}${base}\n\nBu işlem geri alınamaz.`))return;
+      const response=await authFetch('/api/variant-deletion',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fingerprint:p.fingerprint,confirmed:true})});const result=await response.json().catch(()=>({}));
+      if(!response.ok||!result.success){setCatalogFeedback({text:result.error||"Varyant silinemedi.",isError:true});return;}
+      setProducts(prev=>prev.map(product=>product.id===p.productId?{...product,hasVariants:!p.lastVariant,variants:(product.variants||[]).filter((v:any)=>v.id!==id)}:product));
+      setInventoryList(prev=>prev.filter(row=>row.variantId!==id));
+      setCatalogFeedback({text:`Varyant silindi.${result.data.promoted?` ${result.data.promoted} bekleyen siparişe stok ayrıldı.`:""}`,isError:false});
+      await Promise.allSettled([refreshProducts(),loadInventory()]);
+    }catch{setCatalogFeedback({text:"Bağlantı kesildi; silme sonucu doğrulanamadı. Listeyi yenileyip kontrol edin.",isError:true});}
+    finally{deletingVariantLock.current=false;setDeletingVariantId(null);}
+  };
+
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct || variantEditBusy) return;
@@ -1225,7 +1279,7 @@ export function AdminDashboardClient({
     });
     const data = await res.json();
     if (data.success) {
-      await refreshProducts();
+      await Promise.all([refreshProducts(), loadInventory()]);
       setNewVariant({
         colorName: "",
         colorHex: "#111827",
@@ -2619,34 +2673,43 @@ export function AdminDashboardClient({
                   <button type="submit" className="md:col-span-4 py-2.5 bg-amber-800 text-white font-bold rounded-xl">Varyantı Oluştur (SKU otomatik)</button>
                 </form>
 
-                <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                      <tr>
-                        <th className="py-3 px-3">Ürün</th>
-                        <th className="py-3 px-3">SKU</th>
-                        <th className="py-3 px-3">Renk / Ölçü</th>
-                        <th className="py-3 px-3">Fiyat</th>
-                        <th className="py-3 px-3">Barkod</th>
-                      </tr>
-                    </thead>
+                <section aria-label="Varyant tablosu filtreleri" className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-sm">Varyantları Filtrele</h3><button type="button" onClick={()=>setVariantFilters({category:"",brand:"",product:"",color:"",warehouse:""})} className="font-bold text-amber-800 hover:underline">Filtreleri temizle</button></div>
+                  <p className="text-stone-500">Tek bir filtre seçebilirsiniz; birden fazla seçim birlikte uygulanır. Depo seçildiğinde yalnız o depodaki satırlar gösterilir.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <label className="font-bold">Kategori<select value={variantFilters.category} onChange={e=>setVariantFilters(f=>({...f,category:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm kategoriler</option>{variantFilters.category&&!categoriesList.some(c=>String(c.id)===variantFilters.category)&&<option value={variantFilters.category}>Seçim artık bulunmuyor</option>}{categoriesList.map(c=><option key={c.id} value={String(c.id)}>{c.parentName?`${c.parentName} / `:""}{c.name}</option>)}</select></label>
+                    <label className="font-bold">Marka<select value={variantFilters.brand} onChange={e=>setVariantFilters(f=>({...f,brand:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm markalar</option><option value="unassigned">Markasız</option>{variantFilters.brand&&variantFilters.brand!=="unassigned"&&!brandsList.some(b=>String(b.id)===variantFilters.brand)&&<option value={variantFilters.brand}>Seçim artık bulunmuyor</option>}{brandsList.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select></label>
+                    <label className="font-bold">Ürün<select value={variantFilters.product} onChange={e=>setVariantFilters(f=>({...f,product:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm ürünler</option>{variantFilters.product&&!variantProducts.some(p=>String(p.id)===variantFilters.product)&&<option value={variantFilters.product}>Seçim artık bulunmuyor</option>}{variantProducts.map(p=><option key={p.id} value={String(p.id)}>{p.name} ({p.sku}){p.isActive===false?" — pasif":""}</option>)}</select></label>
+                    <label className="font-bold">Renk<select value={variantFilters.color} onChange={e=>setVariantFilters(f=>({...f,color:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm renkler</option>{variantFilters.color&&!variantColors.some(([key])=>key===variantFilters.color)&&<option value={variantFilters.color}>Seçim artık bulunmuyor</option>}{variantColors.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+                    <label className="font-bold">Stok Yeri<select value={variantFilters.warehouse} onChange={e=>setVariantFilters(f=>({...f,warehouse:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm depolar</option><option value="unassigned">Stok kaydı yok</option>{variantFilters.warehouse&&variantFilters.warehouse!=="unassigned"&&!warehousesList.some(w=>String(w.id)===variantFilters.warehouse)&&<option value={variantFilters.warehouse}>Seçim artık bulunmuyor</option>}{warehousesList.map(w=><option key={w.id} value={String(w.id)}>{w.name}{w.isActive===false?" — pasif":""}</option>)}</select></label>
+                  </div>
+                </section>
+
+                <div className="bg-white rounded-2xl border border-stone-200 overflow-x-auto">
+                  <p className="px-3 py-2 text-xs text-stone-500">Fiili stok her depo için ayrı gösterilir; ayrılmış miktar parantez içindedir. Stok kaydı olmayan varyant için depo atanmış sayılmaz.</p>
+                  <table className="w-full min-w-[1100px] text-xs text-left">
+                    <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200"><tr>
+                      {["Kategori","Marka","Ürün","Renk","Alış Fiyatı","Satış Fiyatı","Stok Adedi","Stok Yeri","Barkod","İşlem"].map(h=><th key={h} scope="col" className="py-3 px-3">{h}</th>)}
+                    </tr></thead>
                     <tbody className="divide-y divide-stone-100">
-                      {products.flatMap((p) => (p.variants || []).map((v: any) => (
-                        <tr key={v.id}>
-                          <td className="py-2.5 px-3 font-semibold">{p.name}</td>
-                          <td className="py-2.5 px-3 font-mono">{v.sku}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="inline-flex items-center gap-1.5">
-                              {v.colorHex && <span className="w-3 h-3 rounded-full border border-stone-300" style={{ backgroundColor: v.colorHex }} />}
-                              {variantLabel(v) || "—"}
-                            </span>
-                          </td>
+                      {variantTableRows.map(({p,v,stock}) => <tr key={`${v.id}-${stock?.id ?? "none"}`}>
+                          <td className="py-2.5 px-3">{categoriesList.find(c=>c.id===p.categoryId)?.name || "—"}</td>
+                          <td className="py-2.5 px-3">{brandsList.find(b=>b.id===p.brandId)?.name || "—"}</td>
+                          <td className="py-2.5 px-3 font-semibold">{p.name}{p.isActive===false&&<span className="block text-stone-500">Pasif ürün</span>}</td>
+                          <td className="py-2.5 px-3"><span className="inline-flex items-center gap-1.5">{v.colorHex&&<span className="w-3 h-3 rounded-full border border-stone-300" style={{backgroundColor:v.colorHex}} />}{variantLabel(v)||"—"}</span>{v.isActive===false&&<span className="block text-stone-500">Pasif varyant</span>}</td>
+                          <td className="py-2.5 px-3">{v.buyPrice===null||v.buyPrice===undefined?"—":`${Number(v.buyPrice).toFixed(2)} TL`}</td>
                           <td className="py-2.5 px-3 font-bold">{Number(v.retailPrice).toFixed(2)} TL</td>
-                          <td className="py-2.5 px-3 font-mono text-[10px]">{v.barcode}</td>
-                        </tr>
-                      )))}
+                          <td className="py-2.5 px-3">{stock?<>{stock.physicalQty}<span className="block text-stone-500">Ayrılmış: {stock.reservedQty}</span></>:"0"}</td>
+                          <td className="py-2.5 px-3">{stock?(warehousesList.find(w=>w.id===stock.warehouseId)?.name || `Bilinmeyen depo #${stock.warehouseId}`):"Stok kaydı yok"}{stock&&warehousesList.find(w=>w.id===stock.warehouseId)?.isActive===false&&" (pasif)"}{stock&&stock.productId!==p.id&&<span className="block text-rose-700">Ürün bağlantısı tutarsız</span>}</td>
+                          <td className="py-2.5 px-3 font-mono">{v.barcode||"—"}</td>
+                          <td className="py-2.5 px-3"><div className="flex gap-2">
+                            <button type="button" aria-label={`${p.name} ${variantLabel(v)||v.sku} varyantını düzenle`} onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setTableVariantEditor({productId:p.id,variantId:v.id,name:p.name});}} className="font-bold text-amber-800 hover:underline">Düzenle</button>
+                            {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" disabled={deletingVariantId!==null} aria-label={`${p.name} ${variantLabel(v)||v.sku} varyantını sil`} onClick={()=>void handleDeleteVariant(v.id)} className="font-bold text-rose-700 hover:underline disabled:opacity-50">{deletingVariantId===v.id?"Siliniyor…":"Sil"}</button>}
+                          </div></td>
+                        </tr>)}
                     </tbody>
                   </table>
+                  {variantTableRows.length===0&&<p role="status" className="p-4 text-xs text-stone-500">Filtrelere uygun varyant bulunamadı.</p>}
                 </div>
               </div>
             )}
@@ -4819,6 +4882,15 @@ export function AdminDashboardClient({
         {activeTab === "content" && <ContentManagement />}
       </main>
 
+
+      {tableVariantEditor && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Varyant düzenle" className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2"><h3 className="font-black">{tableVariantEditor.name} — Varyant Düzenle</h3><button type="button" disabled={variantEditBusy} aria-label="Varyant düzenlemeyi kapat" onClick={()=>{if(!variantEditDirty||window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Kapatılsın mı?"))setTableVariantEditor(null);}}><X className="w-5 h-5" /></button></div>
+            <EditProductVariants key={tableVariantEditor.productId} productId={tableVariantEditor.productId} selectedVariantId={tableVariantEditor.variantId} onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async()=>{await Promise.all([refreshProducts(),loadInventory()]);}} />
+          </div>
+        </div>
+      )}
 
       {editingProduct && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">

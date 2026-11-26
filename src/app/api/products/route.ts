@@ -87,7 +87,7 @@ export async function GET(request: Request) {
     }
 
     // Query builder — metin araması varyant/marka dahil JS katmanında yapılır
-    let conditions = [eq(products.isActive, true)];
+    let conditions = allWarehouses ? [] : [eq(products.isActive, true)];
 
     if (isFeatured === "true") {
       conditions.push(eq(products.isFeatured, true));

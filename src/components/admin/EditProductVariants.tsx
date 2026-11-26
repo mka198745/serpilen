@@ -4,7 +4,7 @@ import { authFetch } from "@/lib/client-auth";
 import type { VariantEditPreview, VariantEditRow } from "@/lib/edit-product-variants";
 
 type Draft=Omit<VariantEditRow,'physicalQty'> & {physicalQty:string};
-export function EditProductVariants({productId,onSaved,onDirtyChange,onBusyChange}:{productId:number;onSaved:()=>Promise<void>;onDirtyChange:(dirty:boolean)=>void;onBusyChange:(busy:boolean)=>void}) {
+export function EditProductVariants({productId,selectedVariantId,onSaved,onDirtyChange,onBusyChange}:{productId:number;selectedVariantId?:number;onSaved:()=>Promise<void>;onDirtyChange:(dirty:boolean)=>void;onBusyChange:(busy:boolean)=>void}) {
  const [preview,setPreview]=useState<VariantEditPreview|null>(null),[rows,setRows]=useState<Draft[]>([]),[dirty,setDirty]=useState(false),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const request=useRef(0),lock=useRef(false);
  const setDirtyState=(value:boolean)=>{setDirty(value);onDirtyChange(value);};
@@ -36,7 +36,7 @@ export function EditProductVariants({productId,onSaved,onDirtyChange,onBusyChang
  const fields:[keyof Draft,string,number][]=[['colorName','Renk adı',100],['colorHex','Renk kodu (#RRGGBB)',7],['size','Beden / ölçü',100],['length','Uzunluk',100],['sku','SKU',40],['barcode','Barkod',80],['buyPrice','Alış fiyatı (boş olabilir)',20],['retailPrice','Perakende fiyatı',20],['imageUrl','Görsel HTTPS bağlantısı',2048]];
  return <section className="border-t border-stone-200 pt-4 space-y-3 text-xs" aria-label="Varyant düzenleme">
   <h4 className="font-black text-sm">Mevcut varyantlar ve depo stokları</h4>
-  <p>Varyant bilgileri tüm depolarda geçerlidir; stok yalnız seçili depoda değişir. Varyantları aşağıdaki ayrı düğmeyle kaydedin. Ürün ana bilgileri üstteki düğmeyle ayrıca kaydedilir.</p>
+  <p>Varyant bilgileri tüm depolarda geçerlidir; stok yalnız seçili depoda değişir. Varyantları aşağıdaki ayrı düğmeyle kaydedin. Ürün ana bilgileri ürün düzenleme ekranında ayrıca kaydedilir.</p>
   {message&&<p role="status" className="p-2 bg-amber-50 text-amber-950 rounded-lg">{message}</p>}
   {!preview&&<button type="button" disabled={busy} onClick={()=>void load()} className="underline font-bold">{busy?'Yükleniyor…':'Varyantları yeniden yükle'}</button>}
   {preview&&<>
@@ -44,7 +44,7 @@ export function EditProductVariants({productId,onSaved,onDirtyChange,onBusyChang
     <select disabled={busy} value={preview.warehouseId??''} onChange={e=>{if(dirty&&!window.confirm('Kaydedilmemiş varyant değişiklikleri silinecek. Depo değiştirilsin mi?'))return;void load(Number(e.target.value));}} className="block w-full mt-1 p-2 border rounded-xl"><option value="" disabled>Depo seçin</option>{preview.warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select>
    </label>
    {!preview.warehouseId&&<p>Ortak satış deposu seçilmemiş; düzenlemek için aktif bir depo seçin.</p>}
-   {rows.map((row,i)=><fieldset key={row.id} disabled={busy||!preview.warehouseId} className="border border-stone-200 rounded-xl p-3 space-y-2"><legend className="font-bold">Varyant {i+1}{!row.isActive?' (pasif)':''}</legend>
+   {rows.map((row,i)=>({row,i})).sort((a,b)=>Number(b.row.id===selectedVariantId)-Number(a.row.id===selectedVariantId)).map(({row,i})=><fieldset key={row.id} disabled={busy||!preview.warehouseId} className={`border rounded-xl p-3 space-y-2 ${selectedVariantId===row.id?"border-amber-600 bg-amber-50":"border-stone-200"}`}><legend className="font-bold">{selectedVariantId===row.id?"Seçilen varyant ":"Varyant "}{i+1}{!row.isActive?' (pasif)':''}</legend>
     <div className="grid grid-cols-2 gap-2">{fields.map(([key,label,max])=><label key={key} className={key==='imageUrl'?'col-span-2 font-semibold':'font-semibold'}>{label}<input maxLength={max} value={String(row[key]??'')} onChange={e=>update(i,key,e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-lg font-normal" /></label>)}</div>
     <p>Mevcut fiili: <strong>{preview.variants[i].physicalQty}</strong> · Ayrılmış: <strong>{row.reservedQty}</strong> · Kullanılabilir: <strong>{row.availableQty}</strong></p>
     <label className="block font-bold">Yeni fiili stok (toplam fiziksel miktar, ekleme miktarı değil)<input type="number" min="0" max="100000000" step="1" value={row.physicalQty} onChange={e=>update(i,'physicalQty',e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-lg font-normal" /></label>
