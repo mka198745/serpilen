@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 import { resolveActiveWarehouse } from "@/lib/warehouse-policy";
@@ -262,13 +263,15 @@ export async function POST(request: Request) {
     const resolvedWarehouse = resolveActiveWarehouse(warehouseId);
     if (!resolvedWarehouse) return NextResponse.json({ success: false, error: "Geçerli ve aktif bir depo seçin." }, { status: 422 });
 
+    if (body.autoGenerateProductSku === true && !variants.length) return NextResponse.json({ success: false, error: "Otomatik ana SKU yalnızca varyantlı ürünlerde kullanılabilir." }, { status: 422 });
     if (variants.length) {
-      const productSku = typeof sku === "string" ? sku.trim() : "";
+      const requestedSku = typeof sku === "string" ? sku.trim() : "";
+      const autoSku = body.autoGenerateProductSku === true;
       const productBarcode = typeof barcode === "string" ? barcode.trim() : "";
       const productName = typeof name === "string" ? name.trim() : "";
       const warehouse = resolvedWarehouse;
       const validPrice = (v: unknown) => /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 100000000;
-      if (!productName || !productSku || productSku.length > 40 || productBarcode.length > 80 || !validPrice(buyPrice) || !validPrice(retailPrice) || !Number.isSafeInteger(warehouse) || warehouse < 1 || Number(initialStock) !== 0) {
+      if (!productName || (!requestedSku && !autoSku) || (autoSku && (requestedSku || productBarcode)) || requestedSku.length > 40 || productBarcode.length > 80 || !validPrice(buyPrice) || !validPrice(retailPrice) || !Number.isSafeInteger(warehouse) || warehouse < 1 || Number(initialStock) !== 0) {
         return NextResponse.json({ success: false, error: "Varyantlı ürün için ad, SKU, geçerli fiyat ve depo gereklidir; ana ürün stoğu 0 olmalıdır." }, { status: 422 });
       }
       // Images are external browser resources: validate each hostname again at save time.
@@ -291,6 +294,16 @@ export async function POST(request: Request) {
           if (!resolveActiveWarehouse(warehouse)) throw new VariantValidationError("Seçilen depo bulunamadı.");
           const skuUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.sku, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.sku, value)).get();
           const barcodeUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.barcode, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.barcode, value)).get();
+          let productSku = requestedSku;
+          if (autoSku) {
+            // Generate inside the write transaction and check both SKU namespaces,
+            // including explicitly supplied variant codes in this request.
+            for (let attempt = 0; attempt < 20; attempt++) {
+              const candidate = `URUN-${randomBytes(8).toString("hex").toUpperCase()}`;
+              if (!skuUsed(candidate) && !variants.some(variant => variant.sku === candidate)) { productSku = candidate; break; }
+            }
+            if (!productSku) throw new VariantValidationError("Ürün için benzersiz SKU oluşturulamadı.");
+          }
           if (skuUsed(productSku)) throw new VariantValidationError("Ürün SKU zaten kullanılıyor.");
           if (productBarcode && barcodeUsed(productBarcode)) throw new VariantValidationError("Ürün barkodu zaten kullanılıyor.");
           const [product] = tx.insert(products).values({

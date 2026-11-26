@@ -36,7 +36,7 @@ test('Yeni ürün formu bağlantıdan alanları doldurur, elle girilenleri ve ti
   await act(async()=>resolveImport());await wait(()=>document.body.textContent.includes('Bilgiler forma aktarıldı.'));
   assert.equal(document.querySelector('input[placeholder="Örn: Gütermann 100m Dikiş İpliği No: 120"]').value,'Elle girilen ad');
   assert.match(document.querySelector('textarea[placeholder^="Ürünün detaylı"]').value,/Malzeme: Pamuk/);
-  assert.equal(document.querySelector('input[placeholder="GUT-120-SIY"]').value,'SKU-123');
+  assert.equal(document.querySelector('input[placeholder="GUT-120-SIY"]').value,'SKU-123');assert.equal(document.querySelector('#new-product-sku').disabled,false);assert.equal(document.querySelector('#new-product-sku').required,true);assert.equal(document.querySelector('#new-product-barcode').disabled,false);assert.equal(document.querySelector('#new-product-barcode').value,'8691234567890');
   assert.equal(document.querySelector('input[placeholder="869001122..."]').value,'8691234567890');
   assert.equal(specInput('Artikel No').value,'260');assert.equal(specInput('Karışım').value,'El ile seçildi');
   assert.equal(specInput('Metraj / Gramaj').value,'100 gr - 240 m');assert.equal(specInput('Şiş No').value,'4-5');assert.equal(specInput('Tığ No').value,'2-4');

@@ -1744,7 +1744,7 @@ export function AdminDashboardClient({
       const res = await authFetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, initialStock: productVariantsDraft.length ? 0 : rest.initialStock, images: photos, variants: variantsForSave }),
+        body: JSON.stringify({ ...rest, ...(variantsForSave.length ? { sku: "", barcode: "", autoGenerateProductSku: true } : {}), initialStock: variantsForSave.length ? 0 : rest.initialStock, images: photos, variants: variantsForSave }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Ürün kaydedilemedi.");
@@ -5127,27 +5127,33 @@ export function AdminDashboardClient({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">SKU:</label>
+                  <label htmlFor="new-product-sku" className="block font-bold text-stone-700 mb-1">SKU:</label>
                   <input
+                    id="new-product-sku"
                     type="text"
-                    required
+                    required={!productVariantsDraft.length}
+                    disabled={productVariantsDraft.length > 0}
                     placeholder="GUT-120-SIY"
-                    value={newProd.sku}
+                    value={productVariantsDraft.length ? "" : newProd.sku}
                     onChange={(e) => setNewProd({ ...newProd, sku: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono disabled:bg-stone-100 disabled:text-stone-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">Barkod:</label>
+                  <label htmlFor="new-product-barcode" className="block font-bold text-stone-700 mb-1">Barkod:</label>
                   <input
+                    id="new-product-barcode"
                     type="text"
+                    disabled={productVariantsDraft.length > 0}
                     placeholder="869001122..."
-                    value={newProd.barcode}
+                    value={productVariantsDraft.length ? "" : newProd.barcode}
                     onChange={(e) => setNewProd({ ...newProd, barcode: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono disabled:bg-stone-100 disabled:text-stone-500"
                   />
                 </div>
               </div>
+
+              {productVariantsDraft.length > 0 && <p className="text-stone-600" aria-live="polite">Varyantlı üründe ana SKU otomatik oluşturulur, ana barkod boş kalır. SKU ve barkodları varyant bilgilerine girebilirsiniz. Son varyant kaldırılırsa önceki ana değerler geri gelir.</p>}
 
               <div className="grid grid-cols-3 gap-2">
                 <div>

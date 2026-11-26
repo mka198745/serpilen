@@ -96,5 +96,19 @@ test('Ürün ve varyant stokları tek işlemde kaydedilir; hata hepsini geri al�
   const beforeRollback=db.prepare('SELECT name,brand_id,image_url FROM products WHERE id=?').get(result.id), galleryBefore=db.prepare('SELECT url,sort_order FROM product_images WHERE product_id=? ORDER BY id').all(result.id);
   assert.equal((await patch({id:result.id,name:'Geri alınmalı',brandId:5,images:['https://example.test/fail.jpg']})).status,500);
   assert.deepEqual(db.prepare('SELECT name,brand_id,image_url FROM products WHERE id=?').get(result.id),beforeRollback);assert.deepEqual(db.prepare('SELECT url,sort_order FROM product_images WHERE product_id=? ORDER BY id').all(result.id),galleryBefore);db.exec('DROP TRIGGER fail_gallery');
+  // Variant products may request a generated, unique parent SKU without a parent
+  // barcode; entered variant codes and stock remain unchanged.
+  const autoPayload={...product,name:'Otomatik SKU',sku:'',barcode:'',images:[],autoGenerateProductSku:true,variants:[v('Mavi',3,{sku:'ELLE-MAVI',barcode:'869123'}),v('Yeşil',2)]};
+  for(const bad of [{...autoPayload,autoGenerateProductSku:false},{...autoPayload,sku:'ELLE-ANA'},{...autoPayload,barcode:'123'},{...autoPayload,variants:[]}]) {
+    const before=counts(),response=await post(bad);assert.equal(response.status,422,await response.clone().text());assert.deepEqual(counts(),before);
+  }
+  const generated=[];
+  for(const [i, name] of ['Otomatik SKU','Otomatik SKU İkinci'].entries()) {
+    const response=await post({...autoPayload,name,variants:[v('Mavi',3,{sku:`ELLE-MAVI-${i}`,barcode:`869123${i}`}),v('Yeşil',2)]});assert.equal(response.status,200,await response.clone().text());const p=(await response.json()).data;
+    assert.match(p.sku,/^URUN-[0-9A-F]{16}$/);assert.equal(p.barcode,null);generated.push(p.sku);
+    const rows=db.prepare('SELECT id,sku,barcode FROM product_variants WHERE product_id=? ORDER BY id').all(p.id);assert.equal(rows[0].sku,`ELLE-MAVI-${i}`);assert.equal(rows[0].barcode,`869123${i}`);assert.ok(rows[1].sku);assert.equal(rows[1].barcode,null);assert.notEqual(rows[1].sku,p.sku);assert.equal(db.prepare('SELECT SUM(physical_qty) n FROM inventory WHERE product_id=?').get(p.id).n,5);
+  }
+  assert.notEqual(generated[0],generated[1]);
+  const beforeDuplicate=counts();const duplicate=await post({...autoPayload,name:'Otomatik Çakışma',variants:[v('Mavi',2,{sku:'ELLE-MAVI-0'}),v('Sarı',1)]});assert.equal(duplicate.status,422);assert.deepEqual(counts(),beforeDuplicate);
  } finally {if(server&&server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}db?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
