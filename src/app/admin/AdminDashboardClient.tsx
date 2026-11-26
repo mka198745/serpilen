@@ -68,6 +68,7 @@ import { PhotoManager } from "@/components/admin/PhotoManager";
 import { AuthorizedProductLinkImport } from "@/components/admin/ProductLinkImport";
 import { NewProductVariants, type VariantDraft } from "@/components/admin/NewProductVariants";
 import { validateNewProductVariants } from "@/lib/new-product-variants";
+import { variantStockTotal, variantStockTarget } from "@/lib/variant-stock-total";
 import { variantLabel } from "@/lib/variant-label";
 import { ProductTechnicalFields } from "@/components/admin/ProductTechnicalFields";
 import { parseProductSpecifications, type ProductSpecifications } from "@/lib/product-specifications";
@@ -673,9 +674,43 @@ export function AdminDashboardClient({
   const [newProd, setNewProd] = useState(emptyNewProduct);
   const [productVariantsDraft, setProductVariantsDraft] = useState<VariantDraft[]>([]);
   const variantsDraftRef = React.useRef<VariantDraft[]>([]);
+  const [stockTarget, setStockTarget] = useState<string | null>(null);
+  const stockTargetRef = React.useRef<string | null>(null);
+  const [stockNotice, setStockNotice] = useState("");
   const productNameRef = React.useRef("");
   React.useEffect(() => { productNameRef.current = newProd.name; }, [newProd.name]);
-  const updateVariantsDraft = (draft: VariantDraft[]) => { variantsDraftRef.current = draft; setProductVariantsDraft(draft); };
+  const setVariantTarget = (value: string | null) => {
+    stockTargetRef.current = value;
+    setStockTarget(value);
+    if (value === null) setProductSaveError(previous => previous.startsWith("Toplam başlangıç stoğu hedefi") ? "" : previous);
+  };
+  const updateVariantsDraft = (draft: VariantDraft[], options?: { preserveBaseStock?: boolean }) => {
+    const hadVariants = variantsDraftRef.current.length > 0;
+    variantsDraftRef.current = draft;
+    setProductVariantsDraft(draft);
+    const sum = variantStockTotal(draft);
+    const target = stockTargetRef.current === null ? null : variantStockTarget(stockTargetRef.current);
+    if (!draft.length) {
+      setVariantTarget(null);
+      if (hadVariants && !options?.preserveBaseStock) {
+        setNewProd(prev => ({ ...prev, initialStock: "0" }));
+        setStockNotice("Son varyant kaldırıldı; tek ürün başlangıç stoğu 0 olarak ayarlandı.");
+      }
+    } else {
+      setStockNotice("");
+      if (target !== null && sum !== null && target === sum) {
+        setProductSaveError(previous => previous.startsWith("Toplam başlangıç stoğu hedefi") ? "" : previous);
+      }
+    }
+  };
+  const variantStockSum = variantStockTotal(productVariantsDraft);
+  const updateStockTarget = (value: string) => {
+    setVariantTarget(value);
+    const target = variantStockTarget(value);
+    if (target !== null && target === variantStockSum) {
+      setProductSaveError(previous => previous.startsWith("Toplam başlangıç stoğu hedefi") ? "" : previous);
+    }
+  };
   const [productSaving, setProductSaving] = useState(false);
   const [productImportBusy, setProductImportBusy] = useState(false);
   const [productSaveError, setProductSaveError] = useState("");
@@ -1496,8 +1531,18 @@ export function AdminDashboardClient({
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (productSavingRef.current || productImportBusy) return;
-    try { validateNewProductVariants(productVariantsDraft); }
+    const variantsForSave = productVariantsDraft.map(row => ({ ...row, buyPrice: "", retailPrice: "" }));
+    let validatedVariants;
+    try { validatedVariants = validateNewProductVariants(variantsForSave); }
     catch (error) { setProductSaveError(error instanceof Error ? error.message : "Varyant bilgileri geçersiz."); return; }
+    if (validatedVariants.length && stockTargetRef.current !== null) {
+      const target = variantStockTarget(stockTargetRef.current);
+      const actual = variantStockTotal(variantsForSave);
+      if (target === null || actual === null || target !== actual) {
+        setProductSaveError("Toplam başlangıç stoğu hedefi varyant stokları toplamıyla eşleşmeli. Varyantları düzenleyin veya hedefi değiştirin.");
+        return;
+      }
+    }
     productSavingRef.current = true;
     setProductSaving(true); setProductSaveError("");
     try {
@@ -1505,12 +1550,12 @@ export function AdminDashboardClient({
       const res = await authFetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, initialStock: productVariantsDraft.length ? 0 : rest.initialStock, images: photos, variants: productVariantsDraft }),
+        body: JSON.stringify({ ...rest, initialStock: productVariantsDraft.length ? 0 : rest.initialStock, images: photos, variants: variantsForSave }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Ürün kaydedilemedi.");
       alert("Ürün başarıyla oluşturuldu.");
-      setNewProd(emptyNewProduct()); updateVariantsDraft([]);
+      setNewProd(emptyNewProduct()); updateVariantsDraft([], { preserveBaseStock: true }); setStockNotice("");
       productSelectionTouched.current = { brand: false, category: false };
       setIsAddProductOpen(false);
       // A failed refresh must not be reported as a failed product creation.
@@ -2322,7 +2367,7 @@ export function AdminDashboardClient({
                                 >
                                   <Pencil className="w-3 h-3" /> Düzenle
                                 </button>
-                                {isSuper && <button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId !== null} onClick={() => void handleDeleteProduct(prod.id, prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId === prod.id ? "Siliniyor..." : "Sil"}</button>}
+                                {(isSuper || (matrixLoaded && myMatrixRow.catalog === true && myMatrixRow.productDelete === true)) && <button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId !== null} onClick={() => void handleDeleteProduct(prod.id, prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId === prod.id ? "Siliniyor..." : "Sil"}</button>}
                                 <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
                               </td>
                             </tr>
@@ -4545,7 +4590,7 @@ export function AdminDashboardClient({
               <div>
                 <h2 className="text-xl font-black text-stone-900">Rol Yetki Matrisi</h2>
                 <p className="text-xs text-stone-500">
-                  Modül ve işlem yetkilerini rollere göre belirleyin. Ürün linkinden bilgi getirme için hem Ürün & Katalog hem de Ürün Linki yetkisi gereklidir. Değişiklikler kaydedilince uygulanır.
+                  Modül ve işlem yetkilerini rollere göre belirleyin. Ürün linki ve ürün silme işlemleri için hem Ürün & Katalog hem de ilgili işlem yetkisi gereklidir. Ürün silme diğer rollerde varsayılan olarak kapalıdır. Değişiklikler kaydedilince uygulanır.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -4601,14 +4646,14 @@ export function AdminDashboardClient({
             {/* Detaylı matris tablosu */}
             <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
               <div className="px-5 py-4 border-b border-stone-100 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-bold text-sm text-stone-900">Rol → Modül Görünürlük Matrisi</h3>
+                <h3 className="font-bold text-sm text-stone-900">Rol → Modül ve İşlem Yetki Matrisi</h3>
                 <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">{ADMIN_MODULES.length} modül × {MATRIX_ROLES.length} rol</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-[11px] text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                     <tr>
-                      <th className="py-2.5 px-3 min-w-[210px]">Modül (Sol Menü)</th>
+                      <th className="py-2.5 px-3 min-w-[210px]">Modül / İşlem</th>
                       {MATRIX_ROLES.map((role) => (
                         <th key={role} className="py-2.5 px-2 text-center min-w-[108px]">
                           <div>{role === "SUPER_ADMIN" ? "Süper Admin" : role === "STORE_MANAGER" ? "Mağaza Müdürü" : role === "WAREHOUSE_KEEPER" ? "Depo Sorumlusu" : "POS Kasiyeri"}</div>
@@ -4630,6 +4675,7 @@ export function AdminDashboardClient({
                             <td className="py-2 px-3">
                               <span className="font-bold text-stone-800 block">{mod.label}</span>
                               {mod.key === "audit" && <span className="block text-[10px] text-rose-800">Müşteri ve diğer hassas kayıtların tüm ayrıntılarını açar.</span>}
+                              {mod.key === "productDelete" && <span className="block text-[10px] text-rose-800">Kalıcı silme yetkisidir; katalog erişimi de gerekir. Stok ve geçmiş korumaları sürer.</span>}
                               <span className="text-[9px] font-mono text-stone-400">{mod.key}</span>
                             </td>
                             {MATRIX_ROLES.map((role) => {
@@ -4674,9 +4720,9 @@ export function AdminDashboardClient({
               </div>
               <div className="px-5 py-3 border-t border-stone-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-stone-500">
                 <span className="flex items-center gap-1.5"><Lock className="w-3 h-3 text-amber-700" /> Kilitli hücre (Süper Admin / Genel Bakış)</span>
-                <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-emerald-600" /> Menüde görünür</span>
-                <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-rose-400" /> Menüde gizli</span>
-                <span className="text-stone-400">Ürün linki yetkisi görünürlük ve sunucu erişimini sınırlar; diğer API uçları kendi yetki kontrollerini uygular.</span>
+                <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-emerald-600" /> Açık</span>
+                <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-rose-400" /> Kapalı</span>
+                <span className="text-stone-400">Ürün linki ve silme yetkileri sunucuda da doğrulanır; diğer API uçları kendi yetki kontrollerini uygular.</span>
               </div>
             </div>
 
@@ -4999,9 +5045,12 @@ export function AdminDashboardClient({
                   <label className="block font-bold text-stone-700 mb-1">Başlangıç Stoğu:</label>
                   <input
                     type="number"
-                    disabled={productVariantsDraft.length > 0}
-                    value={newProd.initialStock}
-                    onChange={(e) => setNewProd({ ...newProd, initialStock: e.target.value })}
+                    min="0"
+                    step="1"
+                    required
+                    max={productVariantsDraft.length ? 5000000000 : undefined}
+                    value={productVariantsDraft.length ? (stockTarget ?? (variantStockSum === null ? "" : String(variantStockSum))) : newProd.initialStock}
+                    onChange={(e) => productVariantsDraft.length ? updateStockTarget(e.target.value) : setNewProd({ ...newProd, initialStock: e.target.value })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   />
                 </div>
@@ -5019,7 +5068,8 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
-              {productVariantsDraft.length > 0 && <p className="text-stone-600">Ana ürün stoğu kaydedilmez; her varyantın kendi başlangıç stoğu kullanılır.</p>}
+              {productVariantsDraft.length > 0 && <p className="text-stone-600" aria-live="polite">{stockTarget !== null ? `Hedef: ${stockTarget || "—"} · Varyant stokları toplamı: ${variantStockSum ?? "eksik veya geçersiz"}. Kaydetmek için hedefle toplam eşleşmeli.` : variantStockSum === null ? "Toplam için tüm varyant stoklarını geçerli tam sayı olarak girin." : "Başlangıç stoğu varyantların toplamıdır. Değiştirirseniz varyantları hedefe göre siz düzenlersiniz; ayrı bir ana stok oluşturulmaz."}</p>}
+              {stockNotice && <p className="text-stone-600" aria-live="polite">{stockNotice}</p>}
               {productSaveError && <p role="alert" className="text-rose-700 font-semibold">{productSaveError}</p>}
               <button
                 type="submit"

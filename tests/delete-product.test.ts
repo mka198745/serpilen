@@ -6,6 +6,7 @@ import { deleteProductSafely } from "../src/lib/delete-product";
 function setup() {
   const db = new Database(":memory:");
   db.exec(`CREATE TABLE users(id INTEGER PRIMARY KEY,role TEXT,is_active INTEGER); INSERT INTO users VALUES(1,'SUPER_ADMIN',1),(2,'STORE_MANAGER',1);
+    CREATE TABLE app_settings(key TEXT PRIMARY KEY,value TEXT);
     CREATE TABLE products(id INTEGER PRIMARY KEY,name TEXT); INSERT INTO products VALUES(5,'Test ürün'),(6,'Başka ürün');
     CREATE TABLE product_variants(id INTEGER PRIMARY KEY, product_id INTEGER); INSERT INTO product_variants VALUES(11,5);
     CREATE TABLE product_images(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER); INSERT INTO product_images VALUES(1,5,11);
@@ -29,7 +30,10 @@ test("Stok, rezervasyon, sipariş, eski veya yeni ilişkiler korumaya alınır",
   const updates = [
     "UPDATE inventory SET physical_qty=1", "UPDATE inventory SET reserved_qty=1", "UPDATE inventory SET product_id=6",
     "INSERT INTO product_images VALUES(2,6,11)", "INSERT INTO product_variants VALUES(12,6); UPDATE inventory SET variant_id=12", "INSERT INTO product_variants VALUES(12,6); UPDATE product_images SET variant_id=12", "INSERT INTO order_items VALUES(1,5,NULL)", "INSERT INTO order_items VALUES(1,6,11)",
-    "INSERT INTO decision_records VALUES(1,5)", "CREATE TABLE newer_refs(id INTEGER, product_id INTEGER); INSERT INTO newer_refs VALUES(1,5)"
+    "INSERT INTO decision_records VALUES(1,5)", "CREATE TABLE newer_refs(id INTEGER, product_id INTEGER); INSERT INTO newer_refs VALUES(1,5)",
+    "CREATE TABLE purchase_order_items(id INTEGER,product_id INTEGER,variant_id INTEGER); INSERT INTO purchase_order_items VALUES(1,5,NULL)",
+    "CREATE TABLE goods_receipt_items(id INTEGER,product_id INTEGER,variant_id INTEGER); INSERT INTO goods_receipt_items VALUES(1,5,NULL)",
+    "CREATE TABLE supplier_return_items(id INTEGER,product_id INTEGER,variant_id INTEGER); INSERT INTO supplier_return_items VALUES(1,5,11)"
   ];
   for(const sql of updates){const db=setup();try{db.exec(sql);assert.equal(deleteProductSafely(db,5,actor).status,409,sql);assert.ok(db.prepare('SELECT id FROM products WHERE id=5').get());assert.equal((db.prepare('SELECT COUNT(*) n FROM audit_logs').get() as {n:number}).n,0);}finally{db.close();}}
 });
@@ -40,4 +44,23 @@ test("Yetkisiz işlem ve denetim hatası hiçbir kayıt değiştirmez",()=>{
     assert.throws(()=>deleteProductSafely(db,5,actor));
     assert.ok(db.prepare('SELECT id FROM products WHERE id=5').get());assert.ok(db.prepare('SELECT id FROM product_variants WHERE id=11').get());assert.ok(db.prepare('SELECT id FROM inventory WHERE id=1').get());
   }finally{db.close();}
+});
+
+test("Kaydedilmiş katalog ve silme yetkileri işlem içinde doğrulanır; iptal, hesap ve stok korumaları uygulanır",()=>{
+  const db=setup(), manager={id:2,role:'STORE_MANAGER',name:'Müdür'};
+  const set=(value:string)=>db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('admin.role_matrix',?)").run(value);
+  try {
+    assert.equal(deleteProductSafely(db,5,manager).status,403);
+    set('{bad'); assert.equal(deleteProductSafely(db,5,manager).status,403);
+    set(JSON.stringify({STORE_MANAGER:{catalog:false,productDelete:true}}));assert.equal(deleteProductSafely(db,5,manager).status,403);
+    set(JSON.stringify({STORE_MANAGER:{catalog:true,productDelete:false}}));assert.equal(deleteProductSafely(db,5,manager).status,403);
+    set(JSON.stringify({STORE_MANAGER:{catalog:true,productDelete:true}}));
+    db.exec('UPDATE inventory SET physical_qty=2');assert.equal(deleteProductSafely(db,5,manager).status,409);
+    db.exec('UPDATE inventory SET physical_qty=0; UPDATE users SET is_active=0 WHERE id=2');assert.equal(deleteProductSafely(db,5,manager).status,403);
+    db.exec("UPDATE users SET is_active=1,role='CASHIER' WHERE id=2");assert.equal(deleteProductSafely(db,5,manager).status,403);
+    db.exec("UPDATE users SET role='STORE_MANAGER' WHERE id=2");
+    set(JSON.stringify({STORE_MANAGER:{catalog:true,productDelete:false}}));assert.equal(deleteProductSafely(db,5,manager).status,403);
+    set(JSON.stringify({STORE_MANAGER:{catalog:true,productDelete:true}}));assert.equal(deleteProductSafely(db,5,manager).status,200);
+    assert.deepEqual(db.prepare('SELECT user_id,user_name,action FROM audit_logs').get(),{user_id:'2',user_name:'Müdür',action:'PRODUCT_DELETED'});
+  } finally { db.close(); }
 });

@@ -30,6 +30,12 @@ test('Ürün ve varyant stokları tek işlemde kaydedilir; hata hepsini geri al�
   assert.deepEqual(db.prepare('SELECT warehouse_id,variant_id,physical_qty FROM inventory WHERE product_id=? ORDER BY variant_id').all(result.id),[{warehouse_id:2,variant_id:vars[0].id,physical_qty:8},{warehouse_id:2,variant_id:vars[1].id,physical_qty:3}]);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM product_images WHERE product_id=?').get(result.id).n,1);
   const fetched=(await (await fetch(`${base}?q=KIRMIZI`)).json()).data;assert.equal(fetched[0].totalStock,11);assert.equal(fetched[0].variants.length,2);
+  // The creation form uses a shared price and stores only per-variant stock, not the displayed total twice.
+  const shared=await post({...product,name:'Ortak Fiyat',sku:'ORTAK-FIYAT',images:[],technicalDetails:{size:'20 mm',length:'100m'},variants:[v('Siyah',10),v('Kırmızı',3)]});assert.equal(shared.status,200,await shared.clone().text());const sharedProduct=(await shared.json()).data;
+  const sharedVariants=db.prepare('SELECT id,buy_price,retail_price FROM product_variants WHERE product_id=? ORDER BY id').all(sharedProduct.id);assert.equal(sharedVariants.length,2);assert.ok(sharedVariants.every(x=>Number(x.buy_price)===30&&Number(x.retail_price)===55));
+  assert.deepEqual(JSON.parse(db.prepare('SELECT technical_details FROM products WHERE id=?').get(sharedProduct.id).technical_details),{size:'20 mm',length:'100m'});
+  assert.deepEqual(db.prepare('SELECT variant_id,physical_qty FROM inventory WHERE product_id=? ORDER BY variant_id').all(sharedProduct.id),[{variant_id:sharedVariants[0].id,physical_qty:10},{variant_id:sharedVariants[1].id,physical_qty:3}]);
+  assert.equal(db.prepare('SELECT count(*) n FROM inventory WHERE product_id=? AND variant_id IS NULL').get(sharedProduct.id).n,0);
   // Zero stock must not create a parent or variant inventory row.
   const zero=await post({...product,name:'Stoksuz',sku:'ZERO',images:[],variants:[v('Beyaz',0)]});assert.equal(zero.status,200);const zp=(await zero.json()).data;
   assert.equal(db.prepare('SELECT COUNT(*) n FROM inventory WHERE product_id=?').get(zp.id).n,0);

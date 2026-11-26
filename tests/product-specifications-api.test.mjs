@@ -16,7 +16,7 @@ test('Teknik alanlar isteğe bağlı, doğrulanmış, kaydedilir ve düzenlenir'
   const file=path.join(dir,'test.db'); const env={...process.env,DATABASE_URL:`sqlite:${file}`}; let db,server;
   try {
     const m=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(m.status,0,m.stderr);
-    db=new Database(file);const token=crypto.randomBytes(32).toString('hex');
+    db=new Database(file);db.exec("INSERT INTO categories(id,name,slug) VALUES(1,'Kategori','kategori'); INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','MAG'); INSERT INTO app_settings(key,value) VALUES('sales.shared_warehouse_id','2');");const token=crypto.randomBytes(32).toString('hex');
     const id=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES (?,?,?,?)").run('Admin','admin@example.test','hash','SUPER_ADMIN').lastInsertRowid;
     db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);
     const port=await freePort();server=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(port),NODE_ENV:'production'},stdio:'ignore'});const base=`http://127.0.0.1:${port}`;let ready=false;
@@ -25,8 +25,8 @@ test('Teknik alanlar isteğe bağlı, doğrulanmış, kaydedilir ve düzenlenir'
     const product={name:'Test İplik',sku:'TEST-01',categoryId:1,retailPrice:'10',initialStock:0};
     assert.equal((await send('POST',{...product,technicalDetails:{unsafe:'x'}})).status,422);
     assert.equal(db.prepare('SELECT count(*) n FROM products').get().n,0);
-    const create=await send('POST',{...product,technicalDetails:{articleNo:'260',composition:'%10 Bambu - %90 Akrilik',knittingNeedle:'4-5'}});assert.equal(create.status,200);const created=(await create.json()).data;
-    assert.deepEqual(JSON.parse(created.technicalDetails),{articleNo:'260',composition:'%10 Bambu - %90 Akrilik',knittingNeedle:'4-5'});
+    const create=await send('POST',{...product,technicalDetails:{articleNo:'260',size:'20 mm',composition:'%10 Bambu - %90 Akrilik',knittingNeedle:'4-5'}});assert.equal(create.status,200,await create.clone().text());const created=(await create.json()).data;
+    assert.deepEqual(JSON.parse(created.technicalDetails),{articleNo:'260',size:'20 mm',composition:'%10 Bambu - %90 Akrilik',knittingNeedle:'4-5'});
     const list=await (await fetch(base+'/api/products')).json();assert.equal(list.data[0].technicalDetails,created.technicalDetails);
     assert.equal((await send('PATCH',{id:created.id,technicalDetails:{articleNo:'x'.repeat(301)}})).status,422);
     assert.equal(db.prepare('SELECT technical_details FROM products WHERE id=?').get(created.id).technical_details,created.technicalDetails);

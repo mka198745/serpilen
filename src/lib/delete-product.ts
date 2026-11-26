@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { normalizeRoleMatrix, type MatrixRole } from "@/lib/admin-modules";
 
 type Actor = { id: number; role: string; name: string };
 type DeletionResult = { status: 200; name: string } | { status: 403 | 404 | 409; error: string };
@@ -8,7 +9,14 @@ const quote = (name: string) => `"${name.replace(/"/g, '""')}"`;
 export function deleteProductSafely(sqlite: Database.Database, id: number, actor: Actor): DeletionResult {
   return sqlite.transaction((): DeletionResult => {
     const user = sqlite.prepare("SELECT role,is_active FROM users WHERE id=?").get(actor.id) as {role:string; is_active:number} | undefined;
-    if (!user || !user.is_active || user.role !== "SUPER_ADMIN" || actor.role !== user.role) return {status:403,error:"Ürün silme yetkiniz bulunmuyor."};
+    if (!user || !user.is_active || actor.role !== user.role) return {status:403,error:"Ürün silme yetkiniz bulunmuyor."};
+    // Permission is read inside the same write transaction as deletion, so revocation
+    // or role changes cannot race with an already authorized delete.
+    const setting = sqlite.prepare("SELECT value FROM app_settings WHERE key='admin.role_matrix'").get() as {value:string | null} | undefined;
+    let stored: unknown = null;
+    try { if (setting?.value) stored = JSON.parse(setting.value); } catch { /* non-super roles fail closed */ }
+    const row = normalizeRoleMatrix(stored)[user.role as MatrixRole];
+    if (!row || row.catalog !== true || row.productDelete !== true) return {status:403,error:"Ürün silmek için katalog ve ürün silme yetkisi gerekir."};
     const product = sqlite.prepare("SELECT name FROM products WHERE id=?").get(id) as {name:string} | undefined;
     if (!product) return {status:404,error:"Ürün bulunamadı."};
 

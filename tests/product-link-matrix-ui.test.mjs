@@ -20,8 +20,10 @@ test('Süper Admin rol matrisinde ürün linki yetkisini görür ve rol için ka
   await act(async()=>root.render(React.createElement(AdminDashboardClient,props)));await wait(()=>document.body.textContent.includes('Rol Yetki Matrisi'));await click('Rol Yetki Matrisi');
   const row=[...document.querySelectorAll('tr')].find(x=>x.textContent.includes('productLinkImport'));assert.ok(row);assert.match(row.textContent,/Ürün Linki ile Bilgi Getirme/);
   const buttons=[...row.querySelectorAll('button')];assert.equal(buttons.length,4);assert.equal(buttons[0].disabled,true);assert.equal(buttons[1].disabled,false);assert.match(buttons[1].title,/Gizli/);
-  await act(async()=>buttons[1].click());assert.match(buttons[1].title,/Görünür/);await click('Tümünü Kaydet');await wait(()=>!!saved);
-  assert.equal(saved.SUPER_ADMIN.productLinkImport,true);assert.equal(saved.STORE_MANAGER.productLinkImport,true);assert.equal(saved.STORE_MANAGER.catalog,true);assert.equal(saved.WAREHOUSE_KEEPER.productLinkImport,false);
+  await act(async()=>buttons[1].click());assert.match(buttons[1].title,/Görünür/);
+  const deleteRow=[...document.querySelectorAll('tr')].find(x=>x.textContent.includes('productDelete'));assert.ok(deleteRow);assert.match(deleteRow.textContent,/Ürün Silme/);const deleteButtons=[...deleteRow.querySelectorAll('button')];assert.equal(deleteButtons[0].disabled,true);assert.match(deleteButtons[1].title,/Gizli/);await act(async()=>deleteButtons[1].click());
+  await click('Tümünü Kaydet');await wait(()=>!!saved);
+  assert.equal(saved.SUPER_ADMIN.productLinkImport,true);assert.equal(saved.STORE_MANAGER.productLinkImport,true);assert.equal(saved.STORE_MANAGER.catalog,true);assert.equal(saved.WAREHOUSE_KEEPER.productLinkImport,false);assert.equal(saved.STORE_MANAGER.productDelete,true);assert.equal(saved.WAREHOUSE_KEEPER.productDelete,false);assert.equal(saved.CASHIER.productDelete,false);
   await act(async()=>root.unmount());
  }finally{globalThis.fetch=originalFetch;dom.window.close();}
 });

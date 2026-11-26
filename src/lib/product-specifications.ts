@@ -1,6 +1,7 @@
 export const PRODUCT_SPECIFICATION_FIELDS = [
   { key: "articleNo", label: "Artikel No" },
   { key: "composition", label: "Karışım" },
+  { key: "size", label: "Ölçü" },
   { key: "length", label: "Metraj / Gramaj" },
   { key: "yarnType", label: "İplik Cinsi" },
   { key: "packaging", label: "Ambalaj" },
@@ -40,6 +41,7 @@ function normalizeLabel(value: string): string {
 const aliases: Record<string, ProductSpecificationKey> = {
   "artikel no": "articleNo", "article no": "articleNo", "article nr": "articleNo", "article number": "articleNo",
   "karisim": "composition", "karisimi hammaddesi": "composition", "karisim ham madde": "composition", "karisim hammadde": "composition", "mixture raw material": "composition", "content": "composition", "composition": "composition",
+  "olcu": "size", "boyut": "size", "size": "size", "dimension": "size", "dimensions": "size",
   "metraj": "length", "metraj gramaj": "length", "length": "length", "lenght": "length", "weight and length": "length", "agirlik uzunluk": "length",
   "iplik cinsi": "yarnType", "iplik turu": "yarnType", "yarn type": "yarnType",
   "ambalaj": "packaging", "1 paket": "packaging", "package": "packaging", "packaging": "packaging",

@@ -27,3 +27,23 @@ test('Ürün silme onayı, hata bildirimi ve başarılı tablo güncellemesi',as
   await act(async()=>root.unmount());
  }finally{globalThis.fetch=original;dom.window.close();}
 });
+
+test('Ürün silme düğmesi yalnız kaydedilmiş katalog ve silme yetkilerine sahip rolde görünür',async()=>{
+ const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});
+ for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});
+ globalThis.IS_REACT_ACT_ENVIRONMENT=true;const original=globalThis.fetch;let matrix={STORE_MANAGER:{catalog:true}};
+ globalThis.fetch=async(url)=>url==='/api/role-matrix'?Response.json({success:true,data:{matrix}}):Response.json({success:true,data:[]});
+ try{
+  const {createRoot}=await import('react-dom/client');const {AdminDashboardClient}=await import('../src/app/admin/AdminDashboardClient.tsx');
+  const prod={id:1,name:'Deneme',sku:'D1',slug:'deneme',categoryId:1,retailPrice:'10',buyPrice:'5',unit:'Adet',totalAvailable:0,variants:[],isActive:true};
+  const props={products:[prod],categories:[],brands:[],warehouses:[],inventory:[],ledger:[],orders:[],suppliers:[],purchaseOrders:[],coupons:[],shifts:[],currentRole:'STORE_MANAGER'};
+  for(const [grant,visible] of [[undefined,false],[false,false],[true,true]]){
+   matrix={STORE_MANAGER:{catalog:true,...(grant===undefined?{}:{productDelete:grant})}};
+   const root=createRoot(document.getElementById('root'));
+   await act(async()=>root.render(React.createElement(AdminDashboardClient,props)));await act(async()=>new Promise(r=>setTimeout(r,30)));
+   await act(async()=>[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Ürün & Katalog').click());
+   assert.equal(!!document.querySelector('button[aria-label="Deneme ürününü sil"]'),visible);
+   await act(async()=>root.unmount());
+  }
+ }finally{globalThis.fetch=original;dom.window.close();}
+});

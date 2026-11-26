@@ -450,11 +450,10 @@ export async function PATCH(request: Request) {
   }
 }
 
-/** A hard delete is restricted to super admins and products without operational history. */
+/** Deletion permission and product history are checked atomically in deleteProductSafely. */
 export async function DELETE(request: Request) {
   const gate = await requireStaff(request);
   if (!gate.ok) return gate.response;
-  if (gate.user.role !== "SUPER_ADMIN") return NextResponse.json({success:false,error:"Ürün silme yetkiniz bulunmuyor."},{status:403});
   const invalid = validateCrmWrite(request);
   if (invalid) return invalid;
   if (!request.headers.get("origin")) {
@@ -466,7 +465,7 @@ export async function DELETE(request: Request) {
   const body = parsed.value as Record<string,unknown> | null;
   if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k=>k!=="id") || !Number.isSafeInteger(body.id) || Number(body.id)<1) return NextResponse.json({success:false,error:"Geçerli ürün numarası gereklidir."},{status:422});
   const current = await requireStaff(request);
-  if (!current.ok || current.user.id !== gate.user.id || current.user.role !== "SUPER_ADMIN") return NextResponse.json({success:false,error:"Ürün silme yetkiniz bulunmuyor."},{status:403});
+  if (!current.ok || current.user.id !== gate.user.id) return NextResponse.json({success:false,error:"Ürün silme yetkiniz bulunmuyor."},{status:403});
   try {
     const result = deleteProductSafely(sqlite,Number(body.id),current.user);
     if (result.status !== 200) return NextResponse.json({success:false,error:result.error},{status:result.status,headers:{"Cache-Control":"private, no-store"}});

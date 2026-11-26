@@ -12,6 +12,7 @@ test("Teknik özellikleri Türkçe ve İngilizce kaynak etiketlerinden ayırır"
 
 test("Teknik özellik doğrulaması boş, bozuk ve bilinmeyen alanları güvenli işler", () => {
   assert.deepEqual(validateProductSpecifications({ articleNo: " 260 ", composition: " " }), { articleNo: "260" });
+  assert.deepEqual(validateProductSpecifications({ size: " 20 mm " }), { size: "20 mm" });
   assert.equal(validateProductSpecifications({}), null);
   assert.equal(validateProductSpecifications(null), null);
   assert.throws(() => validateProductSpecifications({ arbitrary: "x" }));
@@ -19,4 +20,6 @@ test("Teknik özellik doğrulaması boş, bozuk ve bilinmeyen alanları güvenli
   assert.throws(() => validateProductSpecifications({ length: 100 }));
   assert.deepEqual(parseProductSpecifications('{"articleNo":"260"}'), { articleNo: "260" });
   assert.deepEqual(parseProductSpecifications('not json'), {});
+  assert.deepEqual(productSpecificationsFromPairs([["Ölçü", "20 mm"]]), { size: "20 mm" });
+  assert.deepEqual(productSpecificationsFromPairs([["Size", "50 cm"]]), { size: "50 cm" });
 });
