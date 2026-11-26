@@ -16,11 +16,11 @@ test('Ürün silme ile eşzamanlı sipariş ve eski sepetler kayıpsız doğrula
  try{
   const m=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(m.status,0,m.stderr);db=new Database(file);
   const uid=db.prepare("INSERT INTO users(name,email,password_hash,role) VALUES('Admin','admin@example.test','x','SUPER_ADMIN')").run().lastInsertRowid;const token=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(uid,crypto.createHash('sha256').update(token).digest('hex'),Math.floor(Date.now()/1000)+3600);
-  const add=db.prepare('INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(?,?,?,?,1,10)');for(let i=1;i<=23;i++)add.run(i,`Product ${i}`,`product-${i}`,`SKU-${i}`);
+  const add=db.prepare('INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(?,?,?,?,1,10)');for(let i=1;i<=35;i++)add.run(i,`Product ${i}`,`product-${i}`,`SKU-${i}`);
   db.exec("INSERT INTO warehouses(id,name,code) VALUES(2,'Mağaza','M'),(3,'Ortak','O'); INSERT INTO product_variants(id,product_id,sku,retail_price) VALUES(101,2,'V101',10),(102,3,'V102',10); INSERT INTO coupons(code,discount_value) VALUES('TEST',5); INSERT INTO inventory(warehouse_id,product_id,variant_id,physical_qty,reserved_qty) VALUES(3,2,101,5,0),(3,3,102,5,0),(3,4,NULL,5,0); INSERT INTO pos_shifts(id,cashier_name,warehouse_id,opening_amount,expected_amount) VALUES(1,'Test',3,100,100); INSERT INTO app_settings(key,value) VALUES('site.checkout.eft_iban','TR330006100519786457841326'),('site.checkout.eft_account_name','Test account'),('site.cart.shipping_fee','0'),('sales.shared_warehouse_id','3')");
   const port=await freePort();server=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(port),NODE_ENV:'production'},stdio:'ignore'});const base=`http://127.0.0.1:${port}`;let ready=false;for(let i=0;i<100;i++){try{await fetch(base+'/api/products');ready=true;break}catch{await delay(100)}}assert.ok(ready);
   const port2=await freePort();server2=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(port2),NODE_ENV:'production'},stdio:'ignore'});const base2=`http://127.0.0.1:${port2}`;ready=false;for(let i=0;i<100;i++){try{await fetch(base2+'/api/products');ready=true;break}catch{await delay(100)}}assert.ok(ready);
-  const del=id=>fetch(base2+'/api/products',{method:'DELETE',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({id})});
+  const del=(id,fingerprint)=>fetch(base2+'/api/products',{method:'DELETE',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({id,...(fingerprint?{fingerprint}:{})})});
   const line=(productId,variantId=null)=>({productId,variantId,productName:`Product ${productId}`,sku:`SKU-${productId}`,unitPrice:10,quantity:1,totalPrice:10});
   const order=(items,extra={})=>fetch(base+'/api/orders',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({customerName:'Test',customerEmail:'buyer@example.test',items,subtotal:items.length*10,taxTotal:2,grandTotal:items.length*10-(extra.couponCode?items.length*0.5:0),warehouseId:3,paymentMethod:'EFT_HAVALE',applyCampaigns:false,...extra})});
   const snapshot=()=>({orders:db.prepare('SELECT COUNT(*) n FROM orders').get().n,items:db.prepare('SELECT COUNT(*) n FROM order_items').get().n,ledger:db.prepare('SELECT COUNT(*) n FROM inventory_ledger').get().n});
@@ -37,7 +37,8 @@ test('Ürün silme ile eşzamanlı sipariş ve eski sepetler kayıpsız doğrula
   const posPayload={orderType:'POS',paymentMethod:'CASH',warehouseId:3,posShiftId:1,posRequestKey:crypto.randomUUID(),items:[line(4)],discountTotal:0,grandTotal:10};
   const grant=testPosGrant(db,uid,token);
   const sale=body=>fetch(base+'/api/pos/sale',{method:'POST',headers:{'X-Pos-Grant':grant,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const pos=await sale({action:'PREPARE',payload:posPayload});assert.equal(pos.status,200,await pos.clone().text());assert.equal((await del(4)).status,409);const posComplete=await sale({action:'COMPLETE',key:posPayload.posRequestKey,confirmPayment:true});assert.equal(posComplete.status,200,await posComplete.clone().text());const posResult=await posComplete.json();assert.match(posResult.data.order.orderNumber,/^POS-/);assert.equal(posResult.data.order.status,'DELIVERED');assert.equal((await del(4)).status,409);
+  const posPreview=await fetch(base2+'/api/products/deletion-preview?id=4',{headers:{Authorization:`Bearer ${token}`}});assert.equal(posPreview.status,200);const posFingerprint=(await posPreview.json()).data.fingerprint;
+  const pos=await sale({action:'PREPARE',payload:posPayload});assert.equal(pos.status,200,await pos.clone().text());assert.equal((await del(4,posFingerprint)).status,409);const posComplete=await sale({action:'COMPLETE',key:posPayload.posRequestKey,confirmPayment:true});assert.equal(posComplete.status,200,await posComplete.clone().text());const posResult=await posComplete.json();assert.match(posResult.data.order.orderNumber,/^POS-/);assert.equal(posResult.data.order.status,'DELIVERED');assert.equal((await del(4)).status,409);
   const stalePos=await sale({action:'PREPARE',payload:{...posPayload,posRequestKey:crypto.randomUUID(),items:[line(1)]}});assert.equal(stalePos.status,409);
 
   db.prepare("INSERT INTO product_variants(id,product_id,sku,retail_price) VALUES(103,23,'V103',10)").run();db.prepare('DELETE FROM product_variants WHERE id=103').run();assert.equal((await order([line(23,103)])).status,409);
@@ -52,6 +53,14 @@ test('Ürün silme ile eşzamanlı sipariş ve eski sepetler kayıpsız doğrula
     assert.ok((d.status===200 && o.status===409)||(d.status===409 && o.status===200),`id=${id}, delete=${d.status}, order=${o.status}`);
     const product=!!db.prepare('SELECT id FROM products WHERE id=?').get(id), item=!!db.prepare('SELECT id FROM order_items WHERE product_id=?').get(id);
     assert.equal(product,item,`id=${id} orphan check`);
+  }
+  for(let id=24;id<=35;id++){
+    db.prepare('INSERT INTO inventory(warehouse_id,product_id,physical_qty,reserved_qty) VALUES(3,?,5,0)').run(id);
+    const p=await fetch(base2+`/api/products/deletion-preview?id=${id}`,{headers:{Authorization:`Bearer ${token}`}});assert.equal(p.status,200);const fingerprint=(await p.json()).data.fingerprint;
+    const [d,o]=await Promise.all([del(id,fingerprint),order([line(id)])]);
+    assert.ok((d.status===200 && o.status===409)||(d.status===409 && o.status===200),`stocked id=${id}, delete=${d.status}, order=${o.status}`);
+    const product=!!db.prepare('SELECT id FROM products WHERE id=?').get(id), item=!!db.prepare('SELECT id FROM order_items WHERE product_id=?').get(id);
+    assert.equal(product,item,`stocked id=${id} orphan check`);
   }
   assert.equal(db.prepare('SELECT COUNT(*) n FROM order_items i LEFT JOIN products p ON p.id=i.product_id WHERE p.id IS NULL').get().n,0);
  }finally{if(server2&&server2.exitCode===null){server2.kill('SIGTERM');await new Promise(r=>server2.once('exit',r));}if(server&&server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}db?.close();fs.rmSync(dir,{recursive:true,force:true});}

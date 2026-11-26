@@ -463,11 +463,11 @@ export async function DELETE(request: Request) {
   const parsed = await readCrmJson(request);
   if (!parsed.ok) return parsed.response;
   const body = parsed.value as Record<string,unknown> | null;
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k=>k!=="id") || !Number.isSafeInteger(body.id) || Number(body.id)<1) return NextResponse.json({success:false,error:"Geçerli ürün numarası gereklidir."},{status:422});
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k=>k!=="id" && k!=="fingerprint") || !Number.isSafeInteger(body.id) || Number(body.id)<1 || (body.fingerprint !== undefined && (typeof body.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(body.fingerprint)))) return NextResponse.json({success:false,error:"Geçerli ürün numarası gereklidir."},{status:422});
   const current = await requireStaff(request);
   if (!current.ok || current.user.id !== gate.user.id) return NextResponse.json({success:false,error:"Ürün silme yetkiniz bulunmuyor."},{status:403});
   try {
-    const result = deleteProductSafely(sqlite,Number(body.id),current.user);
+    const result = deleteProductSafely(sqlite,Number(body.id),current.user,body.fingerprint as string | undefined);
     if (result.status !== 200) return NextResponse.json({success:false,error:result.error},{status:result.status,headers:{"Cache-Control":"private, no-store"}});
     return NextResponse.json({success:true,data:{id:body.id,name:result.name}},{headers:{"Cache-Control":"private, no-store"}});
   } catch (error) {

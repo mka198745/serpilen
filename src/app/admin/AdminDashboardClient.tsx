@@ -244,6 +244,7 @@ export function AdminDashboardClient({
   const [editingBrandId, setEditingBrandId] = useState<number | null>(null);
   const [editingBrandName, setEditingBrandName] = useState("");
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
+  const deletingProductLock = React.useRef(false);
   const [catalogFeedback, setCatalogFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [inventoryList, setInventoryList] = useState(initialInventory);
   const [ledger, setLedger] = useState(initialLedger);
@@ -1003,10 +1004,20 @@ export function AdminDashboardClient({
   };
 
   const handleDeleteProduct = async (id: number, name: string) => {
-    if (deletingProductId !== null || !window.confirm(`"${name}" ürününü kalıcı olarak silmek istiyor musunuz? Varyantları ve ürün görsel kayıtları da silinir. Sipariş, stok veya başka ilişkili kaydı olan ürünler silinemez. Bu işlem geri alınamaz.`)) return;
+    if (deletingProductLock.current) return;
+    deletingProductLock.current = true;
     setDeletingProductId(id); setCatalogFeedback(null);
     try {
-      const res = await authFetch("/api/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      const previewRes = await authFetch(`/api/products/deletion-preview?id=${id}`, { cache: "no-store" });
+      const previewData = await previewRes.json().catch(() => ({}));
+      if (!previewRes.ok || !previewData.success) { setCatalogFeedback({ text: typeof previewData.error === "string" ? previewData.error : "Ürün silme bilgileri alınamadı.", isError: true }); return; }
+      const preview = previewData.data as {name:string; totalStock:number; fingerprint:string; warehouses:{id:number; name:string; quantity:number}[]};
+      const clean = (value: string) => value.replace(/[\r\n\t]/g, " ");
+      const stockDetails = preview.totalStock > 0
+        ? `\n\nTüm depolarda ${preview.totalStock} birim stok kalıcı olarak silinecek:\n${preview.warehouses.filter(w=>w.quantity > 0).map(w=>`• ${clean(w.name)} (ID ${w.id}): ${w.quantity}`).join("\n")}`
+        : "\n\nSilinecek fiziksel stok bulunmuyor.";
+      if (!window.confirm(`"${clean(preview.name)}" ürününü kalıcı olarak silmek istiyor musunuz? Varyantları ve ürün görsel kayıtları da silinir.${stockDetails}\n\nBu işlem geri alınamaz.`)) return;
+      const res = await authFetch("/api/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, fingerprint: preview.fingerprint }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) { setCatalogFeedback({ text: typeof data.error === "string" ? data.error : "Ürün silinemedi.", isError: true }); return; }
       setProducts(prev => prev.filter(p => p.id !== id));
@@ -1014,7 +1025,7 @@ export function AdminDashboardClient({
       setVariantProductId(prev => prev === String(id) ? "" : prev);
       setCatalogFeedback({ text: `"${name}" ürünü silindi.`, isError: false });
     } catch { setCatalogFeedback({ text: "Sunucuya ulaşılamadı; silme sonucu doğrulanamadı. Listeyi yenileyin.", isError: true }); }
-    finally { setDeletingProductId(null); }
+    finally { deletingProductLock.current = false; setDeletingProductId(null); }
   };
 
   const handleSaveProductEdit = async (e: React.FormEvent) => {

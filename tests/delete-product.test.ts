@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
-import { deleteProductSafely } from "../src/lib/delete-product";
+import { deleteProductSafely, previewProductDeletion } from "../src/lib/delete-product";
 
 function setup() {
   const db = new Database(":memory:");
@@ -10,7 +10,8 @@ function setup() {
     CREATE TABLE products(id INTEGER PRIMARY KEY,name TEXT); INSERT INTO products VALUES(5,'Test ürün'),(6,'Başka ürün');
     CREATE TABLE product_variants(id INTEGER PRIMARY KEY, product_id INTEGER); INSERT INTO product_variants VALUES(11,5);
     CREATE TABLE product_images(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER); INSERT INTO product_images VALUES(1,5,11);
-    CREATE TABLE inventory(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER,physical_qty INTEGER,reserved_qty INTEGER); INSERT INTO inventory VALUES(1,5,11,0,0);
+    CREATE TABLE warehouses(id INTEGER PRIMARY KEY,name TEXT); INSERT INTO warehouses VALUES(1,'Merkez'),(2,'Diğer');
+    CREATE TABLE inventory(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER,physical_qty INTEGER,reserved_qty INTEGER,warehouse_id INTEGER); INSERT INTO inventory VALUES(1,5,11,0,0,1);
     CREATE TABLE order_items(id INTEGER PRIMARY KEY,product_id INTEGER,variant_id INTEGER);
     CREATE TABLE decision_records(id INTEGER PRIMARY KEY,related_product_id INTEGER);
     CREATE TABLE audit_logs(user_id TEXT,user_name TEXT,action TEXT,entity TEXT,entity_id TEXT,details TEXT);`);
@@ -63,4 +64,21 @@ test("Kaydedilmiş katalog ve silme yetkileri işlem içinde doğrulanır; iptal
     set(JSON.stringify({STORE_MANAGER:{catalog:true,productDelete:true}}));assert.equal(deleteProductSafely(db,5,manager).status,200);
     assert.deepEqual(db.prepare('SELECT user_id,user_name,action FROM audit_logs').get(),{user_id:'2',user_name:'Müdür',action:'PRODUCT_DELETED'});
   } finally { db.close(); }
+});
+
+test("Tüm depolardaki ayrılmamış stok yalnız güncel açık onayla silinir",()=>{
+  const db=setup();try{
+    db.exec("UPDATE inventory SET physical_qty=8; INSERT INTO inventory VALUES(2,5,11,3,0,2)");
+    const first=previewProductDeletion(db,5,actor);assert.equal(first.status,200);if(first.status!==200)throw Error('preview');
+    assert.equal(first.preview.totalStock,11);assert.deepEqual(first.preview.warehouses,[{id:1,name:'Merkez',quantity:8},{id:2,name:'Diğer',quantity:3}]);
+    assert.equal(deleteProductSafely(db,5,actor).status,409);
+    db.exec('UPDATE inventory SET physical_qty=4 WHERE id=2');assert.equal(deleteProductSafely(db,5,actor,first.preview.fingerprint).status,409);
+    let next=previewProductDeletion(db,5,actor);if(next.status!==200)throw Error('preview');
+    db.exec('UPDATE inventory SET reserved_qty=1 WHERE id=2');assert.equal(deleteProductSafely(db,5,actor,next.preview.fingerprint).status,409);
+    db.exec('UPDATE inventory SET reserved_qty=0 WHERE id=2; INSERT INTO order_items VALUES(1,5,NULL)');assert.equal(deleteProductSafely(db,5,actor,next.preview.fingerprint).status,409);
+    db.exec('DELETE FROM order_items');next=previewProductDeletion(db,5,actor);if(next.status!==200)throw Error('preview');
+    assert.equal(deleteProductSafely(db,5,actor,next.preview.fingerprint).status,200);
+    assert.equal((db.prepare('SELECT count(*) n FROM inventory').get() as {n:number}).n,0);
+    const audit=db.prepare('SELECT details FROM audit_logs').get() as {details:string};const details=JSON.parse(audit.details);assert.equal(details.discardedStock,12);assert.equal(details.warehouses[1].quantity,4);assert.equal(details.stockRows[1].variantId,11);assert.equal(details.stockRows[1].physicalQty,4);
+  }finally{db.close();}
 });

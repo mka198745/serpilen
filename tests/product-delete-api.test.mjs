@@ -16,7 +16,7 @@ test('Ürün silme API yetki, kaynak, ilişkili kayıt ve atomik denetim korumas
   const migration=spawnSync(process.execPath,['scripts/db-apply.mjs'],{env,encoding:'utf8'});assert.equal(migration.status,0,migration.stderr);db=new Database(file);
   db.exec("INSERT INTO categories(id,name,slug) VALUES(1,'Kategori','kategori'); INSERT INTO warehouses(id,name,code) VALUES(1,'Mağaza','MAG');");
   const tokens={};for(const role of ['SUPER_ADMIN','STORE_MANAGER','CASHIER']){const id=db.prepare('INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)').run(role,`${role}@example.test`,'hash',role).lastInsertRowid;tokens[role]=crypto.randomBytes(32).toString('hex');db.prepare('INSERT INTO admin_sessions(user_id,jti,expires_at) VALUES(?,?,?)').run(id,crypto.createHash('sha256').update(tokens[role]).digest('hex'),Math.floor(Date.now()/1000)+3600);}
-  for(const id of [1,2,3,4,5,6,7])db.prepare('INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(?,?,?,?,1,10)').run(id,`Ürün ${id}`,`urun-${id}`,`SKU-${id}`);
+  for(const id of [1,2,3,4,5,6,7,8])db.prepare('INSERT INTO products(id,name,slug,sku,category_id,retail_price) VALUES(?,?,?,?,1,10)').run(id,`Ürün ${id}`,`urun-${id}`,`SKU-${id}`);
   db.exec("INSERT INTO product_variants(id,product_id,sku,retail_price) VALUES(11,1,'V-11',10),(22,2,'V-22',10); INSERT INTO product_images(product_id,variant_id,url) VALUES(1,11,'https://example.test/one.jpg'); INSERT INTO inventory(warehouse_id,product_id,variant_id,physical_qty,reserved_qty) VALUES(1,1,11,0,0),(1,2,22,3,0)");
   const port=await freePort();server=spawn(process.execPath,['scripts/start-standalone.mjs'],{env:{...env,PORT:String(port),NODE_ENV:'production'},stdio:'ignore'});const base=`http://127.0.0.1:${port}/api/products`;let ready=false;for(let i=0;i<100;i++){try{await fetch(base);ready=true;break}catch{await delay(100)}}assert.ok(ready);
   const del=(role,body,headers={})=>fetch(base,{method:'DELETE',headers:{...(role?{Authorization:`Bearer ${tokens[role]}`} : {}),'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
@@ -40,8 +40,19 @@ test('Ürün silme API yetki, kaynak, ilişkili kayıt ve atomik denetim korumas
   db.exec("BEGIN IMMEDIATE; UPDATE app_settings SET value='{}' WHERE key='admin.role_matrix'");
   const pending=del('STORE_MANAGER',{id:7});assert.equal(await Promise.race([pending.then(()=>false),delay(200).then(()=>true)]),true);db.exec('COMMIT');
   assert.equal((await pending).status,403);assert.ok(db.prepare('SELECT id FROM products WHERE id=7').get());
-  const blocked=await del('SUPER_ADMIN',{id:2});assert.equal(blocked.status,409);assert.match((await blocked.json()).error,/stok veya rezervasyonu/);
+  const blocked=await del('SUPER_ADMIN',{id:2});assert.equal(blocked.status,409);assert.match((await blocked.json()).error,/onayı eksik/);
   assert.equal((await del('SUPER_ADMIN',{id:3})).status,409);
+  const preview=role=>fetch(base+'/deletion-preview?id=8',{headers:{...(role?{Authorization:`Bearer ${tokens[role]}`}:{})}});
+  db.exec("INSERT INTO warehouses(id,name,code) VALUES(2,'Diğer','D'); INSERT INTO product_variants(id,product_id,sku,retail_price) VALUES(88,8,'V-88',10); INSERT INTO inventory(warehouse_id,product_id,variant_id,physical_qty,reserved_qty) VALUES(1,8,88,8,0),(2,8,88,3,0)");
+  assert.equal((await preview(null)).status,401);assert.equal((await preview('STORE_MANAGER')).status,403);
+  let pre=await preview('SUPER_ADMIN');assert.equal(pre.status,200);let info=(await pre.json()).data;assert.equal(info.totalStock,11);assert.deepEqual(info.warehouses.map(x=>x.quantity),[8,3]);
+  assert.equal((await del('SUPER_ADMIN',{id:8})).status,409);
+  db.prepare('UPDATE inventory SET physical_qty=4 WHERE product_id=8 AND warehouse_id=2').run();assert.equal((await del('SUPER_ADMIN',{id:8,fingerprint:info.fingerprint})).status,409);
+  info=(await (await preview('SUPER_ADMIN')).json()).data;db.prepare('UPDATE inventory SET reserved_qty=1 WHERE product_id=8 AND warehouse_id=2').run();assert.equal((await del('SUPER_ADMIN',{id:8,fingerprint:info.fingerprint})).status,409);assert.equal((await preview('SUPER_ADMIN')).status,409);
+  db.prepare('UPDATE inventory SET reserved_qty=0 WHERE product_id=8 AND warehouse_id=2').run();info=(await (await preview('SUPER_ADMIN')).json()).data;
+  db.exec("CREATE TRIGGER block_stock_audit BEFORE INSERT ON audit_logs WHEN NEW.action='PRODUCT_DELETED' AND NEW.entity_id='8' BEGIN SELECT RAISE(ABORT,'fail'); END");
+  assert.equal((await del('SUPER_ADMIN',{id:8,fingerprint:info.fingerprint})).status,500);assert.equal(db.prepare('SELECT sum(physical_qty) n FROM inventory WHERE product_id=8').get().n,12);assert.ok(db.prepare('SELECT id FROM products WHERE id=8').get());db.exec('DROP TRIGGER block_stock_audit');
+  assert.equal((await del('SUPER_ADMIN',{id:8,fingerprint:info.fingerprint})).status,200);assert.equal(db.prepare('SELECT COUNT(*) n FROM inventory WHERE product_id=8').get().n,0);const audit=JSON.parse(db.prepare("SELECT details FROM audit_logs WHERE action='PRODUCT_DELETED' AND entity_id='8'").get().details);assert.equal(audit.discardedStock,12);assert.equal(audit.stockRows.length,2);
   db.exec("CREATE TRIGGER block_product_audit BEFORE INSERT ON audit_logs WHEN NEW.action='PRODUCT_DELETED' BEGIN SELECT RAISE(ABORT,'fail'); END");
   assert.equal((await del('SUPER_ADMIN',{id:1})).status,500);assert.ok(db.prepare('SELECT id FROM products WHERE id=1').get());assert.ok(db.prepare('SELECT id FROM product_variants WHERE id=11').get());assert.equal(db.prepare('SELECT COUNT(*) n FROM product_images').get().n,1);
   db.exec('DROP TRIGGER block_product_audit');const success=await del('SUPER_ADMIN',{id:1});assert.equal(success.status,200);assert.equal((await success.json()).data.id,1);
