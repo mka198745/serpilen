@@ -14,6 +14,18 @@ import { validateProductSpecifications } from "@/lib/product-specifications";
 import { validateNewProductVariants, variantSkuBase, VariantValidationError } from "@/lib/new-product-variants";
 import { publicHttpsUrl, resolvePublicHost } from "@/lib/product-import/safe-fetch";
 class BrandReferenceError extends Error {}
+class ProductPriceError extends Error { constructor(message: string, public status = 422) { super(message); } }
+function parseProductPrice(value: unknown): string {
+  if (typeof value !== "string" && typeof value !== "number") throw new ProductPriceError("Fiyat geçersiz; sıfır veya pozitif ve en fazla iki ondalık basamak olmalıdır.");
+  const price = String(value).trim();
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(price) || Number(price) > 100000000) throw new ProductPriceError("Fiyat geçersiz; sıfır veya pozitif ve en fazla iki ondalık basamak olmalıdır.");
+  return price;
+}
+function samePrice(a: unknown, b: unknown): boolean {
+  const left = String(a ?? "").trim(), right = String(b ?? "").trim();
+  if (left === right) return true;
+  return !!left && !!right && Number.isFinite(Number(left)) && Number.isFinite(Number(right)) && Number(left) === Number(right);
+}
 const BRAND_ERROR = "Seçilen marka bulunamadı. Lütfen geçerli bir marka seçin.";
 function parseBrandId(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
@@ -416,8 +428,8 @@ export async function PATCH(request: Request) {
     if (body.categoryId !== undefined) updates.categoryId = Number(body.categoryId);
     if (body.brandId !== undefined) updates.brandId = parseBrandId(body.brandId);
     if (body.unit !== undefined) updates.unit = String(body.unit);
-    if (body.buyPrice !== undefined) updates.buyPrice = String(body.buyPrice);
-    if (body.retailPrice !== undefined) updates.retailPrice = String(body.retailPrice);
+    if (body.buyPrice !== undefined) updates.buyPrice = parseProductPrice(body.buyPrice);
+    if (body.retailPrice !== undefined) updates.retailPrice = parseProductPrice(body.retailPrice);
     if (body.campaignPrice !== undefined) updates.campaignPrice = body.campaignPrice ? String(body.campaignPrice) : null;
     if (body.shortDescription !== undefined) updates.shortDescription = body.shortDescription;
     if (body.description !== undefined) updates.description = body.description;
@@ -441,6 +453,19 @@ export async function PATCH(request: Request) {
     if (body.minOrderQty !== undefined) updates.minOrderQty = Number(body.minOrderQty);
     if (body.packageQty !== undefined) updates.packageQty = Number(body.packageQty);
 
+    // The edit form supplies an optimistic price snapshot to avoid overwriting
+    // another operator's change; older API clients may omit it.
+    let expectedPrices: Record<string, string | number> | undefined;
+    if (body.expectedPrices !== undefined) {
+      const value = body.expectedPrices;
+      if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => !["buyPrice", "retailPrice"].includes(key))) throw new ProductPriceError("Fiyat kontrol bilgisi geçersiz.");
+      expectedPrices = value as Record<string, string | number>;
+      for (const key of ["buyPrice", "retailPrice"]) {
+        const hasPrice = updates[key] !== undefined, hasExpected = Object.hasOwn(expectedPrices, key);
+        if (hasPrice !== hasExpected || (hasExpected && !((typeof expectedPrices[key] === "string" && expectedPrices[key].trim().length > 0 && expectedPrices[key].length <= 64) || (typeof expectedPrices[key] === "number" && Number.isFinite(expectedPrices[key]))))) throw new ProductPriceError("Fiyat kontrol bilgisi geçersiz.");
+      }
+    }
+
     // Galeri değişimi: liste verildiyse satırları baştan yaz, kapağı eşitle.
     const galleryUrls = Array.isArray(body.images)
       ? body.images.map((u: unknown) => String(u || "").trim()).filter(Boolean).slice(0, 6)
@@ -453,10 +478,19 @@ export async function PATCH(request: Request) {
     // Validate the selected brand and write the product in one transaction so a
     // concurrent brand deletion cannot create another dangling reference.
     const updated = db.transaction((tx) => {
-      const existing=tx.select({id:products.id}).from(products).where(eq(products.id,id)).get();
+      const existing=tx.select({id:products.id,buyPrice:products.buyPrice,retailPrice:products.retailPrice}).from(products).where(eq(products.id,id)).get();
       if (!existing) return undefined;
+      for (const key of ["buyPrice", "retailPrice"] as const) {
+        if (expectedPrices && Object.hasOwn(expectedPrices, key) && !samePrice(existing[key], expectedPrices[key])) throw new ProductPriceError("Ürün fiyatı başka bir işlemle değişti. Listeyi yenileyip tekrar kontrol edin.", 409);
+      }
       if (updates.brandId !== undefined && updates.brandId !== null && !tx.select({id:brands.id}).from(brands).where(eq(brands.id,updates.brandId as number)).get()) throw new BrandReferenceError(BRAND_ERROR);
       if (Object.keys(updates).length > 0) tx.update(products).set(updates).where(eq(products.id,id)).run();
+      // Only actual changes propagate, preserving unrelated prices and legacy
+      // differences during name, brand, stock or no-op updates.
+      const variantPrices: { buyPrice?: string; retailPrice?: string } = {};
+      if (typeof updates.buyPrice === "string" && !samePrice(existing.buyPrice, updates.buyPrice)) variantPrices.buyPrice = updates.buyPrice;
+      if (typeof updates.retailPrice === "string" && !samePrice(existing.retailPrice, updates.retailPrice)) variantPrices.retailPrice = updates.retailPrice;
+      if (Object.keys(variantPrices).length) tx.update(productVariants).set(variantPrices).where(eq(productVariants.productId,id)).run();
       if (galleryUrls !== null) {
         tx.delete(productImages).where(eq(productImages.productId,id)).run();
         for (const [i,url] of galleryUrls.entries()) tx.insert(productImages).values({productId:id,url,sortOrder:i,isPrimary:i===0}).run();
@@ -472,6 +506,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true, data: updated });
   } catch (err: any) {
     if (err instanceof BrandReferenceError) return NextResponse.json({ success: false, error: err.message }, { status: 422 });
+    if (err instanceof ProductPriceError) return NextResponse.json({ success: false, error: err.message }, { status: err.status });
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

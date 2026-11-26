@@ -257,6 +257,7 @@ export function AdminDashboardClient({
   };
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [editingProductVariantId, setEditingProductVariantId] = useState<number | null>(null);
+  const productEditPrices = React.useRef({ buyPrice: "", retailPrice: "" });
   const [productEditError, setProductEditError] = useState("");
   const [variantEditDirty, setVariantEditDirty] = useState(false);
   const [tableVariantEditor, setTableVariantEditor] = useState<{productId:number;variantId:number;name:string}|null>(null);
@@ -1200,6 +1201,16 @@ export function AdminDashboardClient({
       return;
     }
     if (variantEditDirty && !window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Yalnızca ürün ana bilgileri kaydedilsin mi?")) return;
+    const buyPriceChanged = String(editingProduct.buyPrice ?? "") !== productEditPrices.current.buyPrice;
+    const retailPriceChanged = String(editingProduct.retailPrice ?? "") !== productEditPrices.current.retailPrice;
+    const priceUpdates = {
+      ...(buyPriceChanged ? { buyPrice: editingProduct.buyPrice } : {}),
+      ...(retailPriceChanged ? { retailPrice: editingProduct.retailPrice } : {}),
+    };
+    const expectedPrices = {
+      ...(buyPriceChanged ? { buyPrice: productEditPrices.current.buyPrice } : {}),
+      ...(retailPriceChanged ? { retailPrice: productEditPrices.current.retailPrice } : {}),
+    };
     try {
       const res = await authFetch("/api/products", {
         method: "PATCH",
@@ -1207,8 +1218,8 @@ export function AdminDashboardClient({
         body: JSON.stringify({
           id: editingProduct.id,
           name: editingProduct.name,
-          retailPrice: editingProduct.retailPrice,
-          buyPrice: editingProduct.buyPrice,
+          ...priceUpdates,
+          ...((buyPriceChanged || retailPriceChanged) ? { expectedPrices } : {}),
           campaignPrice: editingProduct.campaignPrice || null,
           categoryId: editingProduct.categoryId,
           brandId: editingProduct.brandId,
@@ -2535,7 +2546,7 @@ export function AdminDashboardClient({
                               {variant&&<span className="block text-[10px] text-stone-500">Varyant: {variant.isActive===false?"Pasif":"Aktif"}</span>}
                             </td>
                             <td className="py-2.5 px-2 space-y-1">
-                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");setEditingProductVariantId(variant?.id ?? null);setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
+                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");productEditPrices.current={buyPrice:String(prod.buyPrice ?? ""),retailPrice:String(prod.retailPrice ?? "")};setEditingProductVariantId(variant?.id ?? null);setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
                               {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId!==null} onClick={()=>void handleDeleteProduct(prod.id,prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId===prod.id?"Siliniyor...":variant?"Ürünü sil":"Sil"}</button>}
                               <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
                             </td>
@@ -4991,7 +5002,7 @@ export function AdminDashboardClient({
                   <input required value={editingProduct.retailPrice} onChange={(e) => setEditingProduct({ ...editingProduct, retailPrice: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
                 </div>
               </div>
-              {editingProductVariantId !== null && <p className="text-stone-600">Ana ürün fiyatları varyant fiyatlarını değiştirmez. Varyant fiyatları Varyantlar sekmesinden düzenlenebilir.</p>}
+              {editingProductVariantId !== null && <p className="text-stone-600">Değiştirdiğiniz ana ürün alış ve perakende fiyatları, kaydettiğinizde tüm varyantlara uygulanır.</p>}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold mb-1">Kampanya Fiyatı</label>
