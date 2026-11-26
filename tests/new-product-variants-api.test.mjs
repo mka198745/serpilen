@@ -65,5 +65,36 @@ test('Ürün ve varyant stokları tek işlemde kaydedilir; hata hepsini geri al�
   const rollback=await post({...product,name:'Geri Alma',sku:'GERI',variants:[v('Mavi',4),v('Hata',5)]});assert.equal(rollback.status,500);assert.deepEqual(counts(),before);assert.equal(db.prepare("SELECT COUNT(*) n FROM products WHERE sku='GERI'").get().n,0);db.exec('DROP TRIGGER fail_second_variant');
   // The existing simple product workflow still creates product-level stock.
   const single=await post({...product,name:'Tek Ürün',sku:'TEK',barcode:'987654',initialStock:9,variants:[]});assert.equal(single.status,200);const sp=(await single.json()).data;assert.equal(sp.hasVariants,false);assert.equal(db.prepare('SELECT physical_qty FROM inventory WHERE product_id=? AND variant_id IS NULL').get(sp.id).physical_qty,9);
+  // Old dangling references remain unchanged by unrelated edits, but cannot be
+  // submitted as a brand selection or create new broken references.
+  db.prepare('UPDATE products SET brand_id=1 WHERE id IN (?,?)').run(result.id,sp.id);
+  db.prepare("INSERT INTO brands(id,name,slug) VALUES(5,'Alize Örgü','alize-orgu')").run();
+  const headers={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};
+  const patch=body=>fetch(base,{method:'PATCH',headers,body:JSON.stringify(body)});
+  const read=async id=>(await (await fetch(`${base}?scope=all-warehouses`,{headers})).json()).data.find(p=>p.id===id);
+  for(const id of [result.id,sp.id]) {const p=await read(id);assert.equal(p.brandId,1);assert.equal(p.brandName,null);}
+  const brandCounts=counts();
+  for(const variants of [[],[v('Beyaz',1)]]) for(const brandId of [1,'999','1e0',0,{},true]) {
+    const res=await post({...product,name:'Geçersiz Marka',sku:'BAD-BRAND',barcode:'',initialStock:0,images:[],variants,brandId});
+    assert.equal(res.status,422,await res.clone().text());assert.deepEqual(counts(),brandCounts);
+  }
+  for(const id of [result.id,sp.id]) {
+    const beforeProduct=db.prepare('SELECT name,brand_id,image_url FROM products WHERE id=?').get(id);
+    const beforeImages=db.prepare('SELECT url,sort_order FROM product_images WHERE product_id=? ORDER BY id').all(id);
+    for(const brandId of [1,999,'1e0',0,{},true]) {
+      const res=await patch({id,brandId,name:'Değişmemeli',images:['https://example.test/new.jpg']});assert.equal(res.status,422);
+      assert.deepEqual(db.prepare('SELECT name,brand_id,image_url FROM products WHERE id=?').get(id),beforeProduct);
+      assert.deepEqual(db.prepare('SELECT url,sort_order FROM product_images WHERE product_id=? ORDER BY id').all(id),beforeImages);
+    }
+    assert.equal((await patch({id,isFeatured:true})).status,200);assert.equal((await read(id)).brandId,1);
+    assert.equal((await patch({id,brandId:5})).status,200);const fixed=await read(id);assert.equal(fixed.brandId,5);assert.equal(fixed.brandName,'Alize Örgü');
+    assert.equal((await patch({id,brandId:null})).status,200);const unbranded=await read(id);assert.equal(unbranded.brandId,null);assert.equal(unbranded.brandName,null);
+    assert.equal((await patch({id,brandId:''})).status,200);assert.equal((await read(id)).brandId,null);
+  }
+  // Failure during gallery replacement rolls back the main product update too.
+  db.exec("CREATE TRIGGER fail_gallery BEFORE INSERT ON product_images WHEN NEW.url='https://example.test/fail.jpg' BEGIN SELECT RAISE(ABORT, 'test rollback'); END");
+  const beforeRollback=db.prepare('SELECT name,brand_id,image_url FROM products WHERE id=?').get(result.id), galleryBefore=db.prepare('SELECT url,sort_order FROM product_images WHERE product_id=? ORDER BY id').all(result.id);
+  assert.equal((await patch({id:result.id,name:'Geri alınmalı',brandId:5,images:['https://example.test/fail.jpg']})).status,500);
+  assert.deepEqual(db.prepare('SELECT name,brand_id,image_url FROM products WHERE id=?').get(result.id),beforeRollback);assert.deepEqual(db.prepare('SELECT url,sort_order FROM product_images WHERE product_id=? ORDER BY id').all(result.id),galleryBefore);db.exec('DROP TRIGGER fail_gallery');
  } finally {if(server&&server.exitCode===null){server.kill('SIGTERM');await new Promise(r=>server.once('exit',r));}db?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });

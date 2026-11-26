@@ -138,6 +138,17 @@ const readStorage = (key: string) => {
 const sidebarStorage = () => readStorage("admin-sidebar-collapsed");
 const purchasingStorage = () => readStorage("serpilen.purchasing.pending.v1");
 
+// Never confuse a missing brand relationship with a real brand name.
+function productBrandLabel(product: {brandId?: number | string | null; brandName?: string | null}, brands: {id: number | string; name: string}[]): string {
+  if (product.brandId == null) return "—";
+  const matched=brands.find(brand=>String(brand.id)===String(product.brandId));
+  if (matched) return matched.name;
+  // Older SSR responses used these placeholders even when the relation was broken.
+  const label=product.brandName?.trim();
+  if (label && label!=="Marka" && label!=="Özel Üretim") return label;
+  return `Marka kaydı bulunamadı (#${product.brandId})`;
+}
+
 // Distinguish unlabelled variants without colliding with an actual color name.
 const variantColorKey = (color: unknown) => typeof color === "string" && color.trim() ? `color:${color.trim().toLocaleLowerCase("tr-TR")}` : "unlabelled";
 
@@ -240,6 +251,7 @@ export function AdminDashboardClient({
   const [catalogCatFilter, setCatalogCatFilter] = useState("ALL");
   const [variantFilters, setVariantFilters] = useState({category:"",brand:"",product:"",color:"",warehouse:""});
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [productEditError, setProductEditError] = useState("");
   const [variantEditDirty, setVariantEditDirty] = useState(false);
   const [tableVariantEditor, setTableVariantEditor] = useState<{productId:number;variantId:number;name:string}|null>(null);
   const [deletingVariantId, setDeletingVariantId] = useState<number|null>(null);
@@ -320,7 +332,7 @@ export function AdminDashboardClient({
     return products.flatMap(prod=>{
       if (catalogCatFilter!=="ALL" && String(prod.categoryId)!==catalogCatFilter) return [];
       if (catalogBrandFilter!=="ALL" && String(prod.brandId)!==catalogBrandFilter) return [];
-      const brand=prod.brandId == null ? "" : (brandsList.find(b=>String(b.id)===String(prod.brandId))?.name || prod.brandName || "");
+      const brand=productBrandLabel(prod,brandsList);
       const matches=(values:unknown[])=>values.some(value=>String(value??"").toLocaleLowerCase("tr-TR").includes(query));
       const productMatch=!query||matches([prod.name,prod.sku,prod.barcode,brand,prod.tags]);
       const variants=Array.isArray(prod.variants)?prod.variants:[];
@@ -1165,38 +1177,45 @@ export function AdminDashboardClient({
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct || variantEditBusy) return;
-    if (variantEditDirty && !window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Yalnızca ürün ana bilgileri kaydedilsin mi?")) return;
-    const res = await authFetch("/api/products", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editingProduct.id,
-        name: editingProduct.name,
-        retailPrice: editingProduct.retailPrice,
-        buyPrice: editingProduct.buyPrice,
-        campaignPrice: editingProduct.campaignPrice || null,
-        categoryId: editingProduct.categoryId,
-        brandId: editingProduct.brandId,
-        tags: editingProduct.tags || "",
-        collection: editingProduct.collection || "",
-        imageUrl: editingProduct.imageUrl,
-        images: editingProduct._imagesTouched ? editingProduct.images : undefined,
-        videoUrl: editingProduct.videoUrl || null,
-        isFeatured: editingProduct.isFeatured,
-        isActive: editingProduct.isActive,
-        shortDescription: editingProduct.shortDescription,
-        description: editingProduct.description,
-        technicalDetails: parseProductSpecifications(editingProduct.technicalDetails),
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      await refreshProducts();
-      setEditingProduct(null);
-      setCatalogFeedback({ text: "Ürün güncellendi.", isError: false });
-    } else {
-      setCatalogFeedback({ text: data.error || "Güncelleme başarısız.", isError: true });
+    setProductEditError("");
+    if (editingProduct.brandId != null && !brandsList.some(b=>String(b.id)===String(editingProduct.brandId))) {
+      setProductEditError("Bu ürünün marka kaydı bulunamadı. Lütfen doğru markayı veya Markasız seçeneğini seçin.");
+      return;
     }
+    if (variantEditDirty && !window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Yalnızca ürün ana bilgileri kaydedilsin mi?")) return;
+    try {
+      const res = await authFetch("/api/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingProduct.id,
+          name: editingProduct.name,
+          retailPrice: editingProduct.retailPrice,
+          buyPrice: editingProduct.buyPrice,
+          campaignPrice: editingProduct.campaignPrice || null,
+          categoryId: editingProduct.categoryId,
+          brandId: editingProduct.brandId,
+          tags: editingProduct.tags || "",
+          collection: editingProduct.collection || "",
+          imageUrl: editingProduct.imageUrl,
+          images: editingProduct._imagesTouched ? editingProduct.images : undefined,
+          videoUrl: editingProduct.videoUrl || null,
+          isFeatured: editingProduct.isFeatured,
+          isActive: editingProduct.isActive,
+          shortDescription: editingProduct.shortDescription,
+          description: editingProduct.description,
+          technicalDetails: parseProductSpecifications(editingProduct.technicalDetails),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await refreshProducts();
+        setEditingProduct(null);
+        setCatalogFeedback({ text: "Ürün güncellendi.", isError: false });
+      } else {
+        setProductEditError(typeof data.error === "string" ? data.error : "Güncelleme başarısız.");
+      }
+    } catch { setProductEditError("Bağlantı kesildi; kayıt sonucu doğrulanamadı. Listeyi yenileyip kontrol edin."); }
   };
 
   const toggleProductFlag = async (id: number, field: "isFeatured" | "isActive", value: boolean) => {
@@ -2500,7 +2519,7 @@ export function AdminDashboardClient({
                             </td>
                             <td className="py-2.5 px-2 space-y-1">
                               {variant&&<button type="button" aria-label={`${prod.name} ${variantLabel(variant)||variant.sku} varyantını düzenle`} onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setTableVariantEditor({productId:prod.id,variantId:variant.id,name:prod.name});}} className="block text-amber-800 font-bold hover:underline">Varyantı düzenle</button>}
-                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
+                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
                               {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId!==null} onClick={()=>void handleDeleteProduct(prod.id,prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId===prod.id?"Siliniyor...":variant?"Ürünü sil":"Sil"}</button>}
                               <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
                             </td>
@@ -2730,7 +2749,7 @@ export function AdminDashboardClient({
                     <tbody className="divide-y divide-stone-100">
                       {variantTableRows.map(({p,v,stock}) => <tr key={`${v.id}-${stock?.id ?? "none"}`}>
                           <td className="py-2 px-1.5">{categoriesList.find(c=>c.id===p.categoryId)?.name || "—"}</td>
-                          <td className="py-2 px-1.5">{p.brandId == null ? "—" : (brandsList.find(b=>String(b.id)===String(p.brandId))?.name || p.brandName || `Bilinmeyen marka #${p.brandId}`)}</td>
+                          <td className="py-2 px-1.5">{productBrandLabel(p,brandsList)}</td>
                           <td className="py-2 px-1.5 font-semibold">{p.name}{p.isActive===false&&<span className="block text-stone-500">Pasif ürün</span>}</td>
                           <td className="py-2 px-1.5"><span className="inline-flex items-center gap-1.5">{v.colorHex&&<span className="w-3 h-3 rounded-full border border-stone-300" style={{backgroundColor:v.colorHex}} />}{variantLabel(v)||"—"}</span>{v.isActive===false&&<span className="block text-stone-500">Pasif varyant</span>}</td>
                           <td className="py-2 px-1.5">{v.buyPrice===null||v.buyPrice===undefined?"—":`${Number(v.buyPrice).toFixed(2)} TL`}</td>
@@ -4965,11 +4984,13 @@ export function AdminDashboardClient({
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                <select value={editingProduct.brandId || ""} onChange={(e) => setEditingProduct({ ...editingProduct, brandId: e.target.value ? Number(e.target.value) : null })} className="px-3 py-2 border border-stone-300 rounded-xl">
-                  {brandsList.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                <label className="font-bold">Marka
+                  <select aria-label="Ürün markası" value={editingProduct.brandId == null ? "" : String(editingProduct.brandId)} onChange={(e) => { setProductEditError(""); setEditingProduct({ ...editingProduct, brandId: e.target.value ? Number(e.target.value) : null }); }} className="block w-full px-3 py-2 border border-stone-300 rounded-xl font-normal">
+                    <option value="">Markasız</option>
+                    {editingProduct.brandId != null && !brandsList.some(b=>String(b.id)===String(editingProduct.brandId)) && <option value={String(editingProduct.brandId)} disabled>Marka kaydı bulunamadı (#{editingProduct.brandId}) — seçim yapın</option>}
+                    {brandsList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </label>
               </div>
               <PhotoManager
                 photos={
@@ -4989,6 +5010,7 @@ export function AdminDashboardClient({
                 <input type="checkbox" checked={!!editingProduct.isFeatured} onChange={(e) => setEditingProduct({ ...editingProduct, isFeatured: e.target.checked })} />
                 Öne çıkan ürün
               </label>
+              {productEditError && <p role="alert" className="p-2 rounded-lg bg-rose-50 text-rose-800">{productEditError}</p>}
               <button type="submit" disabled={variantEditBusy} className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl disabled:opacity-50">Ürün ana bilgilerini kaydet</button>
             </form>
             {editingProduct.hasVariants && <EditProductVariants key={editingProduct.id} productId={editingProduct.id} onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async () => { await Promise.all([refreshProducts(), loadInventory()]); }} />}

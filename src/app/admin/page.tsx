@@ -75,7 +75,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       ...p,
       variants: vars,
       categoryName: cat?.name || "Kategori",
-      brandName: br?.name || "Marka",
+      brandName: br?.name ?? null,
       totalPhysical,
       totalAvailable: Math.max(0, totalPhysical - totalReserved),
     };

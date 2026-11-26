@@ -12,6 +12,16 @@ import { deleteProductSafely } from "@/lib/delete-product";
 import { validateProductSpecifications } from "@/lib/product-specifications";
 import { validateNewProductVariants, variantSkuBase, VariantValidationError } from "@/lib/new-product-variants";
 import { publicHttpsUrl, resolvePublicHost } from "@/lib/product-import/safe-fetch";
+class BrandReferenceError extends Error {}
+const BRAND_ERROR = "Seçilen marka bulunamadı. Lütfen geçerli bir marka seçin.";
+function parseBrandId(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (!((typeof value === "number" && Number.isSafeInteger(value)) || (typeof value === "string" && /^[1-9]\d*$/.test(value)))) throw new BrandReferenceError(BRAND_ERROR);
+  const id=Number(value);
+  if (!Number.isSafeInteger(id) || id<1) throw new BrandReferenceError(BRAND_ERROR);
+  return id;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -163,7 +173,7 @@ export async function GET(request: Request) {
         ...p,
         categoryName: cat?.name || "Tuhafiye",
         categorySlug: cat?.slug || "",
-        brandName: br?.name || "Özel Üretim",
+        brandName: br?.name ?? (allWarehouses ? null : "Özel Üretim"),
         brandSlug: br?.slug || "",
         variants: pVariants,
         images: pImages,
@@ -230,13 +240,7 @@ export async function POST(request: Request) {
       warehouseId,
     } = body;
 
-    // A controlled select must never silently persist a stale or nonexistent brand.
-    if (brandId !== undefined && brandId !== null && brandId !== "") {
-      const selectedBrandId = Number(brandId);
-      if (!Number.isSafeInteger(selectedBrandId) || selectedBrandId < 1 || !(await db.select({ id: brands.id }).from(brands).where(eq(brands.id, selectedBrandId)).limit(1)).length) {
-        return NextResponse.json({ success: false, error: "Seçilen marka bulunamadı. Lütfen geçerli bir marka seçin." }, { status: 422 });
-      }
-    }
+    const selectedBrandId = parseBrandId(brandId);
 
     let technicalDetails: string | null = null;
     if (body.technicalDetails !== undefined) {
@@ -283,6 +287,7 @@ export async function POST(request: Request) {
       }
       try {
         const created = db.transaction((tx) => {
+          if (selectedBrandId !== null && !tx.select({id:brands.id}).from(brands).where(eq(brands.id,selectedBrandId)).get()) throw new BrandReferenceError(BRAND_ERROR);
           if (!resolveActiveWarehouse(warehouse)) throw new VariantValidationError("Seçilen depo bulunamadı.");
           const skuUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.sku, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.sku, value)).get();
           const barcodeUsed = (value: string) => !!tx.select({ id: products.id }).from(products).where(eq(products.barcode, value)).get() || !!tx.select({ id: productVariants.id }).from(productVariants).where(eq(productVariants.barcode, value)).get();
@@ -292,7 +297,7 @@ export async function POST(request: Request) {
             name: productName,
             slug: slug || productName.toLowerCase().replace(/[^a-z0-9ğüşıöçĞÜŞİÖÇ]+/gi, "-").replace(/(^-|-$)/g, ""),
             sku: productSku, barcode: productBarcode || null,
-            categoryId: Number(categoryId) || 1, brandId: brandId ? Number(brandId) : null,
+            categoryId: Number(categoryId) || 1, brandId: selectedBrandId,
             unit, buyPrice: String(buyPrice), retailPrice: String(retailPrice), shortDescription, description, technicalDetails,
             imageUrl: imageUrl || galleryUrls[0] || "https://images.unsplash.com/photo-1596704017254-9b121068fb31?w=800&auto=format&fit=crop&q=80",
             videoUrl: videoUrl || null, hasVariants: true,
@@ -321,6 +326,7 @@ export async function POST(request: Request) {
         }, { behavior: "immediate" });
         return NextResponse.json({ success: true, data: created });
       } catch (error) {
+        if (error instanceof BrandReferenceError) return NextResponse.json({ success: false, error: error.message }, { status: 422 });
         if (error instanceof VariantValidationError) return NextResponse.json({ success: false, error: error.message }, { status: 422 });
         if (error instanceof Error && /unique constraint/i.test(error.message)) return NextResponse.json({ success: false, error: "Ürün adresi, SKU veya barkod zaten kullanılıyor." }, { status: 409 });
         console.error("Varyantlı ürün kaydedilemedi:", error instanceof Error ? error.message : "Unknown error");
@@ -329,6 +335,7 @@ export async function POST(request: Request) {
     }
 
     const newProd = db.transaction((tx) => {
+      if (selectedBrandId !== null && !tx.select({id:brands.id}).from(brands).where(eq(brands.id,selectedBrandId)).get()) throw new BrandReferenceError(BRAND_ERROR);
       if (!resolveActiveWarehouse(resolvedWarehouse)) throw new Error("Seçilen depo artık aktif değil.");
       const [newProd] = tx.insert(products).values({
         name,
@@ -336,7 +343,7 @@ export async function POST(request: Request) {
         sku,
         barcode: barcode || `869${Date.now().toString().slice(-10)}`,
         categoryId: Number(categoryId) || 1,
-        brandId: brandId ? Number(brandId) : null,
+        brandId: selectedBrandId,
         unit,
         buyPrice: String(buyPrice),
         retailPrice: String(retailPrice),
@@ -373,6 +380,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data: newProd });
   } catch (err: any) {
+    if (err instanceof BrandReferenceError) return NextResponse.json({ success: false, error: err.message }, { status: 422 });
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
@@ -393,7 +401,7 @@ export async function PATCH(request: Request) {
     if (body.sku !== undefined) updates.sku = String(body.sku).trim();
     if (body.barcode !== undefined) updates.barcode = String(body.barcode).trim() || null;
     if (body.categoryId !== undefined) updates.categoryId = Number(body.categoryId);
-    if (body.brandId !== undefined) updates.brandId = body.brandId ? Number(body.brandId) : null;
+    if (body.brandId !== undefined) updates.brandId = parseBrandId(body.brandId);
     if (body.unit !== undefined) updates.unit = String(body.unit);
     if (body.buyPrice !== undefined) updates.buyPrice = String(body.buyPrice);
     if (body.retailPrice !== undefined) updates.retailPrice = String(body.retailPrice);
@@ -429,31 +437,28 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: "Güncellenecek alan yok." }, { status: 422 });
     }
 
-    if (Object.keys(updates).length > 0) {
-      await db.update(products).set(updates).where(eq(products.id, id));
-    }
-    if (galleryUrls !== null) {
-      await db.delete(productImages).where(eq(productImages.productId, id));
-      for (const [i, url] of galleryUrls.entries()) {
-        await db.insert(productImages).values({
-          productId: id,
-          url,
-          sortOrder: i,
-          isPrimary: i === 0,
-        });
+    // Validate the selected brand and write the product in one transaction so a
+    // concurrent brand deletion cannot create another dangling reference.
+    const updated = db.transaction((tx) => {
+      const existing=tx.select({id:products.id}).from(products).where(eq(products.id,id)).get();
+      if (!existing) return undefined;
+      if (updates.brandId !== undefined && updates.brandId !== null && !tx.select({id:brands.id}).from(brands).where(eq(brands.id,updates.brandId as number)).get()) throw new BrandReferenceError(BRAND_ERROR);
+      if (Object.keys(updates).length > 0) tx.update(products).set(updates).where(eq(products.id,id)).run();
+      if (galleryUrls !== null) {
+        tx.delete(productImages).where(eq(productImages.productId,id)).run();
+        for (const [i,url] of galleryUrls.entries()) tx.insert(productImages).values({productId:id,url,sortOrder:i,isPrimary:i===0}).run();
+        tx.update(products).set({imageUrl:galleryUrls[0]||null}).where(eq(products.id,id)).run();
       }
-      await db
-        .update(products)
-        .set({ imageUrl: galleryUrls[0] || null })
-        .where(eq(products.id, id));
-    }
-    const [updated] = await db.select().from(products).where(eq(products.id, id));
+      return tx.select().from(products).where(eq(products.id,id)).get();
+    }, {behavior:"immediate"});
+
     if (!updated) {
       return NextResponse.json({ success: false, error: "Ürün bulunamadı." }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, data: updated });
   } catch (err: any) {
+    if (err instanceof BrandReferenceError) return NextResponse.json({ success: false, error: err.message }, { status: 422 });
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
