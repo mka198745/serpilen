@@ -6,6 +6,10 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { AuthModal } from "@/components/layout/AuthModal";
+import { PrivacyNotice } from "@/components/layout/PrivacyNotice";
+import { getSiteSettings } from "@/lib/site-settings";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://serpilencollection.com"),
@@ -33,11 +37,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const settings = await getSiteSettings();
+  const blogEnabled = settings["site.blog.enabled"] !== "false";
   return (
     <html lang="tr" className="scroll-smooth">
       <head>
@@ -70,11 +76,12 @@ export default function RootLayout({
       <body className="min-h-screen bg-stone-50 text-stone-900 flex flex-col antialiased selection:bg-amber-800 selection:text-white">
         <CartProvider>
           <AuthProvider>
-            <Header />
+            <Header initialBlogEnabled={blogEnabled} />
             <main className="flex-1">{children}</main>
             <CartDrawer />
             <AuthModal />
-            <Footer />
+            <Footer initialBlogEnabled={blogEnabled} />
+            <PrivacyNotice />
           </AuthProvider>
         </CartProvider>
       </body>

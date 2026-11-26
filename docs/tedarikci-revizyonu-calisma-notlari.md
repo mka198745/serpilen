@@ -1,0 +1,14 @@
+# Tedarikçi revizyonu
+
+Durum: Yerelde uygulandı ve hedefli testler çalıştırıldı; **canlıya uygulanmadı**. Canlı sürüm değişmeden önce SQLite migration `0029_supplier_returns` ayrıca, yedekli ve doğrulanmış bir dağıtım planıyla uygulanmalı. `scripts/db-apply.mjs` ifadeleri ayrı ayrı çalıştırdığından, canlı migration için atomik çevrimdışı bir uygulayıcı ve yedek/geri dönüş provası gerekir. Yeni uygulama migration uygulanmadan kullanılmamalı. Eski ve yeni uygulama süreçleri aynı anda yazmamalı.
+
+## Davranış
+- İlişkili geçmişi olan tedarikçi arşivlenir, geçmişi korunur; ilişkisi olmayan silinir. Arşivdekilere yeni satın alma açılamaz, eski sipariş ve kabuller görülebilir.
+- Mal kabul, kalemlerin doğru siparişe ait olduğunu ve miktarları doğrular; stok, defter, fiş, sipariş durumu ve işlem anahtarı tek IMMEDIATE transaction'da kaydedilir. Tedarikçiye iade mal kabul kalemine bağlıdır; kümülatif iade kabul miktarını aşamaz. Yalnız deponun kullanılabilir stoğu düşülür; stok, defter, iade ve denetim kayıtları atomiktir.
+- İki işlem de kalıcı benzersiz anahtarla tekrarlandığında ikinci kez uygulanmaz. Tarayıcı belirsiz sonucu aynı istekle tekrar deneyebilir. 'Sonucu kontrol et ve kapat' işlem tamamlandıysa sonucu bildirir; tamamlanmadıysa aynı yazma kilidi altında anahtarı kapatarak gecikmiş isteğin sonradan uygulanmasını engeller.
+- Tedarikçi puanı, **son üç tamamlanmış siparişin** söz verilen tarihe göre zamanında tamamlanması %50, ilgili kabul miktarının tedarikçiye iade edilmemiş oranı %30 ve tedarikçinin güncel vadesinin diğer aktif tedarikçilerin güncel vadeleri arasındaki konumu %20 ile 1–5 arası hesaplanır. Aynı vade karşılaştırmasında yarım konum kullanılır. Teslim tarihi sipariş anında sabitlenir; kısmi kabulde son kabul tarihi kullanılır.
+- En az üç tamamlanmış sipariş, geçerli teslim tarihleri, güvenilir kabul/iade kaydı ve karşılaştırılabilir en az bir başka aktif tedarikçinin vadesi gereklidir. Yoksa puan üretilmez, neden ekranda gösterilir. Vade karşılaştırması yalnız 'N gün', 'N gün vade' ve 'peşin' biçimlerini tanır. Diğer vadelerin değişmesiyle göreli puan da değişebilir.
+- Eski siparişlerde tedarikçiye iade geçmişi tutulmadığı için kayıt yokluğu 'iade yok' sayılmaz. Sadece yeni sistemde açılan siparişler, iade kayıt kapsamına dahil olur. Sağlıklı puan için tedarikçiye yapılan tüm iadelerin bu ekrandan kaydedilmesi gerekir. Müşteri iadeleri tedarikçiye iade değildir. Eski manuel puanlar gösterilmez ve ticari zekâ puanına dahil edilmez.
+
+## Dağıtım öncesi
+`hosting/migrate-0029.cjs` ve `docs/tedarikci-dagitim-plani.md` hazırlandı; yerel SQLite üzerinde yedek, atomiklik ve geri dönüş provası test edildi. Canlı DB henüz incelenmedi veya değiştirilmedi. Kullanıcı ortak satış deposu seçiminin canlıda çalıştığını teyit etti. Yeni paket ve eski sürüme dönüş yerel sentetik DB ile test edildi. Gerçek dağıtımda canlı DB incelemesi, tüm yazıcıların durdurulması ve yedek doğrulaması gerekir.

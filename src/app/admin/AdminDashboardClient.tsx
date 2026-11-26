@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
 import { AiAssistantCenter } from "@/components/admin/AiAssistantCenter";
+import { AuditLogPanel } from "@/components/admin/AuditLogPanel";
 import { IntelligenceCenter } from "@/components/admin/intelligence/IntelligenceCenter";
 import {
   LayoutDashboard,
@@ -18,7 +19,6 @@ import {
   Tag,
   Sparkles,
   Brain,
-  BookOpen,
   Search,
   Plus,
   ArrowRightLeft,
@@ -60,20 +60,35 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ShoppingCart,
+  Headset,
+  MessageSquareQuote,
 } from "lucide-react";
 import { parseVideoUrl, VIDEO_HINT, VIDEO_UNKNOWN_HINT, videoWatchUrl } from "@/lib/video";
 import { PhotoManager } from "@/components/admin/PhotoManager";
+import { AuthorizedProductLinkImport } from "@/components/admin/ProductLinkImport";
+import { EditProductVariants } from "@/components/admin/EditProductVariants";
+import { NewProductVariants, type VariantDraft } from "@/components/admin/NewProductVariants";
+import { validateNewProductVariants } from "@/lib/new-product-variants";
+import { variantStockTotal, variantStockTarget } from "@/lib/variant-stock-total";
+import { variantLabel } from "@/lib/variant-label";
+import { ProductTechnicalFields } from "@/components/admin/ProductTechnicalFields";
+import { parseProductSpecifications, type ProductSpecifications } from "@/lib/product-specifications";
+import type { ImportedProduct } from "@/lib/product-import/extract";
 import { YouTubePlayer } from "@/components/storefront/YouTubePlayer";
 import { SiteManagement } from "@/components/admin/SiteManagement";
 import { PaymentApiSettings } from "@/components/admin/PaymentApiSettings";
 import { ContentManagement } from "@/components/admin/ContentManagement";
 
 import { authFetch, downloadAuthenticated } from "@/lib/client-auth";
+import { formatRegistrationDate } from "@/lib/registration-date";
+import { SupportDesk } from "@/components/admin/SupportDesk";
+import { ProductFeedback } from "@/components/admin/ProductFeedback";
+import { CustomerCRM } from "@/components/admin/CustomerCRM";
+import { ZReportsPanel } from "@/components/admin/ZReportsPanel";
 import {
   ADMIN_MODULES,
   ADMIN_MODULE_GROUPS,
   MATRIX_ROLES,
-  DEFAULT_ROLE_MATRIX,
   normalizeRoleMatrix,
   type RoleMatrix,
 } from "@/lib/admin-modules";
@@ -85,10 +100,10 @@ interface AdminDashboardClientProps {
   categories: any[];
   brands: any[];
   warehouses: any[];
+  initialSalesWarehouseId?: number | null;
   inventory: any[];
   ledger: any[];
   orders: any[];
-  customers: any[];
   suppliers: any[];
   purchaseOrders: any[];
   coupons: any[];
@@ -108,9 +123,34 @@ interface AdminDashboardClientProps {
     pendingOrdersCount: number;
     returnedOrdersCount: number;
     customersCount: number;
-    criticalStockCount: number;
   };
 }
+
+// Read browser storage after hydration, without writing over the saved value on mount.
+const subscribeToBrowserStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+const noServerStorage = () => null;
+const readStorage = (key: string) => {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+};
+const sidebarStorage = () => readStorage("admin-sidebar-collapsed");
+const purchasingStorage = () => readStorage("serpilen.purchasing.pending.v1");
+
+// Never confuse a missing brand relationship with a real brand name.
+function productBrandLabel(product: {brandId?: number | string | null; brandName?: string | null}, brands: {id: number | string; name: string}[]): string {
+  if (product.brandId == null) return "—";
+  const matched=brands.find(brand=>String(brand.id)===String(product.brandId));
+  if (matched) return matched.name;
+  // Older SSR responses used these placeholders even when the relation was broken.
+  const label=product.brandName?.trim();
+  if (label && label!=="Marka" && label!=="Özel Üretim") return label;
+  return `Marka kaydı bulunamadı (#${product.brandId})`;
+}
+
+// Distinguish unlabelled variants without colliding with an actual color name.
+const variantColorKey = (color: unknown) => typeof color === "string" && color.trim() ? `color:${color.trim().toLocaleLowerCase("tr-TR")}` : "unlabelled";
 
 export function AdminDashboardClient({
   currentRole = "SUPER_ADMIN",
@@ -120,17 +160,23 @@ export function AdminDashboardClient({
   categories,
   brands,
   warehouses,
+  initialSalesWarehouseId = null,
   inventory: initialInventory,
   ledger: initialLedger,
   orders: initialOrders,
-  customers: initialCustomers,
   suppliers: initialSuppliers,
   purchaseOrders: initialPOs,
   coupons: initialCoupons,
   shifts,
   dashboardStats,
 }: AdminDashboardClientProps) {
-  const [activeTab, setActiveTab] = useState<
+  /* The selected tab is constrained by the latest role matrix before rendering. */
+  const [roleMatrix, setRoleMatrix] = useState<RoleMatrix>(() => normalizeRoleMatrix(null));
+  const [matrixLoaded, setMatrixLoaded] = useState(false);
+  const isSuper = currentRole === "SUPER_ADMIN";
+  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || {};
+  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] === true;
+  const [requestedTab, setActiveTab] = useState<
     | "dashboard"
     | "catalog"
     | "wms"
@@ -142,6 +188,8 @@ export function AdminDashboardClient({
     | "coupons"
     | "ai"
     | "intelligence"
+    | "support"
+    | "productFeedback"
     | "users"
     | "registeredCustomers"
     | "roleMatrix"
@@ -154,26 +202,17 @@ export function AdminDashboardClient({
     | "database"
     | "content"
   >("dashboard");
+  // Reset an inaccessible tab synchronously so it cannot reappear if access is restored.
+  const activeTab = matrixLoaded && !canSee(requestedTab) ? "dashboard" : requestedTab;
+  if (activeTab !== requestedTab) setActiveTab(activeTab);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem("admin-sidebar-collapsed") === "1") {
-        setSidebarCollapsed(true);
-      }
-    } catch {
-      /* localStorage erişilemiyorsa sorun değil */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("admin-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
-    } catch {
-      /* yoksay */
-    }
-  }, [sidebarCollapsed]);
+  const storedSidebar = useSyncExternalStore(subscribeToBrowserStorage, sidebarStorage, noServerStorage);
+  const [sidebarChoice, setSidebarChoice] = useState<boolean | null>(null);
+  const sidebarCollapsed = sidebarChoice ?? storedSidebar === "1";
+  const setSidebarCollapsed = (value: boolean) => {
+    setSidebarChoice(value);
+    try { window.localStorage.setItem("admin-sidebar-collapsed", value ? "1" : "0"); } catch { /* storage unavailable */ }
+  };
 
   /* --- FAZ 7: POS & Kasa Yönetimi (Admin) --- */
   const [shiftsList, setShiftsList] = useState(shifts);
@@ -181,30 +220,50 @@ export function AdminDashboardClient({
   const [posTransList, setPosTransList] = useState<any[]>([]);
   const [selectedShiftForModal, setSelectedShiftForModal] = useState<any | null>(null);
 
-  const loadPosShifts = React.useCallback(async () => {
-    try {
-      const res = await authFetch("/api/pos/shift?warehouseId=2", { cache: "no-store" });
-      const data = await res.json();
-      if (data.success) {
-        setShiftsList(data.history || []);
-        if (data.shiftTransactions) setPosTransList(data.shiftTransactions);
-      }
-    } catch {}
-  }, []);
-
   React.useEffect(() => {
-    if (activeTab === "pos") void loadPosShifts();
-  }, [activeTab, loadPosShifts]);
+    if (activeTab !== "pos") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/pos/shift", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled && data.success) {
+          setShiftsList(data.history || []);
+          if (data.shiftTransactions) setPosTransList(data.shiftTransactions);
+        }
+      } catch { /* POS bilgileri daha sonra yeniden yüklenebilir */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   // Dynamic state
   const [products, setProducts] = useState(initialProducts);
   const [brandsList, setBrandsList] = useState(brands);
   const [categoriesList, setCategoriesList] = useState(categories);
   const [warehousesList, setWarehousesList] = useState(warehouses);
+  const [salesWarehouseId, setSalesWarehouseId] = useState<number | null>(initialSalesWarehouseId);
+  const [salesWarehouseChoice, setSalesWarehouseChoice] = useState(String(initialSalesWarehouseId || ""));
+  const [salesWarehouseBusy, setSalesWarehouseBusy] = useState(false);
+  const defaultWarehouseId = String(salesWarehouseId || (warehousesList.filter((w) => w.isActive !== false).sort((a, b) => Number(b.type === "CENTRAL") - Number(a.type === "CENTRAL") || a.id - b.id)[0])?.id || "");
+  const secondWarehouseId = String(warehousesList.find((w) => w.isActive !== false && String(w.id) !== defaultWarehouseId)?.id || defaultWarehouseId);
   const [catalogSubTab, setCatalogSubTab] = useState<"products" | "categories" | "brands" | "variants">("products");
   const [catalogBrandFilter, setCatalogBrandFilter] = useState("ALL");
   const [catalogCatFilter, setCatalogCatFilter] = useState("ALL");
+  const [variantFilters, setVariantFilters] = useState({category:"",brand:"",product:"",color:"",warehouse:""});
+  const [variantPage, setVariantPage] = useState(1);
+  const changeVariantFilter = (key: keyof typeof variantFilters, value: string) => {
+    setVariantFilters(previous => ({...previous, [key]: value}));
+    setVariantPage(1);
+  };
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [editingProductVariantId, setEditingProductVariantId] = useState<number | null>(null);
+  const productEditPrices = React.useRef({ buyPrice: "", retailPrice: "" });
+  const [productEditError, setProductEditError] = useState("");
+  const [variantEditDirty, setVariantEditDirty] = useState(false);
+  const [tableVariantEditor, setTableVariantEditor] = useState<{productId:number;variantId:number;name:string}|null>(null);
+  const [deletingVariantId, setDeletingVariantId] = useState<number|null>(null);
+  const deletingVariantLock = React.useRef(false);
+  const [variantEditBusy, setVariantEditBusy] = useState(false);
   const [variantProductId, setVariantProductId] = useState<string>("");
   const [newVariant, setNewVariant] = useState({
     colorName: "",
@@ -219,18 +278,92 @@ export function AdminDashboardClient({
   });
   const [newCategory, setNewCategory] = useState({ name: "", parentId: "", description: "" });
   const [newBrandAdmin, setNewBrandAdmin] = useState("");
+  const [newBrandCategories, setNewBrandCategories] = useState<number[]>([]);
+  const [editingBrandCategories, setEditingBrandCategories] = useState<number[]>([]);
   const [editingBrandId, setEditingBrandId] = useState<number | null>(null);
   const [editingBrandName, setEditingBrandName] = useState("");
+  const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
+  const deletingProductLock = React.useRef(false);
   const [catalogFeedback, setCatalogFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [inventoryList, setInventoryList] = useState(initialInventory);
+  const inventoryRequestSequence = React.useRef(0);
+  const [catalogStockError, setCatalogStockError] = useState("");
+  const variantProducts = React.useMemo(() => products.filter(p => (p.variants || []).length > 0), [products]);
+  const variantColors = React.useMemo(() => {
+    const colors = new Map<string,string>();
+    for (const p of variantProducts) for (const v of p.variants || []) {
+      const key=variantColorKey(v.colorName);
+      if(!colors.has(key)) colors.set(key, typeof v.colorName === "string" && v.colorName.trim() ? v.colorName.trim() : "Renk belirtilmemiş");
+    }
+    return [...colors].sort((a,b)=>a[1].localeCompare(b[1],"tr"));
+  }, [variantProducts]);
+  const variantTableRows = React.useMemo(() => {
+    const stocksByVariant = new Map<number, typeof inventoryList>();
+    for (const stock of inventoryList) if (stock.variantId != null) {
+      const rows=stocksByVariant.get(stock.variantId) || [];rows.push(stock);stocksByVariant.set(stock.variantId,rows);
+    }
+    return variantProducts.flatMap(p => {
+      if (variantFilters.category && String(p.categoryId)!==variantFilters.category) return [];
+      if (variantFilters.brand && (variantFilters.brand==="unassigned" ? p.brandId!=null : String(p.brandId)!==variantFilters.brand)) return [];
+      if (variantFilters.product && String(p.id)!==variantFilters.product) return [];
+      return (p.variants || []).flatMap((v:any) => {
+        if (variantFilters.color && variantColorKey(v.colorName)!==variantFilters.color) return [];
+        const stocks=(stocksByVariant.get(v.id)||[]).slice().sort((a,b)=>a.warehouseId-b.warehouseId||a.id-b.id);
+        const visible = !variantFilters.warehouse ? (stocks.length?stocks:[null]) : variantFilters.warehouse==="unassigned" ? (stocks.length?[]:[null]) : stocks.filter(s=>String(s.warehouseId)===variantFilters.warehouse);
+        return visible.map(stock=>({p,v,stock}));
+      });
+    });
+  }, [variantProducts,inventoryList,variantFilters]);
+  const variantPageSize = 20;
+  const variantPageCount = Math.max(1, Math.ceil(variantTableRows.length / variantPageSize));
+  const currentVariantPage = Math.min(variantPage, variantPageCount);
+  const variantPageStart = (currentVariantPage - 1) * variantPageSize;
+  const visibleVariantRows = variantTableRows.slice(variantPageStart, variantPageStart + variantPageSize);
+  React.useEffect(() => {
+    // Rows can disappear after deletion or inventory refresh; do not retain an
+    // out-of-range page if the result later grows again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVariantPage(previous => Math.min(previous, variantPageCount));
+  }, [variantPageCount]);
   const [ledger, setLedger] = useState(initialLedger);
   const [orders, setOrders] = useState(initialOrders);
-  const [customers] = useState(initialCustomers);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
   const [coupons, setCoupons] = useState(initialCoupons);
 
   // Search & Filter
   const [catalogSearch, setCatalogSearch] = useState("");
+  const catalogRows = React.useMemo(() => {
+    const stockByVariant = new Map<number, {productId:number; physical:number; reserved:number}>();
+    const baseStock = new Map<number, {physical:number; reserved:number}>();
+    for (const stock of inventoryList) {
+      if (!Number.isFinite(stock.physicalQty) || !Number.isFinite(stock.reservedQty)) continue;
+      if (stock.variantId == null) {
+        const total=baseStock.get(stock.productId) || {physical:0,reserved:0};
+        total.physical+=stock.physicalQty; total.reserved+=stock.reservedQty; baseStock.set(stock.productId,total);
+      } else if (salesWarehouseId !== null && stock.warehouseId === salesWarehouseId) {
+        const total=stockByVariant.get(stock.variantId);
+        if (total && total.productId === stock.productId) { total.physical+=stock.physicalQty; total.reserved+=stock.reservedQty; }
+        else if (!total) stockByVariant.set(stock.variantId,{productId:stock.productId,physical:stock.physicalQty,reserved:stock.reservedQty});
+      }
+    }
+    const query=catalogSearch.trim().toLocaleLowerCase("tr-TR");
+    return products.flatMap(prod=>{
+      if (catalogCatFilter!=="ALL" && String(prod.categoryId)!==catalogCatFilter) return [];
+      if (catalogBrandFilter!=="ALL" && String(prod.brandId)!==catalogBrandFilter) return [];
+      const brand=productBrandLabel(prod,brandsList);
+      const matches=(values:unknown[])=>values.some(value=>String(value??"").toLocaleLowerCase("tr-TR").includes(query));
+      const productMatch=!query||matches([prod.name,prod.sku,prod.barcode,brand,prod.tags]);
+      const variants=Array.isArray(prod.variants)?prod.variants:[];
+      if (prod.hasVariants || variants.length) return variants.flatMap((variant:any)=>{
+        const stock=stockByVariant.get(variant.id);
+        if (!stock || stock.productId!==prod.id || stock.physical<=0) return [];
+        if (!productMatch && !matches([variant.sku,variant.barcode,variant.colorName,variant.size,variant.length])) return [];
+        return [{prod,variant,stock,brand}];
+      });
+      if (!productMatch) return [];
+      return [{prod,variant:null,stock:baseStock.get(prod.id)||{physical:0,reserved:0},brand}];
+    });
+  }, [products,inventoryList,salesWarehouseId,catalogCatFilter,catalogBrandFilter,catalogSearch,brandsList]);
   const [stockSearch, setStockSearch] = useState("");
   const [selectedWhFilter, setSelectedWhFilter] = useState<string>("ALL");
 
@@ -246,8 +379,8 @@ export function AdminDashboardClient({
   const [countBarcodeInput, setCountBarcodeInput] = useState("");
   const [countQtyInput, setCountQtyInput] = useState("1");
   const [countedItems, setCountedItems] = useState<any[]>([]);
-  const [newTransfer, setNewTransfer] = useState({ fromWarehouseId: "1", toWarehouseId: "2", productId: "", qty: "10", note: "" });
-  const [newLocation, setNewLocation] = useState({ warehouseId: "1", zone: "A", aisle: "01", rack: "01", shelf: "01" });
+  const [newTransfer, setNewTransfer] = useState({ fromWarehouseId: defaultWarehouseId, toWarehouseId: secondWarehouseId, productId: "", qty: "10", note: "" });
+  const [newLocation, setNewLocation] = useState({ warehouseId: defaultWarehouseId, zone: "A", aisle: "01", rack: "01", shelf: "01" });
   const [newWarehouseForm, setNewWarehouseForm] = useState({ name: "", type: "CENTRAL", address: "" });
   const [addingWarehouseForm, setAddingWarehouseForm] = useState(false);
 
@@ -255,17 +388,33 @@ export function AdminDashboardClient({
   const [ordersSubTab, setOrdersSubTab] = useState<"orders" | "returns">("orders");
   const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
   const [returnsList, setReturnsList] = useState<any[]>([]);
+  const [reconciliation, setReconciliation] = useState<any|null>(null);
+  const [reconciliationError, setReconciliationError] = useState("");
+  const loadReconciliation = async (page=1) => {
+    try {const res=await authFetch(`/api/orders/reconciliation?page=${page}`,{cache:"no-store"});const data=await res.json();if(data.success){setReconciliation(data.data);setReconciliationError("");}else setReconciliationError(data.error||"Liste yüklenemedi.");}
+    catch {setReconciliationError("Mutabakat listesi yüklenemedi.");}
+  };
   const [orderFeedback, setOrderFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [returnModalOrder, setReturnModalOrder] = useState<any | null>(null);
   const [returnSelections, setReturnSelections] = useState<Record<number, number>>({});
+  const [deletionPreview, setDeletionPreview] = useState<{kind:"order"|"return";id:number;number:string;orderNumber:string;returnCount:number;fingerprint:string;rights:{loyalty:{customerId:number;current:number;delta:number;after:number}|null;discounts:{kind:string;id:number;name:string;current:number;after:number}[];legacyReviewRequired:boolean};stocks:{warehouseId:number;warehouseName:string;productId:number;productName:string;variantId:number|null;variantName:string|null;physical:number;reserved:number;delta:number;after:number}[]} | null>(null);
+  const [deletionPhysical, setDeletionPhysical] = useState(false);
+  const [deletionCascade, setDeletionCascade] = useState(false);
+  const [deletionRights, setDeletionRights] = useState(false);
+  const [deletionLegacy, setDeletionLegacy] = useState(false);
+  const [deletionBusy, setDeletionBusy] = useState(false);
+  const deletionLock = React.useRef(false);
+
 
   /* --- FAZ 5: Raporlama Motoru --- */
   const [reportData, setReportData] = useState<any | null>(null);
   const [reportDays, setReportDays] = useState(30);
-  const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance">("sales");
+  const [reportSubTab, setReportSubTab] = useState<"sales" | "products" | "stock" | "customers" | "finance" | "zreports">("sales");
   const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState("");
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
+  const reportRequestSequence = React.useRef(0);
 
   const downloadReportCsv = async () => {
     if (csvBusy) return;
@@ -280,7 +429,7 @@ export function AdminDashboardClient({
   };
 
   /* --- FAZ 6: Satın Alma (sipariş→mal kabul + öneriler) --- */
-  const [suppliersList, setSuppliersList] = useState(initialSuppliers);
+  const [suppliersList, setSuppliersList] = useState(initialSuppliers.filter((s: any) => s.isActive !== false).map((s: any) => ({ ...s, rating: null })));
   const [purchasingSubTab, setPurchasingSubTab] = useState<"suggest" | "orders" | "receipts" | "suppliers">("suggest");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [suggestionCount, setSuggestionCount] = useState(0);
@@ -288,11 +437,23 @@ export function AdminDashboardClient({
   const [purchasingBusy, setPurchasingBusy] = useState(false);
   const [purchasingFeedback, setPurchasingFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [isAddSupplierOpen, setIsAddSupplierOpen] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "30 Gün Vade", rating: "4.5" });
+  const [newSupplier, setNewSupplier] = useState({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "" });
   const [isCreatePOOpen, setIsCreatePOOpen] = useState(false);
-  const [poWizard, setPoWizard] = useState({ supplierId: "", warehouseId: "1", expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] as any[] });
+  const [poWizard, setPoWizard] = useState({ supplierId: "", warehouseId: defaultWarehouseId, expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] as any[] });
   const [receiveModalPO, setReceiveModalPO] = useState<any | null>(null);
   const [receiveLines, setReceiveLines] = useState<Record<number, number>>({});
+  const [supplierReturnReceipt, setSupplierReturnReceipt] = useState<any | null>(null);
+  const [supplierReturnLines, setSupplierReturnLines] = useState<Record<number, number>>({});
+  const [supplierReturnReason, setSupplierReturnReason] = useState("");
+  const storedPurchasing = useSyncExternalStore(subscribeToBrowserStorage, purchasingStorage, noServerStorage);
+  const storedPendingPurchasing = React.useMemo(() => {
+    try { return storedPurchasing ? JSON.parse(storedPurchasing) as Record<string, any> : null; } catch { return null; }
+  }, [storedPurchasing]);
+  // undefined means no local update yet; null means the pending command was cleared.
+  const [pendingPurchasingChoice, setPendingPurchasing] = useState<Record<string, any> | null | undefined>(undefined);
+  const pendingPurchasing = pendingPurchasingChoice === undefined ? storedPendingPurchasing : pendingPurchasingChoice;
+  const [purchasingSubmitting, setPurchasingSubmitting] = useState(false);
+  const purchasingSubmitLock = React.useRef(false);
 
   const loadPurchasing = React.useCallback(async () => {
     setPurchasingBusy(true);
@@ -312,6 +473,8 @@ export function AdminDashboardClient({
   }, []);
 
   React.useEffect(() => {
+    // This synchronizes the selected section with the server; the loader also marks it busy.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeTab === "purchasing") void loadPurchasing();
   }, [activeTab, loadPurchasing]);
 
@@ -323,13 +486,27 @@ export function AdminDashboardClient({
     });
     const data = await res.json();
     if (data.success) {
-      setSuppliersList((prev: any[]) => [data.data, ...prev]);
+      setSuppliersList((prev: any[]) => [{ ...data.data, rating: null }, ...prev]);
       setIsAddSupplierOpen(false);
-      setNewSupplier({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "30 Gün Vade", rating: "4.5" });
+      setNewSupplier({ name: "", contactPerson: "", phone: "", email: "", leadTimeDays: "5", paymentTerms: "" });
       setPurchasingFeedback({ text: "Tedarikçi eklendi.", isError: false });
     } else {
       setPurchasingFeedback({ text: data.error || "Tedarikçi eklenemedi.", isError: true });
     }
+  };
+
+  const deleteSupplier = async (supplier: any) => {
+    if (!window.confirm(`${supplier.name} kaldırılsın mı? Geçmişi varsa silinmez, arşivlenir.`)) return;
+    setPurchasingBusy(true);
+    try {
+      const res = await authFetch(`/api/suppliers?id=${encodeURIComponent(supplier.id)}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Tedarikçi kaldırılamadı.");
+      setPurchasingFeedback({ text: data.mode === "archived" ? "Tedarikçi arşivlendi; geçmişi korundu." : "Tedarikçi silindi.", isError: false });
+      await loadPurchasing();
+    } catch (error) {
+      setPurchasingFeedback({text: error instanceof Error ? error.message : "Tedarikçi kaldırılamadı.", isError:true});
+    } finally { setPurchasingBusy(false); }
   };
 
   const handleCreatePO = async (e: React.FormEvent) => {
@@ -347,7 +524,7 @@ export function AdminDashboardClient({
     const data = await res.json();
     if (data.success) {
       setIsCreatePOOpen(false);
-      setPoWizard({ supplierId: "", warehouseId: "1", expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] });
+      setPoWizard({ supplierId: "", warehouseId: defaultWarehouseId, expectedDate: "", lines: [{ productId: "", quantity: "50", unitCost: "" }] });
       setPurchasingFeedback({ text: `Sipariş oluşturuldu: ${data.data.poNumber}`, isError: false });
       void loadPurchasing();
     } else {
@@ -362,61 +539,102 @@ export function AdminDashboardClient({
     setReceiveLines(init);
   };
 
+  // Preserve the exact command after a lost response or reload.
+  const sendPurchasingCommand = async (command: Record<string, any>) => {
+    if (purchasingSubmitLock.current) return;
+    purchasingSubmitLock.current = true;
+    setPurchasingSubmitting(true);
+    try {
+      const response = await authFetch("/api/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(command) });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "İşlem sonucu doğrulanamadı.");
+      }
+      localStorage.removeItem("serpilen.purchasing.pending.v1"); setPendingPurchasing(null);
+      setReceiveModalPO(null); setSupplierReturnReceipt(null);
+      setPurchasingFeedback({text: command.action === "RECEIVE_GOODS" ? `Mal kabul kaydedildi: ${data.data.receipt.receiptNumber}` : `Tedarikçiye iade kaydedildi: #${data.data.id}`, isError:false});
+      await loadPurchasing();
+    } catch (error) {
+      setPurchasingFeedback({text: `${error instanceof Error ? error.message : "Bağlantı hatası."} Sonuç belirsizse aynı işlemi tekrar sorgulayın.`,isError:true});
+    } finally { purchasingSubmitLock.current = false; setPurchasingSubmitting(false); }
+  };
+  const closePendingPurchasing = async () => {
+    if (!pendingPurchasing || purchasingSubmitLock.current || !confirm("İşlemin sonucunu kontrol edip uygulanmadıysa gecikmiş isteği kalıcı olarak durdurmak istiyor musunuz?")) return;
+    purchasingSubmitLock.current = true; setPurchasingSubmitting(true);
+    try {
+      const response = await authFetch("/api/suppliers", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"FENCE_PURCHASING",requestKey:pendingPurchasing.requestKey})});
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || "İşlem sonucu doğrulanamadı.");
+      localStorage.removeItem("serpilen.purchasing.pending.v1"); setPendingPurchasing(null);
+      setReceiveModalPO(null); setSupplierReturnReceipt(null);
+      setPurchasingFeedback({text:data.data.status === "completed" ? `İşlem daha önce tamamlanmış: ${data.data.kind === "return" ? "iade" : "mal kabul"} #${data.data.id}.` : "İşlem uygulanmamış; gecikmiş istek güvenli biçimde durduruldu.",isError:false});
+      await loadPurchasing();
+    } catch(error) {setPurchasingFeedback({text:error instanceof Error ? error.message : "Sonuç doğrulanamadı.",isError:true});}
+    finally {purchasingSubmitLock.current = false;setPurchasingSubmitting(false);}
+  };
+  const startPurchasingCommand = async (command: Record<string, any>) => {
+    if (pendingPurchasing || purchasingSubmitting || purchasingSubmitLock.current) return;
+    try {
+      const previous=localStorage.getItem("serpilen.purchasing.pending.v1");
+      if (previous) {setPendingPurchasing(JSON.parse(previous)); setPurchasingFeedback({text:"Önceki işlemi sonuçlandırın.",isError:true});return;}
+      localStorage.setItem("serpilen.purchasing.pending.v1",JSON.stringify(command));
+    }
+    catch { setPurchasingFeedback({text:"İşlem güvenli tekrar için saklanamadı; işlem yapılmadı.",isError:true}); return; }
+    setPendingPurchasing(command);
+    await sendPurchasingCommand(command);
+  };
   const submitReceive = async () => {
     if (!receiveModalPO) return;
-    const lines = Object.entries(receiveLines)
-      .map(([purchaseOrderItemId, qty]) => ({ purchaseOrderItemId: Number(purchaseOrderItemId), qty: Number(qty) }))
-      .filter((l) => l.qty > 0);
-    if (!lines.length) {
-      setPurchasingFeedback({ text: "Kabul edilecek miktar girin.", isError: true });
-      return;
-    }
-    const res = await authFetch("/api/suppliers", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "RECEIVE_GOODS", purchaseOrderId: receiveModalPO.id, lines }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setPurchasingFeedback({ text: `Mal kabul fişi ${data.data.receipt.receiptNumber} — ${data.data.receivedQty} adet stoğa girdi (${data.data.poStatus}).`, isError: false });
-      setReceiveModalPO(null);
-      void loadPurchasing();
-      const invRes = await authFetch("/api/inventory");
-      const invData = await invRes.json();
-      if (invData.success) setInventoryList(invData.inventory);
-    } else {
-      setPurchasingFeedback({ text: data.error || "Mal kabul başarısız.", isError: true });
-    }
+    const lines=Object.entries(receiveLines).map(([id,qty])=>({purchaseOrderItemId:Number(id),qty:Number(qty)})).filter(l=>l.qty>0);
+    if (!lines.length || lines.some(l=>!Number.isSafeInteger(l.qty))) {setPurchasingFeedback({text:"Geçerli kabul miktarı girin.",isError:true});return;}
+    if (!confirm("Seçilen miktarlar stoğa eklensin mi?")) return;
+    await startPurchasingCommand({action:"RECEIVE_GOODS",purchaseOrderId:receiveModalPO.id,lines,requestKey:crypto.randomUUID()});
+  };
+  const openSupplierReturn = (receipt: any) => {
+    setSupplierReturnReceipt(receipt); setSupplierReturnLines({}); setSupplierReturnReason("");
+  };
+  const submitSupplierReturn = async () => {
+    if (!supplierReturnReceipt) return;
+    const lines=Object.entries(supplierReturnLines).map(([id,qty])=>({receiptItemId:Number(id),qty:Number(qty)})).filter(l=>l.qty>0);
+    if (!lines.length || lines.some(l=>!Number.isSafeInteger(l.qty)) || !supplierReturnReason.trim()) {setPurchasingFeedback({text:"İade nedeni ve geçerli miktar girin.",isError:true});return;}
+    if (!confirm("Ürünler tedarikçiye iade olarak kaydedilip bu depodaki kullanılabilir stoktan düşülsün mü?")) return;
+    await startPurchasingCommand({action:"RETURN_TO_SUPPLIER",receiptId:supplierReturnReceipt.id,lines,reason:supplierReturnReason.trim(),requestKey:crypto.randomUUID()});
   };
 
   const loadReport = React.useCallback(async (days: number) => {
+    const sequence = ++reportRequestSequence.current;
     setReportBusy(true);
+    setReportData(null);
+    setReportError("");
     try {
       const res = await authFetch(`/api/reports?days=${days}`, { cache: "no-store" });
       const data = await res.json();
-      if (data.success) setReportData(data);
+      if (!res.ok || !data.success) throw new Error("Rapor yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.");
+      if (sequence === reportRequestSequence.current) setReportData(data);
+    } catch {
+      if (sequence === reportRequestSequence.current) setReportError("Rapor yüklenemedi. Yetkinizi ve bağlantınızı kontrol edin.");
     } finally {
-      setReportBusy(false);
+      if (sequence === reportRequestSequence.current) setReportBusy(false);
     }
   }, []);
 
-  React.useEffect(() => {
-    if (activeTab === "reports") void loadReport(reportDays);
-  }, [activeTab, reportDays, loadReport]);
-
   const ORDER_STATUS_LABELS: Record<string, string> = {
-    PENDING: "Ödeme Bekliyor", PAID: "Ödendi", PREPARING: "Hazırlanıyor",
+    BACKORDER: "Stok Bekliyor", PENDING: "Ödeme Bekliyor", PAID: "Ödendi", PREPARING: "Hazırlanıyor",
     READY_FOR_SHIPMENT: "Sevke Hazır", SHIPPED: "Kargoda", DELIVERED: "Teslim Edildi",
     CANCELLED: "İptal", RETURN_REQUESTED: "İade Talebi", RETURNED: "İade Alındı", REFUNDED: "İade Ödendi",
   };
   const ORDER_NEXT: Record<string, string[]> = {
-    PENDING: ["PAID", "CANCELLED"], PAID: ["PREPARING", "CANCELLED"], PREPARING: ["READY_FOR_SHIPMENT", "CANCELLED"],
+    BACKORDER: ["CANCELLED"], PENDING: ["PAID", "CANCELLED"], PAID: ["PREPARING", "CANCELLED"], PREPARING: ["READY_FOR_SHIPMENT", "CANCELLED"],
     READY_FOR_SHIPMENT: ["SHIPPED", "CANCELLED"], SHIPPED: ["DELIVERED"], DELIVERED: [], RETURN_REQUESTED: [], RETURNED: [], CANCELLED: [], REFUNDED: [],
   };
 
   const refreshOrders = async () => {
-    const res = await authFetch("/api/orders", { cache: "no-store" });
-    const data = await res.json();
-    if (data.success) setOrders(data.data);
+    try {
+      const res = await authFetch("/api/orders", { cache: "no-store" });
+      const data = await res.json();
+      if (res.ok && data.success) setOrders(data.data);
+      else { setOrders([]); setOrderFeedback({ text: data.error || "Siparişler yüklenemedi.", isError: true }); }
+    } catch { setOrderFeedback({ text: "Siparişler yüklenemedi: sunucuya ulaşılamadı.", isError: true }); }
   };
 
   const loadReturns = React.useCallback(async () => {
@@ -426,10 +644,44 @@ export function AdminDashboardClient({
   }, []);
 
   React.useEffect(() => {
-    if (activeTab === "orders" && ordersSubTab === "returns") void loadReturns();
-  }, [activeTab, ordersSubTab, loadReturns]);
+    if (activeTab !== "orders" || ordersSubTab !== "returns") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/returns", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled && data.success) setReturnsList(data.data);
+      } catch { /* sekme yeniden açıldığında tekrar denenebilir */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, ordersSubTab]);
+
+  const openDeletion = async (kind:"order"|"return",id:number) => {
+    if(deletionLock.current)return;deletionLock.current=true;setDeletionBusy(true);setOrderFeedback(null);
+    try {
+      const res=await authFetch(`/api/order-deletion?kind=${kind}&id=${id}`,{cache:"no-store"});const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success){setOrderFeedback({text:typeof data.error==="string"?data.error:"Silme önizlemesi alınamadı.",isError:true});return;}
+      setDeletionPhysical(false);setDeletionCascade(false);setDeletionRights(false);setDeletionLegacy(false);setDeletionPreview(data.data);
+    } catch {setOrderFeedback({text:"Silme önizlemesi alınamadı; sunucuya ulaşılamadı.",isError:true});}
+    finally {deletionLock.current=false;setDeletionBusy(false);}
+  };
+  const executeDeletion = async () => {
+    const p=deletionPreview;if(!p||deletionLock.current||!deletionPhysical||(p.returnCount>0&&!deletionCascade)||((p.rights.loyalty?.delta||p.rights.discounts.length)&&!deletionRights)||(p.rights.legacyReviewRequired&&!deletionLegacy))return;
+    deletionLock.current=true;setDeletionBusy(true);
+    try {
+      const res=await authFetch("/api/order-deletion",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:p.kind,id:p.id,fingerprint:p.fingerprint,physicalConfirmed:deletionPhysical,cascadeConfirmed:deletionCascade,rightsConfirmed:deletionRights,legacyConfirmed:deletionLegacy})});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success){setDeletionPreview(null);setOrderFeedback({text:typeof data.error==="string"?data.error:"Silme işlemi tamamlanamadı.",isError:true});return;}
+      setDeletionPreview(null);await refreshOrders();await loadReturns();void loadInventory();
+      setOrderFeedback({text:`${p.number} kalıcı olarak silindi.${data.data.promoted?` Stok sırasındaki ${data.data.promoted} siparişe stok ayrıldı.`:""}`,isError:false});
+    } catch {setDeletionPreview(null);setOrderFeedback({text:"Sunucuya ulaşılamadı; işlemin sonucunu doğrulamak için listeleri yenileyin.",isError:true});}
+    finally {deletionLock.current=false;setDeletionBusy(false);}
+  };
 
   const advanceOrder = async (id: number, status: string) => {
+    const ord = orders.find(o => o.id === id);
+    if (ord?.status === "PENDING" && status === "PAID" && !window.confirm(`Banka hesabında ${ord.orderNumber} için ${Number(ord.grandTotal).toFixed(2)} TL ödemenin alındığını kontrol ettiniz mi?`)) return;
+    if (["PENDING", "BACKORDER"].includes(ord?.status || "") && status === "CANCELLED" && !window.confirm(`${ord.orderNumber} siparişi iptal edilecek ve ayrılan stok serbest bırakılacak. Onaylıyor musunuz?`)) return;
     const res = await authFetch("/api/orders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -532,10 +784,12 @@ export function AdminDashboardClient({
   };
 
   const returnAction = async (returnId: number, action: string) => {
+    const ret = returnsList.find(r => r.id === returnId);
+    if (action === "REFUND" && !window.confirm(`${Number(ret?.refundAmount || 0).toFixed(2)} TL tutarındaki para iadesini banka veya POS üzerinden gerçekten yaptınız mı? Bu düğme para transferi yapmaz.`)) return;
     const res = await authFetch("/api/returns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, returnId }),
+      body: JSON.stringify({ action, returnId, confirmRefund: action === "REFUND" }),
     });
     const data = await res.json();
     if (data.success) {
@@ -555,33 +809,117 @@ export function AdminDashboardClient({
   const [isAddCouponOpen, setIsAddCouponOpen] = useState(false);
 
   // Form states
-  const [newProd, setNewProd] = useState({
+  const emptyNewProduct = () => ({
     name: "",
     sku: "",
     barcode: "",
-    categoryId: "1",
-    brandId: "1",
+    categoryId: categoriesList[0] ? String(categoriesList[0].id) : "",
+    brandId: brandsList[0] ? String(brandsList[0].id) : "",
     unit: "Adet",
     buyPrice: "30.00",
     retailPrice: "55.00",
     initialStock: "50",
-    warehouseId: "1",
+    warehouseId: defaultWarehouseId,
     shortDescription: "",
     description: "",
+    technicalDetails: {} as ProductSpecifications,
     photos: [] as string[],
     videoUrl: "",
   });
+  const [newProd, setNewProd] = useState(emptyNewProduct);
+  const [productVariantsDraft, setProductVariantsDraft] = useState<VariantDraft[]>([]);
+  const variantsDraftRef = React.useRef<VariantDraft[]>([]);
+  const [stockTarget, setStockTarget] = useState<string | null>(null);
+  const stockTargetRef = React.useRef<string | null>(null);
+  const [stockNotice, setStockNotice] = useState("");
+  const productNameRef = React.useRef("");
+  React.useEffect(() => { productNameRef.current = newProd.name; }, [newProd.name]);
+  const setVariantTarget = (value: string | null) => {
+    stockTargetRef.current = value;
+    setStockTarget(value);
+    if (value === null) setProductSaveError(previous => previous.startsWith("Toplam başlangıç stoğu hedefi") ? "" : previous);
+  };
+  const updateVariantsDraft = (draft: VariantDraft[], options?: { preserveBaseStock?: boolean }) => {
+    const hadVariants = variantsDraftRef.current.length > 0;
+    variantsDraftRef.current = draft;
+    setProductVariantsDraft(draft);
+    const sum = variantStockTotal(draft);
+    const target = stockTargetRef.current === null ? null : variantStockTarget(stockTargetRef.current);
+    if (!draft.length) {
+      setVariantTarget(null);
+      if (hadVariants && !options?.preserveBaseStock) {
+        setNewProd(prev => ({ ...prev, initialStock: "0" }));
+        setStockNotice("Son varyant kaldırıldı; tek ürün başlangıç stoğu 0 olarak ayarlandı.");
+      }
+    } else {
+      setStockNotice("");
+      if (target !== null && sum !== null && target === sum) {
+        setProductSaveError(previous => previous.startsWith("Toplam başlangıç stoğu hedefi") ? "" : previous);
+      }
+    }
+  };
+  const variantStockSum = variantStockTotal(productVariantsDraft);
+  const updateStockTarget = (value: string) => {
+    setVariantTarget(value);
+    const target = variantStockTarget(value);
+    if (target !== null && target === variantStockSum) {
+      setProductSaveError(previous => previous.startsWith("Toplam başlangıç stoğu hedefi") ? "" : previous);
+    }
+  };
+  const [productSaving, setProductSaving] = useState(false);
+  const [productImportBusy, setProductImportBusy] = useState(false);
+  const [productSaveError, setProductSaveError] = useState("");
+  const productSavingRef = React.useRef(false);
+
+  const productSelectionTouched = React.useRef({ brand: false, category: false });
+
+  const applyImportedProduct = (product: ImportedProduct) => {
+    const normalize = (value: string) => value.trim().toLocaleLowerCase("tr-TR");
+    const brandMatches = product.brand ? brandsList.filter((item) => normalize(String(item.name)) === normalize(product.brand)) : [];
+    const categoryMatches = product.category ? categoriesList.filter((item) => normalize(String(item.name)) === normalize(product.category)) : [];
+    const useBrand = !productSelectionTouched.current.brand && brandMatches.length === 1;
+    const useCategory = !productSelectionTouched.current.category && categoryMatches.length === 1;
+    const warnings: string[] = [];
+    if (!useBrand) warnings.push("Markayı kontrol edip seçin; kaynak marka eşleşmedi veya mevcut seçim korundu.");
+    if (!useCategory) warnings.push("Kategoriyi kontrol edip seçin; kaynak kategori eşleşmedi veya mevcut seçim korundu.");
+    if (product.variants?.length) {
+      const existingName = normalize(productNameRef.current), sourceName = normalize(product.name);
+      if (existingName && existingName !== sourceName) warnings.push("Formdaki ürün adı kaynak ürünle farklı; varyantlar karışmaması için eklenmedi.");
+      else if (variantsDraftRef.current.length) warnings.push("Mevcut varyantlar korunuyor; kaynak varyantlar otomatik eklenmedi.");
+      else {
+        updateVariantsDraft(product.variants.map(v => ({ colorName: v.colorName, colorHex: "", size: v.size, length: "", sku: "", barcode: "", imageUrl: v.imageUrl, previewImageUrl: v.imageUrl, buyPrice: "", retailPrice: "", initialStock: "0", imported: true })));
+        warnings.push(`${product.variants.length} varyant taslağa eklendi; stok, fiyat ve fotoğrafları kontrol edin.`);
+      }
+    } else warnings.push("Kaynak sayfada doğrulanabilir varyant bulunamadı; gerekirse elle ekleyin.");
+    if (useBrand) productSelectionTouched.current.brand = true;
+    if (useCategory) productSelectionTouched.current.category = true;
+    setNewProd(prev => ({
+      ...prev,
+      name: prev.name.trim() ? prev.name : product.name,
+      description: prev.description.trim() ? prev.description : product.description,
+      technicalDetails: {
+        ...product.technicalDetails,
+        ...Object.fromEntries(Object.entries(prev.technicalDetails).filter(([, value]) => value?.trim())),
+      },
+      sku: prev.sku.trim() ? prev.sku : product.sku,
+      barcode: prev.barcode.trim() ? prev.barcode : product.barcode,
+      brandId: useBrand ? String(brandMatches[0].id) : prev.brandId,
+      categoryId: useCategory ? String(categoryMatches[0].id) : prev.categoryId,
+      photos: [...new Set([...prev.photos, ...product.images])].slice(0, 6),
+    }));
+    return warnings;
+  };
 
   const [transferData, setTransferData] = useState({
-    fromWarehouseId: "1",
-    toWarehouseId: "2",
+    fromWarehouseId: defaultWarehouseId,
+    toWarehouseId: secondWarehouseId,
     productId: products[0]?.id || 1,
     quantity: 10,
     note: "Mağaza Kasa İhtiyacı İçin Sevk",
   });
 
   const [adjustData, setAdjustData] = useState({
-    warehouseId: "1",
+    warehouseId: defaultWarehouseId,
     productId: products[0]?.id || 1,
     quantityDelta: 5,
     reason: "SAYIM",
@@ -597,15 +935,37 @@ export function AdminDashboardClient({
   });
 
   /* --- Rol × Modül görünürlük matrisi --- */
-  const [roleMatrix, setRoleMatrix] = useState<RoleMatrix>(() => normalizeRoleMatrix(null));
-  const [matrixLoaded, setMatrixLoaded] = useState(false);
   const [matrixSaving, setMatrixSaving] = useState(false);
   const [matrixDirty, setMatrixDirty] = useState(false);
   const [matrixMsg, setMatrixMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const isSuper = currentRole === "SUPER_ADMIN";
-  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || DEFAULT_ROLE_MATRIX.SUPER_ADMIN;
-  // dashboard herkese açık taban erişimdir
-  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] !== false;
+  const reportsAllowed = matrixLoaded && canSee("reports");
+  const customerReportsAllowed = reportsAllowed && canSee("crm");
+
+  // Yetki sonradan açıldığında SSR'de gönderilmeyen listeyi sekme açılınca yükle.
+  React.useEffect(() => {
+    if (!matrixLoaded || activeTab !== "orders" || !canSee("orders")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/orders", { cache: "no-store" });
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data.success) setOrders(data.data);
+        else { setOrders([]); setOrderFeedback({ text: data.error || "Siparişler yüklenemedi.", isError: true }); }
+      } catch { if (!cancelled) setOrderFeedback({ text: "Siparişler yüklenemedi: sunucuya ulaşılamadı.", isError: true }); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, matrixLoaded, roleMatrix, currentRole]);
+
+  React.useEffect(() => {
+    const sequence = reportRequestSequence;
+    // Reload on section, period or permissions changes; clear sensitive data on exit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeTab === "reports" && reportsAllowed) void loadReport(reportDays);
+    else { setReportData(null); setReportBusy(false); setReportError(""); }
+    return () => { sequence.current++; };
+  }, [activeTab, reportDays, loadReport, reportsAllowed, customerReportsAllowed]);
 
   React.useEffect(() => {
     (async () => {
@@ -621,7 +981,6 @@ export function AdminDashboardClient({
         setMatrixLoaded(true);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleMatrixCell = (role: string, moduleKey: string) => {
@@ -669,22 +1028,11 @@ export function AdminDashboardClient({
   const matrixOpenCount = (role: string) =>
     ADMIN_MODULES.filter((m) => m.key === "dashboard" || role === "SUPER_ADMIN" || roleMatrix[role as keyof RoleMatrix]?.[m.key] !== false).length;
 
-  // Rolünüzün göremediği sekmede kalınmasın (menü gizlense de durum güvenli kalsın)
-  React.useEffect(() => {
-    if (!matrixLoaded) return;
-    if (canSee(activeTab)) return;
-    const first = ADMIN_MODULES.find((m) => canSee(m.key));
-    if (first && first.key !== activeTab) setActiveTab(first.key as any);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrixLoaded, roleMatrix, currentRole]);
-
   /* --- FAZ 1: Kullanıcılar & Roller + Denetim Kaydı --- */
   const [usersList, setUsersList] = useState<any[]>([]);
   const [usersBusy, setUsersBusy] = useState(false);
   const [customersList, setCustomersList] = useState<any[]>([]);
   const [customersBusy, setCustomersBusy] = useState(false);
-  const [auditList, setAuditList] = useState<any[]>([]);
-  const [auditBusy, setAuditBusy] = useState(false);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", phone: "", role: "CASHIER", password: "" });
   const [addingUser, setAddingUser] = useState(false);
@@ -695,9 +1043,10 @@ export function AdminDashboardClient({
     try {
       const res = await authFetch("/api/users?type=staff", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setUsersList(data.data);
+      if (res.ok && data?.success) setUsersList(data.data);
+      else { setUsersList([]); setUserFeedback({ text: data?.error?.message || "Personel listesi yüklenemedi.", isError: true }); }
     } catch {
-      /* sessiz */
+      setUsersList([]); setUserFeedback({ text: "Personel listesi yüklenemedi.", isError: true });
     } finally {
       setUsersBusy(false);
     }
@@ -708,32 +1057,21 @@ export function AdminDashboardClient({
     try {
       const res = await authFetch("/api/users?type=customers", { cache: "no-store" });
       const data = await res.json();
-      if (data?.success) setCustomersList(data.data);
+      if (res.ok && data?.success) setCustomersList(data.data);
+      else { setCustomersList([]); setUserFeedback({ text: data?.error?.message || "Müşteri listesi yüklenemedi.", isError: true }); }
     } catch {
-      /* sessiz */
+      setCustomersList([]); setUserFeedback({ text: "Müşteri listesi yüklenemedi.", isError: true });
     } finally {
       setCustomersBusy(false);
     }
   }, []);
 
-  const loadAudit = React.useCallback(async () => {
-    setAuditBusy(true);
-    try {
-      const res = await authFetch("/api/audit", { cache: "no-store" });
-      const data = await res.json();
-      if (data?.success) setAuditList(data.data || []);
-    } catch {
-      /* sessiz */
-    } finally {
-      setAuditBusy(false);
-    }
-  }, []);
-
   React.useEffect(() => {
+    // Fetching the selected remote list sets its loading indicator before the request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeTab === "users") void loadUsers();
     if (activeTab === "registeredCustomers") void loadCustomers();
-    if (activeTab === "audit") void loadAudit();
-  }, [activeTab, loadUsers, loadCustomers, loadAudit]);
+  }, [activeTab, loadUsers, loadCustomers]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -770,81 +1108,142 @@ export function AdminDashboardClient({
     }
   };
 
-  const updateUser = async (id: number, patch: { role?: string; isActive?: boolean }) => {
-    const res = await authFetch("/api/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    const data = await res.json();
-    if (data?.success) {
-      setUsersList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.data } : u)));
+  const updateAccount = async (id: number, patch: { role?: string; isActive?: boolean }, customer: boolean) => {
+    setUserFeedback(null);
+    try {
+      const res = await authFetch("/api/users", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }) });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setUserFeedback({ text: data?.error?.message || (typeof data?.error === "string" ? data.error : "Hesap güncellenemedi."), isError: true });
+        return;
+      }
+      const update = (prev: any[]) => prev.map((u) => u.id === id ? { ...u, ...data.data } : u);
+      if (customer) setCustomersList(update); else setUsersList(update);
+      setUserFeedback({ text: "Hesap güncellendi.", isError: false });
+    } catch {
+      setUserFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
     }
   };
-
-  const updateCustomer = async (id: number, patch: { isActive?: boolean }) => {
-    const res = await authFetch("/api/users", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    const data = await res.json();
-    if (data?.success) {
-      setCustomersList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data.data } : u)));
-    }
-  };
+  const updateUser = (id: number, patch: { role?: string; isActive?: boolean }) => updateAccount(id, patch, false);
+  const updateCustomer = (id: number, patch: { isActive?: boolean }) => updateAccount(id, patch, true);
 
   const deleteUser = async (id: number, name: string, email: string) => {
     if (!window.confirm(`"${name}" (${email}) kullanıcısı silinsin mi? Bu işlem geri alınamaz.`)) return;
-    const res = await authFetch(`/api/users?id=${id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && data?.success) {
-      setUsersList((prev) => prev.filter((u) => u.id !== id));
-      setUserFeedback({ text: `"${name}" kullanıcısı silindi.`, isError: false });
-    } else {
-      setUserFeedback({ text: data?.error?.message || "Kullanıcı silinemedi.", isError: true });
-    }
+    try {
+      const res = await authFetch(`/api/users?id=${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setUsersList((prev) => prev.filter((u) => u.id !== id));
+        setUserFeedback({ text: `"${name}" kullanıcısı silindi.`, isError: false });
+      } else setUserFeedback({ text: data?.error?.message || "Kullanıcı silinemedi.", isError: true });
+    } catch { setUserFeedback({ text: "Sunucuya ulaşılamadı.", isError: true }); }
   };
 
   const refreshProducts = async () => {
-    const pRes = await authFetch("/api/products");
+    const pRes = await authFetch("/api/products?scope=all-warehouses");
     const pData = await pRes.json();
-    if (pData.success) setProducts(pData.data);
+    if (pData.success && Array.isArray(pData.data)) setProducts(pData.data);
+  };
+
+  const handleDeleteProduct = async (id: number, name: string) => {
+    if (deletingProductLock.current) return;
+    deletingProductLock.current = true;
+    setDeletingProductId(id); setCatalogFeedback(null);
+    try {
+      const previewRes = await authFetch(`/api/products/deletion-preview?id=${id}`, { cache: "no-store" });
+      const previewData = await previewRes.json().catch(() => ({}));
+      if (!previewRes.ok || !previewData.success) { setCatalogFeedback({ text: typeof previewData.error === "string" ? previewData.error : "Ürün silme bilgileri alınamadı.", isError: true }); return; }
+      const preview = previewData.data as {name:string; totalStock:number; fingerprint:string; warehouses:{id:number; name:string; quantity:number}[]};
+      const clean = (value: string) => value.replace(/[\r\n\t]/g, " ");
+      const stockDetails = preview.totalStock > 0
+        ? `\n\nTüm depolarda ${preview.totalStock} birim stok kalıcı olarak silinecek:\n${preview.warehouses.filter(w=>w.quantity > 0).map(w=>`• ${clean(w.name)} (ID ${w.id}): ${w.quantity}`).join("\n")}`
+        : "\n\nSilinecek fiziksel stok bulunmuyor.";
+      if (!window.confirm(`"${clean(preview.name)}" ürününü kalıcı olarak silmek istiyor musunuz? Varyantları ve ürün görsel kayıtları da silinir.${stockDetails}\n\nBu işlem geri alınamaz.`)) return;
+      const res = await authFetch("/api/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, fingerprint: preview.fingerprint }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) { setCatalogFeedback({ text: typeof data.error === "string" ? data.error : "Ürün silinemedi.", isError: true }); return; }
+      setProducts(prev => prev.filter(p => p.id !== id));
+      inventoryRequestSequence.current++;
+      setInventoryList(prev => prev.filter(row => row.productId !== id));
+      setVariantProductId(prev => prev === String(id) ? "" : prev);
+      setCatalogFeedback({ text: `"${name}" ürünü silindi.`, isError: false });
+    } catch { setCatalogFeedback({ text: "Sunucuya ulaşılamadı; silme sonucu doğrulanamadı. Listeyi yenileyin.", isError: true }); }
+    finally { deletingProductLock.current = false; setDeletingProductId(null); }
+  };
+
+  const handleDeleteVariant = async (id:number) => {
+    if (deletingVariantLock.current) return;
+    deletingVariantLock.current=true; setDeletingVariantId(id); setCatalogFeedback(null);
+    try {
+      const res=await authFetch(`/api/variant-deletion?id=${id}`,{cache:"no-store"});const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.success){setCatalogFeedback({text:data.error||"Varyant silme bilgileri alınamadı.",isError:true});return;}
+      const p=data.data as import("@/lib/delete-variant").VariantDeletionPreview;
+      const clean=(s:string)=>s.replace(/[\r\n\t]/g," ");
+      const stock=p.stocks.length?p.stocks.map(s=>`• ${clean(s.warehouseName || "Bilinmeyen depo")} (ID ${s.warehouseId}): ${s.physicalQty} adet`).join("\n"):"Stok kaydı yok.";
+      const base=p.lastVariant?`\n\nBu son varyant: Ürün varyantsız kalacak, ana ürün SKU/barkodu ve fiyatları geçerli olacak (satış ${clean(p.baseRetailPrice)} TL${p.baseCampaignPrice!==null?`, kampanya ${clean(p.baseCampaignPrice)} TL`:"; kampanya fiyatı yok"}). Varyant stoğu ana ürüne aktarılmaz. Mevcut ana ürün stokları:\n${p.baseStocks.length?p.baseStocks.map(s=>`• ${clean(s.warehouseName || "Bilinmeyen depo")} (ID ${s.warehouseId}): fiili ${s.physicalQty}, ayrılmış ${s.reservedQty}`).join("\n"):"Ana ürün stok kaydı yok."}\nSatış deposunda kullanılabilir ana stok varsa bekleyen siparişlere ayrılabilir.`:"";
+      if(!window.confirm(`"${clean(p.productName)} — ${clean(p.variantName)}" (SKU ${clean(p.sku)}) varyantı kalıcı olarak silinsin mi?\n\nAşağıdaki stok kayıtları silinecek (toplam ${p.totalStock} adet):\n${stock}${base}\n\nBu işlem geri alınamaz.`))return;
+      const response=await authFetch('/api/variant-deletion',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,fingerprint:p.fingerprint,confirmed:true})});const result=await response.json().catch(()=>({}));
+      if(!response.ok||!result.success){setCatalogFeedback({text:result.error||"Varyant silinemedi.",isError:true});return;}
+      setProducts(prev=>prev.map(product=>product.id===p.productId?{...product,hasVariants:!p.lastVariant,variants:(product.variants||[]).filter((v:any)=>v.id!==id)}:product));
+      setInventoryList(prev=>prev.filter(row=>row.variantId!==id));
+      setCatalogFeedback({text:`Varyant silindi.${result.data.promoted?` ${result.data.promoted} bekleyen siparişe stok ayrıldı.`:""}`,isError:false});
+      await Promise.allSettled([refreshProducts(),loadInventory()]);
+    }catch{setCatalogFeedback({text:"Bağlantı kesildi; silme sonucu doğrulanamadı. Listeyi yenileyip kontrol edin.",isError:true});}
+    finally{deletingVariantLock.current=false;setDeletingVariantId(null);}
   };
 
   const handleSaveProductEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct) return;
-    const res = await authFetch("/api/products", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editingProduct.id,
-        name: editingProduct.name,
-        retailPrice: editingProduct.retailPrice,
-        buyPrice: editingProduct.buyPrice,
-        campaignPrice: editingProduct.campaignPrice || null,
-        categoryId: editingProduct.categoryId,
-        brandId: editingProduct.brandId,
-        tags: editingProduct.tags || "",
-        collection: editingProduct.collection || "",
-        imageUrl: editingProduct.imageUrl,
-        images: editingProduct._imagesTouched ? editingProduct.images : undefined,
-        videoUrl: editingProduct.videoUrl || null,
-        isFeatured: editingProduct.isFeatured,
-        isActive: editingProduct.isActive,
-        shortDescription: editingProduct.shortDescription,
-        description: editingProduct.description,
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      await refreshProducts();
-      setEditingProduct(null);
-      setCatalogFeedback({ text: "Ürün güncellendi.", isError: false });
-    } else {
-      setCatalogFeedback({ text: data.error || "Güncelleme başarısız.", isError: true });
+    if (!editingProduct || variantEditBusy) return;
+    setProductEditError("");
+    if (editingProduct.brandId != null && !brandsList.some(b=>String(b.id)===String(editingProduct.brandId))) {
+      setProductEditError("Bu ürünün marka kaydı bulunamadı. Lütfen doğru markayı veya Markasız seçeneğini seçin.");
+      return;
     }
+    if (variantEditDirty && !window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Yalnızca ürün ana bilgileri kaydedilsin mi?")) return;
+    const buyPriceChanged = String(editingProduct.buyPrice ?? "") !== productEditPrices.current.buyPrice;
+    const retailPriceChanged = String(editingProduct.retailPrice ?? "") !== productEditPrices.current.retailPrice;
+    const priceUpdates = {
+      ...(buyPriceChanged ? { buyPrice: editingProduct.buyPrice } : {}),
+      ...(retailPriceChanged ? { retailPrice: editingProduct.retailPrice } : {}),
+    };
+    const expectedPrices = {
+      ...(buyPriceChanged ? { buyPrice: productEditPrices.current.buyPrice } : {}),
+      ...(retailPriceChanged ? { retailPrice: productEditPrices.current.retailPrice } : {}),
+    };
+    try {
+      const res = await authFetch("/api/products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingProduct.id,
+          name: editingProduct.name,
+          ...priceUpdates,
+          ...((buyPriceChanged || retailPriceChanged) ? { expectedPrices } : {}),
+          campaignPrice: editingProduct.campaignPrice || null,
+          categoryId: editingProduct.categoryId,
+          brandId: editingProduct.brandId,
+          tags: editingProduct.tags || "",
+          collection: editingProduct.collection || "",
+          imageUrl: editingProduct.imageUrl,
+          images: editingProduct._imagesTouched ? editingProduct.images : undefined,
+          videoUrl: editingProduct.videoUrl || null,
+          isFeatured: editingProduct.isFeatured,
+          isActive: editingProduct.isActive,
+          shortDescription: editingProduct.shortDescription,
+          description: editingProduct.description,
+          technicalDetails: parseProductSpecifications(editingProduct.technicalDetails),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await refreshProducts();
+        setEditingProduct(null);
+        setCatalogFeedback({ text: "Ürün güncellendi.", isError: false });
+      } else {
+        setProductEditError(typeof data.error === "string" ? data.error : "Güncelleme başarısız.");
+      }
+    } catch { setProductEditError("Bağlantı kesildi; kayıt sonucu doğrulanamadı. Listeyi yenileyip kontrol edin."); }
   };
 
   const toggleProductFlag = async (id: number, field: "isFeatured" | "isActive", value: boolean) => {
@@ -884,19 +1283,23 @@ export function AdminDashboardClient({
   const handleAddBrandAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBrandAdmin.trim()) return;
+    if (!newBrandCategories.length) { setCatalogFeedback({ text: "En az bir kategori seçin.", isError: true }); return; }
+    try {
     const res = await authFetch("/api/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newBrandAdmin }),
+      body: JSON.stringify({ name: newBrandAdmin, categoryIds: newBrandCategories }),
     });
     const data = await res.json();
     if (data.success) {
-      if (!data.existed) setBrandsList((prev) => [...prev, data.data]);
+      setBrandsList((prev) => prev.some(b => b.id === data.data.id) ? prev.map(b => b.id === data.data.id ? data.data : b) : [...prev, data.data]);
       setNewBrandAdmin("");
-      setCatalogFeedback({ text: `"${data.data.name}" markası kaydedildi.`, isError: false });
+      setNewBrandCategories([]);
+      setCatalogFeedback({ text: data.existed ? `"${data.data.name}" mevcut markasına seçilen kategoriler eklendi.` : `"${data.data.name}" markası kaydedildi.`, isError: false });
     } else {
-      setCatalogFeedback({ text: data.error?.message || "Marka eklenemedi.", isError: true });
+      setCatalogFeedback({ text: data.error?.message || data.error || "Marka eklenemedi.", isError: true });
     }
+    } catch { setCatalogFeedback({ text: "Sunucuya ulaşılamadı; marka kaydedilemedi.", isError: true }); }
   };
 
   const handleToggleBrand = async (b: any) => {
@@ -919,11 +1322,11 @@ export function AdminDashboardClient({
     const res = await authFetch("/api/brands", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: editingBrandId, name: editingBrandName.trim() }),
+      body: JSON.stringify({ id: editingBrandId, name: editingBrandName.trim(), categoryIds: editingBrandCategories }),
     });
     const data = await res.json().catch(() => ({}));
     if (data?.success) {
-      setBrandsList((prev) => prev.map((x) => (x.id === editingBrandId ? { ...x, name: data.data.name, slug: data.data.slug } : x)));
+      setBrandsList((prev) => prev.map((x) => (x.id === editingBrandId ? data.data : x)));
       setCatalogFeedback({ text: `Marka güncellendi: "${data.data.name}".`, isError: false });
       setEditingBrandId(null);
       setEditingBrandName("");
@@ -970,7 +1373,7 @@ export function AdminDashboardClient({
     });
     const data = await res.json();
     if (data.success) {
-      await refreshProducts();
+      await Promise.all([refreshProducts(), loadInventory()]);
       setNewVariant({
         colorName: "",
         colorHex: "#111827",
@@ -992,32 +1395,62 @@ export function AdminDashboardClient({
   const loadWmsSection = React.useCallback(async () => {
     setWmsBusy(true);
     try {
-      const [tRes, cRes, lRes, rRes] = await Promise.all([
+      const [tRes, cRes, lRes, rRes, salesRes] = await Promise.all([
         authFetch("/api/transfers", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
         authFetch("/api/counts", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
         authFetch("/api/locations", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
         authFetch("/api/reservations", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        authFetch("/api/warehouses/sales-warehouse", { cache: "no-store" }).then((r) => r.json()).catch(() => null),
       ]);
       if (tRes?.success) setTransfers(tRes.data);
       if (cRes?.success) setCountSessions(cRes.data);
       if (lRes?.success) setLocationsList(lRes.data);
       if (rRes?.success) setReservationsList(rRes.data);
+      if (salesRes?.success) {setSalesWarehouseId(salesRes.data.warehouseId);setSalesWarehouseChoice(String(salesRes.data.warehouseId || ""));}
     } finally {
       setWmsBusy(false);
     }
   }, []);
 
   const loadInventory = React.useCallback(async () => {
-    const invRes = await authFetch("/api/inventory", { cache: "no-store" });
-    const invData = await invRes.json();
-    if (invData.success) {
+    const seq=++inventoryRequestSequence.current;
+    try {
+      const invRes = await authFetch("/api/inventory", { cache: "no-store" });
+      const invData = await invRes.json();
+      if (seq !== inventoryRequestSequence.current) return null;
+      if (!invRes.ok || !invData.success || !Array.isArray(invData.inventory) || !Array.isArray(invData.recentLedger)) return false;
       setInventoryList(invData.inventory);
       setLedger(invData.recentLedger);
+      if (invData.salesWarehouseId === null || (typeof invData.salesWarehouseId === "number" && Number.isSafeInteger(invData.salesWarehouseId) && invData.salesWarehouseId > 0)) {
+        setSalesWarehouseId(invData.salesWarehouseId);
+      }
+      return true;
+    } catch (error) {
+      if (seq !== inventoryRequestSequence.current) return null;
+      throw error;
     }
   }, []);
 
+  // Refresh stock when opening the products tab; older responses cannot override newer mutations.
+  React.useEffect(() => {
+    if (activeTab !== "catalog" || catalogSubTab !== "products") return;
+    let cancelled=false;
+    (async()=>{
+      try { const ok=await loadInventory(); if(!cancelled && ok!==null) setCatalogStockError(ok?"":"Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+      catch { if(!cancelled) setCatalogStockError("Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+    })();
+    return ()=>{cancelled=true;};
+  }, [activeTab,catalogSubTab,loadInventory]);
+
+  const refreshCatalogStock = async () => {
+    try { const ok=await loadInventory(); if(ok!==null) setCatalogStockError(ok?"":"Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+    catch { setCatalogStockError("Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+  };
+
   React.useEffect(() => {
     if (activeTab === "wms") {
+      // Synchronize warehouse data and show the loading indicator while requests run.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void loadWmsSection();
       void loadInventory();
     }
@@ -1052,14 +1485,14 @@ export function AdminDashboardClient({
       note: newTransfer.note || "Depolar arası sevk",
       items: [{ productId: Number(newTransfer.productId), variantId: null, qty: Number(newTransfer.qty) }],
     });
-    setNewTransfer({ fromWarehouseId: "1", toWarehouseId: "2", productId: "", qty: "10", note: "" });
+    setNewTransfer({ fromWarehouseId: defaultWarehouseId, toWarehouseId: secondWarehouseId, productId: "", qty: "10", note: "" });
   };
 
   const handleStartCount = async () => {
     const res = await authFetch("/api/counts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "START", warehouseId: Number(selectedWhFilter === "ALL" ? "1" : selectedWhFilter) }),
+      body: JSON.stringify({ action: "START", warehouseId: Number(selectedWhFilter === "ALL" ? defaultWarehouseId : selectedWhFilter) }),
     });
     const data = await res.json();
     if (data.success) {
@@ -1187,18 +1620,44 @@ export function AdminDashboardClient({
     }
   };
 
+  const handleSelectSalesWarehouse = async () => {
+    const id=Number(salesWarehouseChoice), wh=warehousesList.find((w)=>w.id===id);
+    if(!wh || salesWarehouseBusy) return;
+    if(!window.confirm(`POS ve online satış için ortak depo "${wh.name}" olarak seçilsin mi? Başka depolardaki stoklar otomatik taşınmaz.`)) return;
+    setSalesWarehouseBusy(true);setWmsFeedback(null);
+    try {
+      const res=await authFetch("/api/warehouses/sales-warehouse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({warehouseId:id})});
+      const data=await res.json();
+      if(!data.success){setWmsFeedback({text:data.error||"Ortak depo seçilemedi.",isError:true});return;}
+      inventoryRequestSequence.current++;
+      setSalesWarehouseId(data.data.id);setNewProd(prev=>({...prev,warehouseId:String(id)}));setAdjustData(prev=>({...prev,warehouseId:String(id)}));setWmsFeedback({text:`POS ve online ortak deposu: ${wh.name}. Diğer depolardaki stoklar taşınmadı.`,isError:false});
+    } catch {setWmsFeedback({text:"Sunucuya ulaşılamadı; sonucu kontrol edin.",isError:true});}
+    finally{setSalesWarehouseBusy(false);}
+  };
+
   const handleDeleteWarehouse = async (id: number, name: string) => {
-    if (typeof window !== "undefined" && !window.confirm(`"${name}" deposu silinsin mi? Bu işlem geri alınamaz.`)) return;
+    if (typeof window !== "undefined" && !window.confirm(`"${name}" deposu ve boş lokasyon tanımları silinsin mi? Stok veya geçmiş hareketi olan depolar silinmez. Bu işlem geri alınamaz.`)) return;
     setWmsFeedback(null);
     try {
-      const res = await authFetch(`/api/warehouses?id=${id}`, { method: "DELETE" });
+      const res = await authFetch(`/api/warehouses?id=${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
       const data = await res.json();
       if (!data.success) {
         setWmsFeedback({ text: data?.error?.message || "Depo silinemedi.", isError: true });
         return;
       }
-      setWarehousesList((prev) => prev.filter((w) => w.id !== id));
-      setWmsFeedback({ text: `Depo silindi: ${name}`, isError: false });
+      const remaining = warehousesList.filter((w) => w.id !== id);
+      const fallback = String(remaining.filter((w) => w.isActive !== false).sort((a, b) => Number(b.type === "CENTRAL") - Number(a.type === "CENTRAL") || a.id - b.id)[0]?.id || "");
+      const other = String(remaining.find((w) => w.isActive !== false && String(w.id) !== fallback)?.id || fallback);
+      setWarehousesList(remaining);
+      setSelectedWhFilter("ALL");
+      setLocationsList((prev) => prev.filter((location) => location.warehouseId !== id));
+      setNewLocation((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setNewTransfer((prev) => ({ ...prev, fromWarehouseId: prev.fromWarehouseId === String(id) ? fallback : prev.fromWarehouseId, toWarehouseId: prev.toWarehouseId === String(id) ? other : prev.toWarehouseId }));
+      setTransferData((prev) => ({ ...prev, fromWarehouseId: prev.fromWarehouseId === String(id) ? fallback : prev.fromWarehouseId, toWarehouseId: prev.toWarehouseId === String(id) ? other : prev.toWarehouseId }));
+      setAdjustData((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setNewProd((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setPoWizard((prev) => ({ ...prev, warehouseId: prev.warehouseId === String(id) ? fallback : prev.warehouseId }));
+      setWmsFeedback({ text: `Depo silindi: ${name}. ${data.data?.deletedLocations || 0} boş lokasyon kaldırıldı. Varsayılan depo: ${remaining.find((w) => String(w.id) === fallback)?.name || "yok"}. İşlem yapmadan önce seçimi kontrol edin.`, isError: false });
     } catch {
       setWmsFeedback({ text: "Sunucuya ulaşılamadı.", isError: true });
     }
@@ -1210,7 +1669,7 @@ export function AdminDashboardClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "RESERVE",
-        warehouseId: Number(selectedWhFilter === "ALL" ? "1" : selectedWhFilter),
+        warehouseId: Number(selectedWhFilter === "ALL" ? defaultWarehouseId : selectedWhFilter),
         productId: products[0]?.id,
         qty: 2,
         referenceType: "CHECKOUT",
@@ -1251,17 +1710,16 @@ export function AdminDashboardClient({
 
   // Dashboard KPI'ları — sunucuda DB'den hesaplanan (tüm zamanlar) gerçek rakamlar.
   // dashboardStats yoksa (eski derleme) istemci tarafında, sınırlı sipariş listesiyle hesaplanır.
-  const clientRevenue = orders.reduce((sum, o) => sum + Number(o.grandTotal), 0);
+  const clientRevenue = orders.filter(o => o.paymentStatus === "PAID" && o.status !== "CANCELLED").reduce((sum, o) => sum + Number(o.grandTotal), 0);
   const clientChannel = {
-    pos: orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
-    online: orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").reduce((s, o) => s + Number(o.grandTotal), 0),
+    pos: orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").reduce((s, o) => s + Number(o.grandTotal), 0),
+    online: orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").reduce((s, o) => s + Number(o.grandTotal), 0),
   };
   const totalRevenue = dashboardStats?.totalRevenue ?? clientRevenue;
-  const salesCount = dashboardStats?.salesCount ?? orders.filter((o) => o.status !== "CANCELLED").length;
+  const salesCount = dashboardStats?.salesCount ?? orders.filter((o) => o.status !== "CANCELLED" && o.paymentStatus === "PAID").length;
   const totalOrders = dashboardStats?.totalOrders ?? orders.length;
-  const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED").length;
-  const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED").length;
-  const criticalStockCount = dashboardStats?.criticalStockCount ?? inventoryList.filter((i) => i.isCritical).length;
+  const posCount = dashboardStats?.posCount ?? orders.filter((o) => o.orderType === "POS" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").length;
+  const onlineCount = dashboardStats?.onlineCount ?? orders.filter((o) => o.orderType === "ONLINE_B2C" && o.status !== "CANCELLED" && o.paymentStatus === "PAID").length;
   const channelRevenue = dashboardStats?.channelRevenue ?? clientChannel;
   const estimatedGrossProfit =
     dashboardStats?.grossProfit ??
@@ -1276,7 +1734,7 @@ export function AdminDashboardClient({
       }, 0);
   const pendingOrdersCount = dashboardStats?.pendingOrdersCount ?? orders.filter((o) => ["PAID", "PREPARING", "READY_FOR_SHIPMENT"].includes(o.status)).length;
   const returnedOrdersCount = dashboardStats?.returnedOrdersCount ?? orders.filter((o) => ["RETURN_REQUESTED", "RETURNED", "REFUNDED"].includes(o.status)).length;
-  const customersCount = dashboardStats?.customersCount ?? customers.length;
+  const customersCount = dashboardStats?.customersCount ?? 0;
   const monthGrowth = dashboardStats ? dashboardStats.monthGrowth : null;
   // Kanal kartındaki mağaza adı: veritabanındaki mağaza/merkez deposundan alınır
   const storeName =
@@ -1294,27 +1752,45 @@ export function AdminDashboardClient({
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (productSavingRef.current || productImportBusy) return;
+    const variantsForSave = productVariantsDraft.map(row => ({ ...row, buyPrice: "", retailPrice: "" }));
+    let validatedVariants;
+    try { validatedVariants = validateNewProductVariants(variantsForSave); }
+    catch (error) { setProductSaveError(error instanceof Error ? error.message : "Varyant bilgileri geçersiz."); return; }
+    if (validatedVariants.length && stockTargetRef.current !== null) {
+      const target = variantStockTarget(stockTargetRef.current);
+      const actual = variantStockTotal(variantsForSave);
+      if (target === null || actual === null || target !== actual) {
+        setProductSaveError("Toplam başlangıç stoğu hedefi varyant stokları toplamıyla eşleşmeli. Varyantları düzenleyin veya hedefi değiştirin.");
+        return;
+      }
+    }
+    productSavingRef.current = true;
+    setProductSaving(true); setProductSaveError("");
     try {
       const { photos, ...rest } = newProd;
       const res = await authFetch("/api/products", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, images: photos }),
+        body: JSON.stringify({ ...rest, ...(variantsForSave.length ? { sku: "", barcode: "", autoGenerateProductSku: true } : {}), initialStock: variantsForSave.length ? 0 : rest.initialStock, images: photos, variants: variantsForSave }),
       });
       const data = await res.json();
-      if (data.success) {
-        alert("Ürün başarıyla oluşturuldu.");
-        setIsAddProductOpen(false);
-        // Refresh product list
-        const pRes = await authFetch("/api/products");
+      if (!res.ok || !data.success) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Ürün kaydedilemedi.");
+      alert("Ürün başarıyla oluşturuldu.");
+      setNewProd(emptyNewProduct()); updateVariantsDraft([], { preserveBaseStock: true }); setStockNotice("");
+      productSelectionTouched.current = { brand: false, category: false };
+      setIsAddProductOpen(false);
+      // A failed refresh must not be reported as a failed product creation.
+      try {
+        const pRes = await authFetch("/api/products?scope=all-warehouses");
         const pData = await pRes.json();
-        if (pData.success) setProducts(pData.data);
-      } else {
-        alert("Hata: " + data.error);
-      }
-    } catch (err: any) {
-      alert("Hata: " + err.message);
-    }
+        if (!pRes.ok || !pData.success || !Array.isArray(pData.data)) throw new Error("Ürün listesi yenilenemedi.");
+        setProducts(pData.data);
+        await loadInventory();
+      } catch { setCatalogFeedback({ text: "Ürün kaydedildi; listeyi görmek için sayfayı yenileyin.", isError: false }); }
+    } catch (err) {
+      setProductSaveError(err instanceof Error ? err.message : "Ürün kaydedilemedi.");
+    } finally { productSavingRef.current = false; setProductSaving(false); }
   };
 
   const handleTransfer = async (e: React.FormEvent) => {
@@ -1335,7 +1811,7 @@ export function AdminDashboardClient({
         // Refresh inventory
         const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
-        if (invData.success) {
+        if (invData.success && Array.isArray(invData.inventory) && Array.isArray(invData.recentLedger)) {
           setInventoryList(invData.inventory);
           setLedger(invData.recentLedger);
         }
@@ -1364,39 +1840,10 @@ export function AdminDashboardClient({
         setIsAdjustOpen(false);
         const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
-        if (invData.success) {
+        if (invData.success && Array.isArray(invData.inventory) && Array.isArray(invData.recentLedger)) {
           setInventoryList(invData.inventory);
           setLedger(invData.recentLedger);
         }
-      }
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleReceiveGoods = async (poId: number) => {
-    if (!confirm("Bu satın alma siparişinin mal kabulünü onaylıyor musunuz? (Depo stokları otomatik artacaktır)")) return;
-    try {
-      const res = await authFetch("/api/suppliers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "RECEIVE_GOODS",
-          purchaseOrderId: poId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message);
-        // Refresh POs
-        const poRes = await authFetch("/api/suppliers");
-        const poData = await poRes.json();
-        if (poData.success) setPurchaseOrders(poData.purchaseOrders);
-        const invRes = await authFetch("/api/inventory");
-        const invData = await invRes.json();
-        if (invData.success) setInventoryList(invData.inventory);
-      } else {
-        alert("Hata: " + data.error);
       }
     } catch (err: any) {
       alert(err.message);
@@ -1606,6 +2053,32 @@ export function AdminDashboardClient({
           </button>
           )}
 
+          {canSee("support") && (
+          <button
+            onClick={() => setActiveTab("support")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "support"
+                ? "bg-amber-700 text-white shadow-sm"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <Headset className="w-4 h-4 text-emerald-400" />
+            <span>Destek Masası</span>
+          </button>
+          )}
+
+          {matrixLoaded && canSee("productFeedback") && (
+          <button
+            onClick={() => setActiveTab("productFeedback")}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition ${
+              activeTab === "productFeedback" ? "bg-amber-700 text-white shadow-sm" : "text-stone-300 hover:bg-stone-800"
+            }`}
+          >
+            <MessageSquareQuote className="w-4 h-4 text-amber-400" />
+            <span>Ürün Yorumları &amp; Soruları</span>
+          </button>
+          )}
+
           {(canSee("users") || canSee("registeredCustomers") || canSee("roleMatrix") || canSee("audit")) && (
             <div className="pt-3 border-t border-stone-800">
               <p className="px-3 pt-2 text-[9px] font-black uppercase tracking-widest text-stone-500">
@@ -1770,15 +2243,6 @@ export function AdminDashboardClient({
           </button>
           )}
 
-          <div className="pt-3 border-t border-stone-800">
-            <Link
-              href="/mimari"
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-stone-400 hover:text-white hover:bg-stone-800 transition"
-            >
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              <span>Mimari Doküman (FAZ 0)</span>
-            </Link>
-          </div>
         </nav>
 
         {/* User profile footer */}
@@ -1873,17 +2337,6 @@ export function AdminDashboardClient({
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-stone-500 uppercase">Kritik Stok Uyarısı</span>
-                <div className="text-2xl font-black text-rose-700">{criticalStockCount} Ürün</div>
-                <button
-                  onClick={() => setActiveTab("wms")}
-                  className="text-[11px] text-rose-600 hover:underline font-semibold block text-left"
-                >
-                  Stok Yönetimini Aç →
-                </button>
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
                 <span className="text-xs font-bold text-stone-500 uppercase">Brüt Kâr (Tahmini)</span>
                 <div className="text-2xl font-black text-emerald-800">{estimatedGrossProfit.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</div>
                 <div className="text-[11px] text-stone-500">Ciro − satılan malın maliyeti</div>
@@ -1892,9 +2345,9 @@ export function AdminDashboardClient({
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
                 <span className="text-xs font-bold text-stone-500 uppercase">Bekleyen Sipariş</span>
                 <div className="text-2xl font-black text-amber-800">{pendingOrdersCount}</div>
-                <button onClick={() => setActiveTab("orders")} className="text-[11px] text-amber-800 hover:underline font-semibold block text-left">
+                {matrixLoaded && canSee("orders") && <button onClick={() => setActiveTab("orders")} className="text-[11px] text-amber-800 hover:underline font-semibold block text-left">
                   Siparişleri Yönet →
-                </button>
+                </button>}
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-2">
@@ -1905,9 +2358,6 @@ export function AdminDashboardClient({
                   <span className="text-2xl font-black text-sky-700">{customersCount}</span>
                   <span className="text-xs text-stone-400">müşteri</span>
                 </div>
-                <button onClick={() => setActiveTab("reports")} className="text-[11px] text-stone-500 hover:underline font-semibold block text-left">
-                  Detaylı Raporlar →
-                </button>
               </div>
             </div>
 
@@ -1927,23 +2377,22 @@ export function AdminDashboardClient({
                 <div className="text-xl font-black text-emerald-950 mt-1">{onlineCount} Sipariş</div>
                 <div className="text-sm font-bold text-emerald-800">{channelRevenue.online.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TL</div>
                 <p className="text-xs text-emerald-800 mt-1">
-                  Kredi Kartı / 3D Secure / Yurtiçi Kargo
+                  Havale / EFT / Yurtiçi Kargo
                 </p>
               </div>
             </div>
 
-            {/* Recent Orders Table */}
-            <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-4">
+            {/* Sipariş tablosu için menü değil, sunucu izin kontrolü de uygulanır. */}
+            {matrixLoaded && canSee("orders") ? <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-sm text-stone-900">Son Sipariş & Satış Hareketleri</h3>
-                <button
-                  onClick={() => setActiveTab("orders")}
-                  className="text-xs text-amber-800 hover:underline font-semibold"
-                >
-                  Tümünü Gör →
-                </button>
+                <div className="flex gap-3">
+                  <button onClick={() => void refreshOrders()} className="text-xs text-amber-800 hover:underline font-semibold">Listeyi Yenile</button>
+                  <button onClick={() => setActiveTab("orders")} className="text-xs text-amber-800 hover:underline font-semibold">Tümünü Gör →</button>
+                </div>
               </div>
 
+              {orderFeedback?.isError && <p role="alert" className="text-xs text-rose-700">{orderFeedback.text}</p>}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
@@ -1960,7 +2409,7 @@ export function AdminDashboardClient({
                     {orders.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-stone-400 text-xs">
-                          Henüz sipariş/satış kaydı yok — sistem yeni. İlk satıştan sonra bu liste otomatik dolar.
+                          Sipariş/satış kaydı yok. Yetkiniz yeni açıldıysa listeyi yenileyin.
                         </td>
                       </tr>
                     )}
@@ -1987,7 +2436,7 @@ export function AdminDashboardClient({
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div> : <p className="text-xs text-stone-500">Son sipariş ayrıntıları için Siparişler modülü yetkisi gerekir. Özet göstergeler toplu değerlerdir.</p>}
           </div>
         )}
 
@@ -2007,7 +2456,7 @@ export function AdminDashboardClient({
               {catalogSubTab === "products" && (
                 <button
                   onClick={openAddProductModal}
-                  className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+                  className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Yeni Ürün Ekle</span>
@@ -2066,88 +2515,46 @@ export function AdminDashboardClient({
                 </div>
 
                 <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
+                  <div className="px-3 py-2 text-xs text-stone-500 flex flex-wrap items-center gap-2">
+                    <span>Varyantlar: {salesWarehouseId===null ? "ortak satış deposu seçilmedi" : `${warehousesList.find(w=>w.id===salesWarehouseId)?.name || `Ortak satış deposu #${salesWarehouseId}`} — fiili stoğu olanlar`}. Tekil ürün stoğu tüm depolardaki kullanılabilir toplamdır.</span>
+                    <button type="button" onClick={()=>void refreshCatalogStock()} className="font-bold text-amber-800 underline">Stokları yenile</button>
+                  </div>
+                  {catalogStockError&&<p role="alert" className="px-3 pb-2 text-xs text-rose-700">{catalogStockError}</p>}
+                  {salesWarehouseId===null&&<p role="status" className="px-3 pb-2 text-xs text-amber-800">Ortak satış deposu seçilmediğinden varyantlar gösterilemiyor.</p>}
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
+                    <table className="w-full min-w-[850px] text-xs text-left">
                       <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                        <tr>
-                          <th className="py-3 px-3">Ürün</th>
-                          <th className="py-3 px-3">SKU / Barkod</th>
-                          <th className="py-3 px-3">Kategori</th>
-                          <th className="py-3 px-3">Fiyatlar</th>
-                          <th className="py-3 px-3">Stok</th>
-                          <th className="py-3 px-3">Durum</th>
-                          <th className="py-3 px-3">İşlem</th>
-                        </tr>
+                        <tr>{["Marka","Ürün","Renk","Kategori","Fiyatlar","Stok","Durum","İşlem"].map(label=><th key={label} scope="col" className="py-2.5 px-2 whitespace-nowrap">{label}</th>)}</tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
-                        {products
-                          .filter((p) => {
-                            if (catalogCatFilter !== "ALL" && String(p.categoryId) !== catalogCatFilter) return false;
-                            if (catalogBrandFilter !== "ALL" && String(p.brandId) !== catalogBrandFilter) return false;
-                            if (!catalogSearch) return true;
-                            const q = catalogSearch.toLowerCase();
-                            const varHit = (p.variants || []).some((v: any) =>
-                              `${v.sku} ${v.barcode} ${v.colorName} ${v.size}`.toLowerCase().includes(q)
-                            );
-                            return (
-                              p.name.toLowerCase().includes(q) ||
-                              p.sku.toLowerCase().includes(q) ||
-                              p.barcode?.toLowerCase().includes(q) ||
-                              p.brandName?.toLowerCase().includes(q) ||
-                              p.tags?.toLowerCase().includes(q) ||
-                              varHit
-                            );
-                          })
-                          .map((prod) => (
-                            <tr key={prod.id} className="hover:bg-stone-50/50">
-                              <td className="py-3 px-3">
-                                <span className="font-bold text-stone-900 block">{prod.name}</span>
-                                <span className="text-[10px] text-stone-400">{prod.brandName} · {prod.unit}</span>
-                              </td>
-                              <td className="py-3 px-3 font-mono">
-                                <div>{prod.sku}</div>
-                                <div className="text-[10px] text-stone-400">{prod.barcode}</div>
-                              </td>
-                              <td className="py-3 px-3">{prod.categoryName}</td>
-                              <td className="py-3 px-3">
-                                <div className="font-bold">{Number(prod.retailPrice).toFixed(2)} TL</div>
-                                <div className="text-[10px] text-stone-400">Maliyet {Number(prod.buyPrice).toFixed(2)} TL</div>
-                              </td>
-                              <td className="py-3 px-3">
-                                <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${prod.totalAvailable <= 10 ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>
-                                  {prod.totalAvailable ?? 0} {prod.unit}
-                                </span>
-                                <div className="text-[10px] text-amber-800 mt-0.5">
-                                  {prod.variants?.length > 0 ? `${prod.variants.length} varyant` : "Tekil SKU"}
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 space-y-1">
-                                <button
-                                  onClick={() => void toggleProductFlag(prod.id, "isActive", !prod.isActive)}
-                                  className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isActive ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-500"}`}
-                                >
-                                  {prod.isActive ? "Yayında" : "Taslak"}
-                                </button>
-                                <button
-                                  onClick={() => void toggleProductFlag(prod.id, "isFeatured", !prod.isFeatured)}
-                                  className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isFeatured ? "bg-amber-100 text-amber-900" : "bg-stone-100 text-stone-400"}`}
-                                >
-                                  {prod.isFeatured ? "Öne Çıkan" : "Vitrin dışı"}
-                                </button>
-                              </td>
-                              <td className="py-3 px-3 space-y-1">
-                                <button
-                                  onClick={() => setEditingProduct({ ...prod })}
-                                  className="flex items-center gap-1 text-amber-800 font-bold hover:underline"
-                                >
-                                  <Pencil className="w-3 h-3" /> Düzenle
-                                </button>
-                                <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
-                              </td>
-                            </tr>
-                          ))}
+                        {catalogRows.map(({prod,variant,stock,brand})=>{
+                          const available=Math.max(0,stock.physical-stock.reserved);
+                          const quantity=variant?stock.physical:available;
+                          const buyPrice=variant?variant.buyPrice:prod.buyPrice;
+                          const retailPrice=variant?variant.retailPrice:prod.retailPrice;
+                          const money=(value:unknown)=>value===null||value===undefined||value===""?"—":`${Number(value).toFixed(2)} TL`;
+                          return <tr key={variant?`v-${variant.id}`:`p-${prod.id}`} className="hover:bg-stone-50/50">
+                            <td className="py-2.5 px-2">{brand||"—"}</td>
+                            <td className="py-2.5 px-2"><span className="font-bold text-stone-900 block">{prod.name}</span></td>
+                            <td className="py-2.5 px-2">{variant?(variantLabel(variant)||"—"):"—"}</td>
+                            <td className="py-2.5 px-2">{categoriesList.find(c=>String(c.id)===String(prod.categoryId))?.name || prod.categoryName || "—"}</td>
+                            <td className="py-2.5 px-2"><div className="font-bold">{money(retailPrice)}</div><div className="text-[10px] text-stone-500">Maliyet {money(buyPrice)}</div></td>
+                            <td className="py-2.5 px-2"><span className={`px-2 py-0.5 rounded font-bold text-[11px] ${quantity<=10?"bg-rose-100 text-rose-800":"bg-emerald-100 text-emerald-800"}`}>{quantity} {prod.unit||"Adet"}</span><div className="text-[10px] text-stone-500 mt-0.5">{variant?`Fiili · Ayrılmış: ${stock.reserved}`:"Tüm depolar · Kullanılabilir"}</div></td>
+                            <td className="py-2.5 px-2 space-y-1">
+                              <button type="button" aria-label={`${prod.name} ürününü ${prod.isActive?"taslağa al":"yayına al"}`} onClick={()=>void toggleProductFlag(prod.id,"isActive",!prod.isActive)} className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isActive?"bg-emerald-100 text-emerald-800":"bg-stone-200 text-stone-500"}`}>Ürün: {prod.isActive?"Yayında":"Taslak"}</button>
+                              <button type="button" aria-label={`${prod.name} ürününün vitrin durumunu değiştir`} onClick={()=>void toggleProductFlag(prod.id,"isFeatured",!prod.isFeatured)} className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isFeatured?"bg-amber-100 text-amber-900":"bg-stone-100 text-stone-400"}`}>{prod.isFeatured?"Öne Çıkan":"Vitrin dışı"}</button>
+                              {variant&&<span className="block text-[10px] text-stone-500">Varyant: {variant.isActive===false?"Pasif":"Aktif"}</span>}
+                            </td>
+                            <td className="py-2.5 px-2 space-y-1">
+                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");productEditPrices.current={buyPrice:String(prod.buyPrice ?? ""),retailPrice:String(prod.retailPrice ?? "")};setEditingProductVariantId(variant?.id ?? null);setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
+                              {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId!==null} onClick={()=>void handleDeleteProduct(prod.id,prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId===prod.id?"Siliniyor...":variant?"Ürünü sil":"Sil"}</button>}
+                              <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
+                            </td>
+                          </tr>;
+                        })}
                       </tbody>
                     </table>
+                    {catalogRows.length===0&&<p role="status" className="p-4 text-xs text-stone-500">Gösterilecek ürün bulunamadı.</p>}
                   </div>
                 </div>
               </>
@@ -2189,6 +2596,7 @@ export function AdminDashboardClient({
                         <th className="py-3 px-3">Kategori</th>
                         <th className="py-3 px-3">Üst</th>
                         <th className="py-3 px-3">Slug</th>
+                        <th className="py-3 px-3">Kategoriler</th>
                         <th className="py-3 px-3">Ürün</th>
                         <th className="py-3 px-3">Durum</th>
                       </tr>
@@ -2230,6 +2638,11 @@ export function AdminDashboardClient({
                     onChange={(e) => setNewBrandAdmin(e.target.value)}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs"
                   />
+                  <fieldset className="border border-stone-200 rounded-xl p-3 space-y-1 max-h-48 overflow-y-auto">
+                    <legend className="font-bold text-stone-700 px-1">Kategoriler (en az birini seçin)</legend>
+                    {categoriesList.length === 0 && <p>Önce Kategoriler bölümünden kategori ekleyin.</p>}
+                    {categoriesList.map(c => <label key={c.id} className="flex gap-2 items-center"><input type="checkbox" checked={newBrandCategories.includes(c.id)} onChange={e => setNewBrandCategories(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} />{c.parentName ? `${c.parentName} / ` : ""}{c.name}</label>)}
+                  </fieldset>
                   <button type="submit" className="w-full py-2.5 bg-amber-800 text-white text-xs font-bold rounded-xl">Markayı Kaydet</button>
                 </form>
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-stone-200 overflow-hidden">
@@ -2265,6 +2678,9 @@ export function AdminDashboardClient({
                             )}
                           </td>
                           <td className="py-3 px-3 font-mono text-[10px]">{b.slug}</td>
+                          <td className="py-3 px-3 min-w-[150px]">
+                            {isEditing ? <fieldset className="max-h-40 overflow-y-auto space-y-1"><legend className="sr-only">Marka kategorilerini düzenle</legend>{categoriesList.map(c => <label key={c.id} className="flex gap-1 items-center"><input type="checkbox" checked={editingBrandCategories.includes(c.id)} onChange={e => setEditingBrandCategories(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} />{c.parentName ? `${c.parentName} / ` : ""}{c.name}</label>)}</fieldset> : (categoriesList.filter(c => (b.categoryIds || []).includes(c.id)).map(c => c.parentName ? `${c.parentName} / ${c.name}` : c.name).join(", ") || "Atanmamış")}
+                          </td>
                           <td className="py-3 px-3">{products.filter((p) => p.brandId === b.id).length}</td>
                           <td className="py-3 px-3">
                             <button
@@ -2294,7 +2710,7 @@ export function AdminDashboardClient({
                             ) : (
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => { setEditingBrandId(b.id); setEditingBrandName(b.name); setCatalogFeedback(null); }}
+                                  onClick={() => { setEditingBrandId(b.id); setEditingBrandName(b.name); setEditingBrandCategories(b.categoryIds || []); setCatalogFeedback(null); }}
                                   className="flex items-center gap-1 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[11px] font-bold transition"
                                 >
                                   <Pencil className="w-3 h-3" /> Düzenle
@@ -2339,34 +2755,50 @@ export function AdminDashboardClient({
                   <button type="submit" className="md:col-span-4 py-2.5 bg-amber-800 text-white font-bold rounded-xl">Varyantı Oluştur (SKU otomatik)</button>
                 </form>
 
-                <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                      <tr>
-                        <th className="py-3 px-3">Ürün</th>
-                        <th className="py-3 px-3">SKU</th>
-                        <th className="py-3 px-3">Renk / Ölçü</th>
-                        <th className="py-3 px-3">Fiyat</th>
-                        <th className="py-3 px-3">Barkod</th>
-                      </tr>
-                    </thead>
+                <section aria-label="Varyant tablosu filtreleri" className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-sm">Varyantları Filtrele</h3><button type="button" onClick={()=>{setVariantFilters({category:"",brand:"",product:"",color:"",warehouse:""});setVariantPage(1);}} className="font-bold text-amber-800 hover:underline">Filtreleri temizle</button></div>
+                  <p className="text-stone-500">Tek bir filtre seçebilirsiniz; birden fazla seçim birlikte uygulanır. Depo seçildiğinde yalnız o depodaki satırlar gösterilir.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <label className="font-bold">Kategori<select value={variantFilters.category} onChange={e=>changeVariantFilter("category",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm kategoriler</option>{variantFilters.category&&!categoriesList.some(c=>String(c.id)===variantFilters.category)&&<option value={variantFilters.category}>Seçim artık bulunmuyor</option>}{categoriesList.map(c=><option key={c.id} value={String(c.id)}>{c.parentName?`${c.parentName} / `:""}{c.name}</option>)}</select></label>
+                    <label className="font-bold">Marka<select value={variantFilters.brand} onChange={e=>changeVariantFilter("brand",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm markalar</option><option value="unassigned">Markasız</option>{variantFilters.brand&&variantFilters.brand!=="unassigned"&&!brandsList.some(b=>String(b.id)===variantFilters.brand)&&<option value={variantFilters.brand}>Seçim artık bulunmuyor</option>}{brandsList.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select></label>
+                    <label className="font-bold">Ürün<select value={variantFilters.product} onChange={e=>changeVariantFilter("product",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm ürünler</option>{variantFilters.product&&!variantProducts.some(p=>String(p.id)===variantFilters.product)&&<option value={variantFilters.product}>Seçim artık bulunmuyor</option>}{variantProducts.map(p=><option key={p.id} value={String(p.id)}>{p.name} ({p.sku}){p.isActive===false?" — pasif":""}</option>)}</select></label>
+                    <label className="font-bold">Renk<select value={variantFilters.color} onChange={e=>changeVariantFilter("color",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm renkler</option>{variantFilters.color&&!variantColors.some(([key])=>key===variantFilters.color)&&<option value={variantFilters.color}>Seçim artık bulunmuyor</option>}{variantColors.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+                    <label className="font-bold">Stok Yeri<select value={variantFilters.warehouse} onChange={e=>changeVariantFilter("warehouse",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm depolar</option><option value="unassigned">Stok kaydı yok</option>{variantFilters.warehouse&&variantFilters.warehouse!=="unassigned"&&!warehousesList.some(w=>String(w.id)===variantFilters.warehouse)&&<option value={variantFilters.warehouse}>Seçim artık bulunmuyor</option>}{warehousesList.map(w=><option key={w.id} value={String(w.id)}>{w.name}{w.isActive===false?" — pasif":""}</option>)}</select></label>
+                  </div>
+                </section>
+
+                <div className="bg-white rounded-2xl border border-stone-200 overflow-x-auto">
+                  <p className="px-3 py-2 text-xs text-stone-500">Fiili stok her depo için ayrı gösterilir; ayrılmış miktar parantez içindedir. Stok kaydı olmayan varyant için depo atanmış sayılmaz.</p>
+                  <table className="w-full min-w-[850px] text-xs text-left">
+                    <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200"><tr>
+                      {["Kategori","Marka","Ürün","Renk","Alış Fiyatı","Satış Fiyatı","Stok Adedi","Stok Yeri","Barkod","İşlem"].map(h=><th key={h} scope="col" className="py-2 px-1.5 whitespace-nowrap">{h}</th>)}
+                    </tr></thead>
                     <tbody className="divide-y divide-stone-100">
-                      {products.flatMap((p) => (p.variants || []).map((v: any) => (
-                        <tr key={v.id}>
-                          <td className="py-2.5 px-3 font-semibold">{p.name}</td>
-                          <td className="py-2.5 px-3 font-mono">{v.sku}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="inline-flex items-center gap-1.5">
-                              {v.colorHex && <span className="w-3 h-3 rounded-full border border-stone-300" style={{ backgroundColor: v.colorHex }} />}
-                              {v.colorName || "—"} {v.size ? `· ${v.size}` : ""}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 font-bold">{Number(v.retailPrice).toFixed(2)} TL</td>
-                          <td className="py-2.5 px-3 font-mono text-[10px]">{v.barcode}</td>
-                        </tr>
-                      )))}
+                      {visibleVariantRows.map(({p,v,stock}) => <tr key={`${v.id}-${stock?.id ?? "none"}`}>
+                          <td className="py-2 px-1.5">{categoriesList.find(c=>c.id===p.categoryId)?.name || "—"}</td>
+                          <td className="py-2 px-1.5">{productBrandLabel(p,brandsList)}</td>
+                          <td className="py-2 px-1.5 font-semibold">{p.name}{p.isActive===false&&<span className="block text-stone-500">Pasif ürün</span>}</td>
+                          <td className="py-2 px-1.5"><span className="inline-flex items-center gap-1.5">{v.colorHex&&<span className="w-3 h-3 rounded-full border border-stone-300" style={{backgroundColor:v.colorHex}} />}{variantLabel(v)||"—"}</span>{v.isActive===false&&<span className="block text-stone-500">Pasif varyant</span>}</td>
+                          <td className="py-2 px-1.5">{v.buyPrice===null||v.buyPrice===undefined?"—":`${Number(v.buyPrice).toFixed(2)} TL`}</td>
+                          <td className="py-2 px-1.5 font-bold">{Number(v.retailPrice).toFixed(2)} TL</td>
+                          <td className="py-2 px-1.5">{stock?<>{stock.physicalQty}<span className="block text-stone-500">Ayrılmış: {stock.reservedQty}</span></>:"0"}</td>
+                          <td className="py-2 px-1.5">{stock?(warehousesList.find(w=>w.id===stock.warehouseId)?.name || `Bilinmeyen depo #${stock.warehouseId}`):"Stok kaydı yok"}{stock&&warehousesList.find(w=>w.id===stock.warehouseId)?.isActive===false&&" (pasif)"}{stock&&stock.productId!==p.id&&<span className="block text-rose-700">Ürün bağlantısı tutarsız</span>}</td>
+                          <td className="py-2 px-1.5 font-mono">{v.barcode||"—"}</td>
+                          <td className="py-2 px-1.5"><div className="flex gap-1.5 whitespace-nowrap">
+                            <button type="button" aria-label={`${p.name} ${variantLabel(v)||v.sku} varyantını düzenle`} onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setTableVariantEditor({productId:p.id,variantId:v.id,name:p.name});}} className="font-bold text-amber-800 hover:underline">Düzenle</button>
+                            {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" disabled={deletingVariantId!==null} aria-label={`${p.name} ${variantLabel(v)||v.sku} varyantını sil`} onClick={()=>void handleDeleteVariant(v.id)} className="font-bold text-rose-700 hover:underline disabled:opacity-50">{deletingVariantId===v.id?"Siliniyor…":"Sil"}</button>}
+                          </div></td>
+                        </tr>)}
                     </tbody>
                   </table>
+                  {variantTableRows.length===0&&<p role="status" className="p-4 text-xs text-stone-500">Filtrelere uygun varyant bulunamadı.</p>}
+                  <nav aria-label="Varyant tablosu sayfalama" className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-3 py-3 text-xs">
+                    <span aria-live="polite">{variantTableRows.length ? `${variantPageStart + 1}–${variantPageStart + visibleVariantRows.length}` : "0"} / {variantTableRows.length} satır · Sayfa {currentVariantPage} / {variantPageCount}</span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={()=>setVariantPage(currentVariantPage-1)} disabled={currentVariantPage<=1} className="px-3 py-1.5 border border-stone-300 rounded-lg font-bold disabled:opacity-40">← Önceki</button>
+                      <button type="button" onClick={()=>setVariantPage(currentVariantPage+1)} disabled={currentVariantPage>=variantPageCount} className="px-3 py-1.5 border border-stone-300 rounded-lg font-bold disabled:opacity-40">Sonraki →</button>
+                    </div>
+                  </nav>
                 </div>
               </div>
             )}
@@ -2585,10 +3017,18 @@ export function AdminDashboardClient({
             {/* ---- FAZ 3 / WMS ALT-SEKME: DEPOLAR (Depo Ekleme) ---- */}
             {wmsSubTab === "warehouses" && (
               <div className="flex flex-col gap-4">
+                <section className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3">
+                  <h3 className="font-bold text-sm">POS ve online ortak satış deposu</h3>
+                  <p className="text-xs text-stone-600">İki satış kanalı aynı depodaki stokları kullanır. Seçim diğer depolardaki stokları taşımaz. Açık vardiya, sipariş veya rezervasyon varsa önce sonuçlandırın.</p>
+                  <p className="text-xs font-bold">Şu an: {warehousesList.find((w)=>w.id===salesWarehouseId)?.name || "Henüz seçilmedi"}</p>
+                  <div className="flex gap-2"><select aria-label="Ortak satış deposu" value={salesWarehouseChoice} onChange={(e)=>setSalesWarehouseChoice(e.target.value)} className="border rounded-lg p-2 text-xs"><option value="">Depo seçin</option>{warehousesList.filter((w)=>w.isActive!==false).map((w)=><option key={w.id} value={w.id}>{w.name}</option>)}</select>
+                    <button type="button" disabled={!salesWarehouseChoice||salesWarehouseBusy||!["SUPER_ADMIN","STORE_MANAGER"].includes(currentRole)} onClick={handleSelectSalesWarehouse} className="rounded-lg bg-amber-800 text-white px-4 py-2 text-xs font-bold disabled:opacity-50">Ortak depoyu kaydet</button></div>
+                </section>
                 <form onSubmit={handleAddWarehouseForm} className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3">
                   <div>
                     <h3 className="font-bold text-sm text-stone-900">Yeni Depo Ekle</h3>
                     <p className="text-[11px] text-stone-400">Depo kodu addan otomatik üretilir (örn. Bursa Depo → BRD).</p>
+                    <p className="mt-1 text-[11px] text-stone-500">Aktif depo ve mağazalar <Link href="/magazalarimiz" target="_blank" rel="noopener noreferrer" className="font-semibold text-amber-800 underline underline-offset-2">Mağazalarımız sayfasında</Link> gösterilir; pasif olanlar gizlenir.</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                     <div className="md:col-span-4">
@@ -2649,7 +3089,7 @@ export function AdminDashboardClient({
                       {warehousesList.map((w) => (
                         <tr key={w.id} className="hover:bg-stone-50/50">
                           <td className="py-2.5 px-3 font-mono font-bold">{w.code}</td>
-                          <td className="py-2.5 px-3 font-semibold text-stone-800">{w.name}</td>
+                          <td className="py-2.5 px-3 font-semibold text-stone-800">{w.name}{w.id === salesWarehouseId && <span className="block text-xs text-amber-700">POS + online ortak depo</span>}</td>
                           <td className="py-2.5 px-3">
                             <span className="bg-stone-100 text-stone-800 px-2 py-0.5 rounded font-bold text-[10px]">{w.type}</span>
                           </td>
@@ -2666,6 +3106,7 @@ export function AdminDashboardClient({
                               <button
                                 type="button"
                                 onClick={() => handleToggleWarehouse(w.id, w.isActive === false)}
+                                disabled={(w.id === salesWarehouseId || (!salesWarehouseId && (w.id === 2 || w.id === 3))) && w.isActive !== false}
                                 title={w.isActive === false ? "Depoyu aktif yap" : "Depoyu pasife al"}
                                 className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border transition ${
                                   w.isActive === false
@@ -2679,7 +3120,8 @@ export function AdminDashboardClient({
                               <button
                                 type="button"
                                 onClick={() => handleDeleteWarehouse(w.id, w.name)}
-                                title="Depoyu sil"
+                                disabled={w.id === salesWarehouseId || (!salesWarehouseId && (w.id === 2 || w.id === 3))}
+                                title={w.id === salesWarehouseId ? "Ortak satış deposu silinemez" : "Depoyu sil"}
                                 className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 transition"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -2789,7 +3231,7 @@ export function AdminDashboardClient({
                   {!activeCountSession ? (
                     <>
                       <p className="text-xs text-stone-500">
-                        Seçili depo ({warehousesList.find((w) => String(w.id) === (selectedWhFilter === "ALL" ? "1" : selectedWhFilter))?.name || "Merkez"}) için sayım başlatın; ardından barkod okutup adet girin.
+                        Seçili depo ({warehousesList.find((w) => String(w.id) === (selectedWhFilter === "ALL" ? defaultWarehouseId : selectedWhFilter))?.name || "depo seçilmedi"}) için sayım başlatın; ardından barkod okutup adet girin.
                       </p>
                       <button onClick={() => void handleStartCount()} className="w-full py-2.5 bg-amber-800 text-white text-xs font-bold rounded-xl">
                         Sayım Başlat
@@ -2997,7 +3439,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* FAZ 5 / TAB: RAPORLAR & ANALİTİK */}
         {/* ============================================================ */}
-        {activeTab === "reports" && (
+        {activeTab === "reports" && reportsAllowed && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -3025,6 +3467,7 @@ export function AdminDashboardClient({
                 { id: "stock" as const, label: "Stok", icon: BoxesIcon },
                 { id: "customers" as const, label: "Müşteri", icon: Users },
                 { id: "finance" as const, label: "Finansal", icon: Wallet },
+                { id: "zreports" as const, label: "Gün Sonu & Z-Raporları", icon: Receipt },
               ].map((t) => {
                 const Icon = t.icon;
                 return (
@@ -3042,7 +3485,8 @@ export function AdminDashboardClient({
               })}
               <button
                 onClick={downloadReportCsv}
-                disabled={csvBusy}
+                disabled={csvBusy || reportSubTab === "zreports" || (reportSubTab === "customers" && (!customerReportsAllowed || !reportData?.customers))}
+                title={reportSubTab === "zreports" ? "Z raporları CSV olarak dışa aktarılmaz" : reportSubTab === "customers" && (!customerReportsAllowed || reportData?.customers === null) ? "Müşteri raporu için CRM yetkisi gerekir" : undefined}
                 className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 bg-stone-900 text-white hover:bg-black disabled:opacity-60 transition ml-auto"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -3052,6 +3496,7 @@ export function AdminDashboardClient({
             </div>
 
             {reportBusy && <div className="text-xs text-stone-500">Hesaplanıyor…</div>}
+            {reportError && <p role="alert" className="text-xs text-rose-700">{reportError}</p>}
 
             {reportData && reportSubTab === "sales" && (
               <div className="space-y-4">
@@ -3183,7 +3628,10 @@ export function AdminDashboardClient({
               </div>
             )}
 
-            {reportData && reportSubTab === "customers" && (
+            {reportSubTab === "customers" && (!customerReportsAllowed || reportData?.customers === null) && (
+              <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Müşteri raporunu ve CSV çıktısını görmek için Raporlar ve CRM erişim yetkileri birlikte gerekir.</p>
+            )}
+            {reportData?.customers && customerReportsAllowed && reportSubTab === "customers" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                   {[
@@ -3220,6 +3668,8 @@ export function AdminDashboardClient({
                 </div>
               </div>
             )}
+
+            {reportSubTab === "zreports" && <ZReportsPanel />}
 
             {reportData && reportSubTab === "finance" && (
               <div className="space-y-4">
@@ -3633,7 +4083,9 @@ export function AdminDashboardClient({
             )}
 
             {/* Subtab 4: POS Stats */}
-            {posSubTab === "stats" && (
+            {posSubTab === "stats" && (!matrixLoaded || !canSee("orders") ? (
+              <p className="text-xs text-stone-500">Bu özetin sipariş verileri için Siparişler modülü yetkisi gerekir.</p>
+            ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs space-y-1">
                   <span className="text-[10px] font-bold uppercase text-stone-500">POS Nakit Ciro</span>
@@ -3676,7 +4128,7 @@ export function AdminDashboardClient({
                   </div>
                 </div>
               </div>
-            )}
+            ))}
           </div>
         )}
 
@@ -3720,8 +4172,17 @@ export function AdminDashboardClient({
 
             {ordersSubTab === "orders" && (
               <>
+                {["SUPER_ADMIN","STORE_MANAGER"].includes(currentRole) && <section className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+                  <button type="button" onClick={()=>loadReconciliation()} className="font-bold underline">Eski sipariş ve e-posta mutabakatını göster / yenile</button>
+                  {reconciliationError && <p role="alert">{reconciliationError}</p>}
+                  {reconciliation && <div className="space-y-2 mt-2"><p>Toplam {reconciliation.total} incelenecek eski kayıt. Hak kaydının bulunmaması sayaç kullanımını kanıtlamaz; banka ve belgeleri kontrol edin. Buradan otomatik değişiklik yapılmaz.</p>
+                    {reconciliation.rows.map((r:any)=><p key={r.id}><strong>{r.orderNumber}</strong> · {r.status} / {r.paymentStatus} · {Number(r.grandTotal).toFixed(2)} TL · {r.longHold?"uzun süreli rezervasyon · ":""}{r.noClaims&&Number(r.discountTotal)>0?"indirim hakkı belgesiz":""}</p>)}
+                    <div className="flex gap-3"><button disabled={reconciliation.page<=1} onClick={()=>loadReconciliation(reconciliation.page-1)}>← Önceki</button><span>Sayfa {reconciliation.page}</span><button disabled={reconciliation.page*50>=reconciliation.total} onClick={()=>loadReconciliation(reconciliation.page+1)}>Sonraki →</button></div>
+                    <p className="font-bold">Gönderilemeyen/bekleyen e-postalar (en fazla 50)</p>{reconciliation.notices.map((n:any)=><p key={n.id}>{n.orderNumber} · {n.status} · {n.attempts} deneme · {n.lastError||"bekliyor"}</p>)}{!reconciliation.notices.length&&<p>Bekleyen kayıt yok.</p>}
+                  </div>}
+                </section>}
                 <div className="flex flex-wrap gap-1.5">
-                  {["ALL", "PAID", "PREPARING", "READY_FOR_SHIPMENT", "SHIPPED", "DELIVERED", "CANCELLED"].map((s) => (
+                  {["ALL", "BACKORDER", "PENDING", "PAID", "PREPARING", "READY_FOR_SHIPMENT", "SHIPPED", "DELIVERED", "CANCELLED"].map((s) => (
                     <button
                       key={s}
                       onClick={() => setOrderStatusFilter(s)}
@@ -3775,18 +4236,20 @@ export function AdminDashboardClient({
                               }`}>
                                 {ORDER_STATUS_LABELS[ord.status] || ord.status}
                               </span>
+                              {ord.status === "PENDING" && ord.paymentDeadline && <div className="text-[10px] mt-1">Son onay: {new Date(ord.paymentDeadline).toLocaleString("tr-TR")} · müşteriyle iletişim kurun</div>}
+
                             </td>
                             <td className="py-3 px-3">
                               <div className="flex flex-wrap gap-1 items-start">
                                 {(ORDER_NEXT[ord.status] || [])
-                                  .filter((next) => !(ord.status === "READY_FOR_SHIPMENT" && next === "SHIPPED"))
+                                  .filter((next) => !(ord.status === "READY_FOR_SHIPMENT" && next === "SHIPPED") && !(ord.status === "PENDING" && next === "PAID" && !["SUPER_ADMIN", "STORE_MANAGER"].includes(currentRole)) && !(next === "CANCELLED" && ord.paymentStatus === "PAID"))
                                   .map((next) => (
                                   <button
                                     key={next}
                                     onClick={() => void advanceOrder(ord.id, next)}
                                     className={`px-2 py-1 rounded-lg text-[10px] font-bold ${next === "CANCELLED" ? "bg-stone-200 text-stone-600" : "bg-amber-700 text-white"}`}
                                   >
-                                    {ORDER_STATUS_LABELS[next] || next}
+                                    {ord.status === "PENDING" && next === "PAID" ? "Banka ödemesini onayla" : ORDER_STATUS_LABELS[next] || next}
                                   </button>
                                 ))}
                                 {ord.status === "READY_FOR_SHIPMENT" && (() => {
@@ -3830,6 +4293,7 @@ export function AdminDashboardClient({
                                     </div>
                                   );
                                 })()}
+                                {(isSuper || (matrixLoaded && myMatrixRow.orders === true && myMatrixRow.orderReturnDelete === true)) && <button type="button" disabled={deletionBusy} onClick={()=>void openDeletion("order",ord.id)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-100 text-rose-800 disabled:opacity-50">Sil</button>}
                                 {ord.status === "DELIVERED" && (
                                   <button onClick={() => openReturnModal(ord)} className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-600 text-white">
                                     İade Başlat
@@ -3878,6 +4342,7 @@ export function AdminDashboardClient({
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap gap-1">
+                            {(isSuper || (matrixLoaded && myMatrixRow.orders === true && myMatrixRow.orderReturnDelete === true)) && <button type="button" disabled={deletionBusy} onClick={()=>void openDeletion("return",r.id)} className="px-2 py-1 bg-rose-100 text-rose-800 rounded-lg text-[10px] font-bold disabled:opacity-50">Sil</button>}
                             {r.status === "REQUESTED" && (
                               <>
                                 <button onClick={() => void returnAction(r.id, "APPROVE")} className="px-2 py-1 bg-amber-700 text-white rounded-lg text-[10px] font-bold">Onayla</button>
@@ -3887,8 +4352,8 @@ export function AdminDashboardClient({
                             {r.status === "APPROVED" && (
                               <button onClick={() => void returnAction(r.id, "RECEIVE")} className="px-2 py-1 bg-sky-700 text-white rounded-lg text-[10px] font-bold">Teslim Al (+Stok)</button>
                             )}
-                            {r.status === "RECEIVED" && (
-                              <button onClick={() => void returnAction(r.id, "REFUND")} className="px-2 py-1 bg-emerald-700 text-white rounded-lg text-[10px] font-bold">İade Bedeli Öde</button>
+                            {r.status === "RECEIVED" && ["SUPER_ADMIN", "STORE_MANAGER"].includes(currentRole) && (
+                              <button onClick={() => void returnAction(r.id, "REFUND")} className="px-2 py-1 bg-emerald-700 text-white rounded-lg text-[10px] font-bold">Yapılmış İadeyi Onayla</button>
                             )}
                           </div>
                         </td>
@@ -3907,63 +4372,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* TAB 6: CRM */}
         {/* ============================================================ */}
-        {activeTab === "crm" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-black text-stone-900">Müşteri CRM 360</h2>
-                <p className="text-xs text-stone-500">
-                  Perakende sadakat puanları, segmentasyon ve satın alma geçmişi tek ekranda.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr>
-                      <th className="py-3 px-3">Müşteri / Şirket</th>
-                      <th className="py-3 px-3">Tip</th>
-                      <th className="py-3 px-3">İletişim</th>
-                      <th className="py-3 px-3">Sadakat Puanı</th>
-                      <th className="py-3 px-3">Segment</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {customers.map((c) => (
-                      <tr key={c.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 px-3">
-                          <span className="font-bold text-stone-900 block">{c.name}</span>
-                          {c.companyName && (
-                            <span className="text-[10px] text-stone-500">{c.companyName}</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900">
-                            Perakende
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-stone-600">
-                          <div>{c.phone}</div>
-                          <div className="text-[10px] text-stone-400">{c.email}</div>
-                        </td>
-                        <td className="py-3 px-3 font-bold text-amber-800">
-                          {c.loyaltyPoints} Puan
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="bg-stone-100 text-stone-700 px-2 py-0.5 rounded font-bold text-[10px]">
-                            {c.segment}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === "crm" && matrixLoaded && canSee("crm") && <CustomerCRM canWrite={canSee("crmWrite")} />}
 
         {/* ============================================================ */}
         {/* TAB 7: PURCHASING & SUPPLIERS */}
@@ -4000,6 +4409,7 @@ export function AdminDashboardClient({
               {purchasingBusy && <span className="text-[10px] text-stone-400 self-center ml-2">Yükleniyor…</span>}
             </div>
 
+            {pendingPurchasing && <div role="alert" className="p-3 rounded-xl bg-amber-100 text-amber-900 text-xs">Önceki mal kabul veya iadenin sonucu doğrulanmalı. Yeni işlem başlatılmadan aynı kayıt güvenle tekrar sorgulanır. <button disabled={purchasingSubmitting} onClick={() => void sendPurchasingCommand(pendingPurchasing)} className="ml-2 font-bold underline">Aynı işlemi tekrar sorgula</button> <button disabled={purchasingSubmitting} onClick={() => void closePendingPurchasing()} className="ml-2 font-bold underline">Sonucu kontrol et ve kapat</button></div>}
             {purchasingFeedback && (
               <div className={`p-2.5 rounded-xl text-xs font-medium border ${purchasingFeedback.isError ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
                 {purchasingFeedback.text}
@@ -4073,18 +4483,19 @@ export function AdminDashboardClient({
               <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr><th className="py-2.5 px-3">Fiş No</th><th className="py-2.5 px-3">PO</th><th className="py-2.5 px-3">Kabul Eden</th><th className="py-2.5 px-3">Tarih</th></tr>
+                    <tr><th className="py-2.5 px-3">Fiş No</th><th className="py-2.5 px-3">PO / Tedarikçi</th><th className="py-2.5 px-3">Kabul Eden</th><th className="py-2.5 px-3">Tarih</th><th className="py-2.5 px-3">İşlem</th></tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100">
                     {receiptsList.map((r: any) => (
                       <tr key={r.id}>
                         <td className="py-2.5 px-3 font-mono font-bold">{r.receiptNumber}</td>
-                        <td className="py-2.5 px-3 font-mono">PO #{r.purchaseOrderId}</td>
+                        <td className="py-2.5 px-3">PO #{r.purchaseOrderId} · {r.supplierName}</td>
                         <td className="py-2.5 px-3">{r.receivedBy}</td>
                         <td className="py-2.5 px-3 text-stone-400">{new Date(r.createdAt).toLocaleString("tr-TR")}</td>
+                        <td className="py-2.5 px-3">{r.returns?.map((x:any)=><p key={x.id} className="text-[10px] text-stone-500">İade #{x.id} · {new Date(x.createdAt).toLocaleDateString("tr-TR")} · {x.reason}</p>)}<button disabled={!!pendingPurchasing || purchasingSubmitting || !r.items?.length} onClick={() => openSupplierReturn(r)} className="font-bold text-rose-700 disabled:opacity-50">Tedarikçiye iade</button></td>
                       </tr>
                     ))}
-                    {receiptsList.length === 0 && <tr><td colSpan={4} className="py-8 text-center text-stone-400">Mal kabul fişi yok.</td></tr>}
+                    {receiptsList.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-stone-400">Mal kabul fişi yok.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -4096,10 +4507,12 @@ export function AdminDashboardClient({
                   <div key={sup.id} className="p-4 rounded-2xl border border-stone-200 bg-white space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="font-bold text-sm text-stone-900">{sup.name}</h4>
-                      <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">★ {sup.rating}</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">{sup.rating == null ? "Henüz puanlanmadı" : `★ ${sup.rating}`}</span>
                     </div>
                     <p className="text-xs text-stone-600">Yetkili: {sup.contactPerson || "—"} ({sup.phone || "—"})</p>
-                    <p className="text-[11px] text-stone-400">Vade: {sup.paymentTerms} | Termin: {sup.leadTimeDays} gün | {sup.totalPOs ?? 0} sipariş · %{sup.completionRate ?? 100} tamamlama</p>
+                    <button disabled={purchasingBusy} onClick={() => void deleteSupplier(sup)} className="text-xs font-bold text-rose-700 disabled:opacity-50">Tedarikçiyi sil</button>
+                    {sup.ratingDetails && <p className="text-[11px] text-stone-500">{sup.ratingDetails.score === null ? sup.ratingDetails.missing.join(" · ") : `Son 3 sipariş: zamanında %${Math.round(sup.ratingDetails.delivery*100)}, iadesiz %${Math.round(sup.ratingDetails.returns*100)}, göreli vade %${Math.round(sup.ratingDetails.terms*100)}.`}</p>}
+                    <p className="text-[11px] text-stone-400">Vade: {sup.paymentTerms || "—"} | Termin: {sup.leadTimeDays} gün | {sup.totalPOs ?? 0} sipariş · {sup.completionRate == null ? "tamamlama verisi yok" : `%${sup.completionRate} tamamlama`}</p>
                   </div>
                 ))}
               </div>
@@ -4118,6 +4531,12 @@ export function AdminDashboardClient({
         {activeTab === "ai" && <AiAssistantCenter products={products} />}
         {activeTab === "intelligence" && <IntelligenceCenter />}
 
+        {/* Destek Masası — İletişim formundan gelen mesajlar */}
+        {activeTab === "support" && <SupportDesk />}
+
+        {/* Ürün yorumları ve soruları — rol matrisine göre moderasyon */}
+        {activeTab === "productFeedback" && matrixLoaded && canSee("productFeedback") && <ProductFeedback />}
+
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: KULLANICILAR & ROLLER */}
         {/* ============================================================ */}
@@ -4127,7 +4546,7 @@ export function AdminDashboardClient({
               <div>
                 <h2 className="text-xl font-black text-stone-900">Kullanıcılar & Roller</h2>
                 <p className="text-xs text-stone-500">
-                  Mağaza personeli (Süper Admin, Mağaza Müdürü, Depo Sorumlusu, POS Kasiyeri) kayıtları, rol atamaları ve hesap durumu. Siteye üye olan müşteriler ayrı sekmededir (Kayıtlı Müşteriler).
+                  Personel listesini yetkili roller görebilir; personel oluşturma, değiştirme ve silme yalnız Süper Admin yetkisindedir. Siteye üye olan müşteriler ayrı sekmededir (Kayıtlı Müşteriler).
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -4139,6 +4558,8 @@ export function AdminDashboardClient({
                   <span>Yenile</span>
                 </button>
                 <button
+                  disabled={!isSuper}
+                  title={isSuper ? "Yeni personel oluştur" : "Personel yönetimi yalnız Süper Admin yetkisindedir"}
                   onClick={() => setIsAddUserOpen(true)}
                   className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
                 >
@@ -4186,8 +4607,10 @@ export function AdminDashboardClient({
                         <td className="py-3 px-3">
                           <select
                             value={u.role}
+                            disabled={!isSuper}
+                            title={!isSuper ? "Personel yönetimi yalnız Süper Admin yetkisindedir" : "Personel rolü"}
                             onChange={(e) => void updateUser(u.id, { role: e.target.value })}
-                            className="px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-950 rounded-lg text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-700"
+                            className="px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-950 rounded-lg text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <option value="SUPER_ADMIN">Süper Admin</option>
                             <option value="STORE_MANAGER">Mağaza Müdürü</option>
@@ -4197,6 +4620,7 @@ export function AdminDashboardClient({
                         </td>
                         <td className="py-3 px-3">
                           <button
+                            disabled={!isSuper}
                             onClick={() => void updateUser(u.id, { isActive: !u.isActive })}
                             className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
                               u.isActive
@@ -4210,7 +4634,7 @@ export function AdminDashboardClient({
                           </button>
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
-                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                          {formatRegistrationDate(u.createdAt)}
                         </td>
                         <td className="py-3 px-3 text-right">
                           <button
@@ -4269,10 +4693,12 @@ export function AdminDashboardClient({
                   className="px-3 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
                 >
                   <Users className="w-4 h-4" />
-                  <span>CRM 360'a Git</span>
+                  <span>CRM 360&apos;a Git</span>
                 </button>
               </div>
             </div>
+
+            {userFeedback && <div role="status" className={`p-3 rounded-xl text-xs font-medium border ${userFeedback.isError ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>{userFeedback.text}</div>}
 
             <div className="flex items-start gap-2 text-[11px] text-sky-900 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-sky-700" />
@@ -4326,7 +4752,7 @@ export function AdminDashboardClient({
                           </button>
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
-                          {new Date(u.createdAt).toLocaleDateString("tr-TR")}
+                          {formatRegistrationDate(u.createdAt)}
                         </td>
                         <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
                           {u.lastLoginAt
@@ -4363,7 +4789,7 @@ export function AdminDashboardClient({
               <div>
                 <h2 className="text-xl font-black text-stone-900">Rol Yetki Matrisi</h2>
                 <p className="text-xs text-stone-500">
-                  Sol menüdeki tüm modüllerin hangi rolde görüneceğini buradan belirleyin. Değişiklikler kaydedilince menü anında uygulanır.
+                  Modül ve işlem yetkilerini rollere göre belirleyin. Ürün linki ve ürün silme işlemleri için hem Ürün & Katalog hem de ilgili işlem yetkisi gereklidir. Ürün silme diğer rollerde varsayılan olarak kapalıdır. Değişiklikler kaydedilince uygulanır.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -4383,7 +4809,7 @@ export function AdminDashboardClient({
                   className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
                 >
                   <Users2 className="w-4 h-4" />
-                  <span>Kullanıcılar & Roller'e Git</span>
+                  <span>Kullanıcılar & Roller&apos;e Git</span>
                 </button>
                 {isSuper && (
                   <>
@@ -4419,14 +4845,14 @@ export function AdminDashboardClient({
             {/* Detaylı matris tablosu */}
             <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden">
               <div className="px-5 py-4 border-b border-stone-100 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-bold text-sm text-stone-900">Rol → Modül Görünürlük Matrisi</h3>
+                <h3 className="font-bold text-sm text-stone-900">Rol → Modül ve İşlem Yetki Matrisi</h3>
                 <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">{ADMIN_MODULES.length} modül × {MATRIX_ROLES.length} rol</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-[11px] text-left">
                   <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                     <tr>
-                      <th className="py-2.5 px-3 min-w-[210px]">Modül (Sol Menü)</th>
+                      <th className="py-2.5 px-3 min-w-[210px]">Modül / İşlem</th>
                       {MATRIX_ROLES.map((role) => (
                         <th key={role} className="py-2.5 px-2 text-center min-w-[108px]">
                           <div>{role === "SUPER_ADMIN" ? "Süper Admin" : role === "STORE_MANAGER" ? "Mağaza Müdürü" : role === "WAREHOUSE_KEEPER" ? "Depo Sorumlusu" : "POS Kasiyeri"}</div>
@@ -4447,6 +4873,9 @@ export function AdminDashboardClient({
                           <tr key={mod.key} className="hover:bg-stone-50/60">
                             <td className="py-2 px-3">
                               <span className="font-bold text-stone-800 block">{mod.label}</span>
+                              {mod.key === "audit" && <span className="block text-[10px] text-rose-800">Müşteri ve diğer hassas kayıtların tüm ayrıntılarını açar.</span>}
+                              {mod.key === "productDelete" && <span className="block text-[10px] text-rose-800">Kalıcı silme yetkisidir; katalog erişimi de gerekir. Stok ve geçmiş korumaları sürer.</span>}
+                              {mod.key === "orderReturnDelete" && <span className="block text-[10px] text-rose-800">Sipariş ve iade kalıcı silme yetkisidir; Siparişler erişimi de gerekir. Silme işlemi henüz kullanıma açılmadı.</span>}
                               <span className="text-[9px] font-mono text-stone-400">{mod.key}</span>
                             </td>
                             {MATRIX_ROLES.map((role) => {
@@ -4491,9 +4920,9 @@ export function AdminDashboardClient({
               </div>
               <div className="px-5 py-3 border-t border-stone-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-stone-500">
                 <span className="flex items-center gap-1.5"><Lock className="w-3 h-3 text-amber-700" /> Kilitli hücre (Süper Admin / Genel Bakış)</span>
-                <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-emerald-600" /> Menüde görünür</span>
-                <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-rose-400" /> Menüde gizli</span>
-                <span className="text-stone-400">Matris yalnızca menü/sekme görünürlüğünü yönetir; API uçları kendi personel doğrulamalarını yapar.</span>
+                <span className="flex items-center gap-1.5"><Check className="w-3 h-3 text-emerald-600" /> Açık</span>
+                <span className="flex items-center gap-1.5"><X className="w-3 h-3 text-rose-400" /> Kapalı</span>
+                <span className="text-stone-400">Ürün linki ve silme yetkileri sunucuda da doğrulanır; diğer API uçları kendi yetki kontrollerini uygular.</span>
               </div>
             </div>
 
@@ -4531,76 +4960,7 @@ export function AdminDashboardClient({
         {/* ============================================================ */}
         {/* FAZ 1 / TAB: DENETİM KAYDI */}
         {/* ============================================================ */}
-        {activeTab === "audit" && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-black text-stone-900">Denetim Kaydı (Audit Log)</h2>
-                <p className="text-xs text-stone-500">
-                  Kritik işlemlerin kim / ne zaman / hangi IP ile yapıldığının değiştirilemez kayıtları.
-                </p>
-              </div>
-              <button
-                onClick={() => void loadAudit()}
-                className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${auditBusy ? "animate-spin" : ""}`} />
-                <span>Yenile</span>
-              </button>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                    <tr>
-                      <th className="py-3 px-3">Tarih</th>
-                      <th className="py-3 px-3">İşlem</th>
-                      <th className="py-3 px-3">Kayıt</th>
-                      <th className="py-3 px-3">Detay</th>
-                      <th className="py-3 px-3">IP</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-100">
-                    {auditList.map((row) => (
-                      <tr key={row.id} className="hover:bg-stone-50/50">
-                        <td className="py-3 px-3 text-stone-500 whitespace-nowrap">
-                          {new Date(row.createdAt).toLocaleString("tr-TR")}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              String(row.action).includes("FAIL") || String(row.action).includes("LOCK")
-                                ? "bg-rose-100 text-rose-800"
-                                : String(row.action).includes("SUCCESS")
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-stone-100 text-stone-700"
-                            }`}
-                          >
-                            {row.action}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className="font-semibold text-stone-800">{row.userName}</span>
-                          <span className="block text-[10px] text-stone-400 font-mono">{row.entity} #{row.entityId}</span>
-                        </td>
-                        <td className="py-3 px-3 text-stone-500 max-w-md truncate">{row.details}</td>
-                        <td className="py-3 px-3 font-mono text-[10px] text-stone-400">{row.ipAddress}</td>
-                      </tr>
-                    ))}
-                    {auditList.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-8 text-center text-stone-400">
-                          {auditBusy ? "Yükleniyor…" : "Henüz denetim kaydı yok."}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === "audit" && matrixLoaded && canSee("audit") && <AuditLogPanel />}
 
         {/* SİTE YÖNETİMİ bölümleri */}
         {activeTab === "siteHeader" && <SiteManagement tab="header" />}
@@ -4612,12 +4972,21 @@ export function AdminDashboardClient({
       </main>
 
 
+      {tableVariantEditor && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-label="Varyant düzenle" className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2"><h3 className="font-black">{tableVariantEditor.name} — Varyant Düzenle</h3><button type="button" disabled={variantEditBusy} aria-label="Varyant düzenlemeyi kapat" onClick={()=>{if(!variantEditDirty||window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Kapatılsın mı?"))setTableVariantEditor(null);}}><X className="w-5 h-5" /></button></div>
+            <EditProductVariants key={tableVariantEditor.productId} productId={tableVariantEditor.productId} selectedVariantId={tableVariantEditor.variantId} onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async()=>{await Promise.all([refreshProducts(),loadInventory()]);}} />
+          </div>
+        </div>
+      )}
+
       {editingProduct && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-stone-100">
               <h3 className="font-black text-base text-stone-900">Ürün Düzenle</h3>
-              <button type="button" onClick={() => setEditingProduct(null)} className="p-1 text-stone-400 hover:text-stone-700">
+              <button type="button" disabled={variantEditBusy} onClick={() => { if (!variantEditDirty || window.confirm("Kaydedilmemiş varyant değişiklikleri kaybolacak. Kapatılsın mı?")) setEditingProduct(null); }} className="p-1 text-stone-400 hover:text-stone-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -4633,6 +5002,7 @@ export function AdminDashboardClient({
                   <input required value={editingProduct.retailPrice} onChange={(e) => setEditingProduct({ ...editingProduct, retailPrice: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
                 </div>
               </div>
+              {editingProductVariantId !== null && <p className="text-stone-600">Değiştirdiğiniz ana ürün alış ve perakende fiyatları, kaydettiğinizde tüm varyantlara uygulanır.</p>}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold mb-1">Kampanya Fiyatı</label>
@@ -4649,11 +5019,13 @@ export function AdminDashboardClient({
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
-                <select value={editingProduct.brandId || ""} onChange={(e) => setEditingProduct({ ...editingProduct, brandId: e.target.value ? Number(e.target.value) : null })} className="px-3 py-2 border border-stone-300 rounded-xl">
-                  {brandsList.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                <label className="font-bold">Marka
+                  <select aria-label="Ürün markası" value={editingProduct.brandId == null ? "" : String(editingProduct.brandId)} onChange={(e) => { setProductEditError(""); setEditingProduct({ ...editingProduct, brandId: e.target.value ? Number(e.target.value) : null }); }} className="block w-full px-3 py-2 border border-stone-300 rounded-xl font-normal">
+                    <option value="">Markasız</option>
+                    {editingProduct.brandId != null && !brandsList.some(b=>String(b.id)===String(editingProduct.brandId)) && <option value={String(editingProduct.brandId)} disabled>Marka kaydı bulunamadı (#{editingProduct.brandId}) — seçim yapın</option>}
+                    {brandsList.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </label>
               </div>
               <PhotoManager
                 photos={
@@ -4668,12 +5040,15 @@ export function AdminDashboardClient({
               <input placeholder="Video URL (YouTube / Dailymotion / Vimeo / TikTok / Instagram / Facebook)" value={editingProduct.videoUrl || ""} onChange={(e) => setEditingProduct({ ...editingProduct, videoUrl: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
               <textarea placeholder="Kısa açıklama" value={editingProduct.shortDescription || ""} onChange={(e) => setEditingProduct({ ...editingProduct, shortDescription: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" rows={2} />
               <textarea placeholder="Detaylı açıklama (ürün sayfasında görünür)" value={editingProduct.description || ""} onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" rows={3} />
+              <ProductTechnicalFields value={editingProduct.technicalDetails && typeof editingProduct.technicalDetails === "object" ? editingProduct.technicalDetails : parseProductSpecifications(editingProduct.technicalDetails)} onChange={(technicalDetails) => setEditingProduct({ ...editingProduct, technicalDetails })} />
               <label className="flex items-center gap-2 font-bold">
                 <input type="checkbox" checked={!!editingProduct.isFeatured} onChange={(e) => setEditingProduct({ ...editingProduct, isFeatured: e.target.checked })} />
                 Öne çıkan ürün
               </label>
-              <button type="submit" className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl">Değişiklikleri Kaydet</button>
+              {productEditError && <p role="alert" className="p-2 rounded-lg bg-rose-50 text-rose-800">{productEditError}</p>}
+              <button type="submit" disabled={variantEditBusy} className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl disabled:opacity-50">Ürün ana bilgilerini kaydet</button>
             </form>
+            {editingProduct.hasVariants && editingProductVariantId !== null && <EditProductVariants key={`${editingProduct.id}-${editingProductVariantId}`} productId={editingProduct.id} selectedVariantId={editingProductVariantId} hidePrices onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async () => { await Promise.all([refreshProducts(), loadInventory()]); }} />}
           </div>
         </div>
       )}
@@ -4683,12 +5058,14 @@ export function AdminDashboardClient({
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-stone-100">
               <h3 className="font-black text-base text-stone-900">Yeni Tuhafiye Ürünü Ekle</h3>
-              <button onClick={() => setIsAddProductOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
+              <button disabled={productSaving} onClick={() => setIsAddProductOpen(false)} className="p-1 text-stone-400 hover:text-stone-700">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleAddProduct} className="space-y-3 text-xs">
+              <fieldset disabled={productSaving} className="space-y-3">
+              <AuthorizedProductLinkImport onImport={applyImportedProduct} onBusyChange={setProductImportBusy} />
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ürün Adı:</label>
                 <input
@@ -4711,6 +5088,8 @@ export function AdminDashboardClient({
                   className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                 />
               </div>
+
+              <ProductTechnicalFields value={newProd.technicalDetails} onChange={(technicalDetails) => setNewProd(prev => ({ ...prev, technicalDetails }))} />
 
               {/* ÜRÜN FOTOĞRAFLARI — en fazla 6 adet (link veya site deposuna yükleme) */}
               <PhotoManager
@@ -4783,34 +5162,40 @@ export function AdminDashboardClient({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">SKU:</label>
+                  <label htmlFor="new-product-sku" className="block font-bold text-stone-700 mb-1">SKU:</label>
                   <input
+                    id="new-product-sku"
                     type="text"
-                    required
+                    required={!productVariantsDraft.length}
+                    disabled={productVariantsDraft.length > 0}
                     placeholder="GUT-120-SIY"
-                    value={newProd.sku}
+                    value={productVariantsDraft.length ? "" : newProd.sku}
                     onChange={(e) => setNewProd({ ...newProd, sku: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono disabled:bg-stone-100 disabled:text-stone-500"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">Barkod:</label>
+                  <label htmlFor="new-product-barcode" className="block font-bold text-stone-700 mb-1">Barkod:</label>
                   <input
+                    id="new-product-barcode"
                     type="text"
+                    disabled={productVariantsDraft.length > 0}
                     placeholder="869001122..."
-                    value={newProd.barcode}
+                    value={productVariantsDraft.length ? "" : newProd.barcode}
                     onChange={(e) => setNewProd({ ...newProd, barcode: e.target.value })}
-                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono disabled:bg-stone-100 disabled:text-stone-500"
                   />
                 </div>
               </div>
+
+              {productVariantsDraft.length > 0 && <p className="text-stone-600" aria-live="polite">Varyantlı üründe ana SKU otomatik oluşturulur, ana barkod boş kalır. SKU ve barkodları varyant bilgilerine girebilirsiniz. Son varyant kaldırılırsa önceki ana değerler geri gelir.</p>}
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Kategori:</label>
                   <select
                     value={newProd.categoryId}
-                    onChange={(e) => setNewProd({ ...newProd, categoryId: e.target.value })}
+                    onChange={(e) => { productSelectionTouched.current.category = true; setNewProd({ ...newProd, categoryId: e.target.value }); }}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   >
                     {categoriesList.map((c) => (
@@ -4822,13 +5207,19 @@ export function AdminDashboardClient({
                   <label className="block font-bold text-stone-700 mb-1">Marka:</label>
                   <select
                     value={newProd.brandId}
-                    onChange={(e) => setNewProd({ ...newProd, brandId: e.target.value })}
+                    onChange={(e) => { productSelectionTouched.current.brand = true; setNewProd({ ...newProd, brandId: e.target.value }); }}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   >
-                    {brandsList.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
+                    <option value="">Markasız</option>
+                    {newProd.brandId && !brandsList.some(b=>String(b.id)===newProd.brandId) && <option value={newProd.brandId}>Seçili marka artık bulunmuyor</option>}
+                    <optgroup label="Seçilen kategoriye bağlı markalar">
+                      {brandsList.filter(b => (b.categoryIds || []).includes(Number(newProd.categoryId))).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </optgroup>
+                    <optgroup label="Diğer ve kategorisi atanmamış markalar">
+                      {brandsList.filter(b => !(b.categoryIds || []).includes(Number(newProd.categoryId))).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </optgroup>
                   </select>
+                  <p className="text-[10px] text-stone-500 mt-1">Diğer markalar da seçilebilir; mevcut seçim değiştirilmez.</p>
                 </div>
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Birim:</label>
@@ -4869,13 +5260,19 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
+              <NewProductVariants value={productVariantsDraft} onChange={updateVariantsDraft} disabled={productSaving} productName={newProd.name} />
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold text-stone-700 mb-1">Başlangıç Stoğu:</label>
                   <input
                     type="number"
-                    value={newProd.initialStock}
-                    onChange={(e) => setNewProd({ ...newProd, initialStock: e.target.value })}
+                    min="0"
+                    step="1"
+                    required
+                    max={productVariantsDraft.length ? 5000000000 : undefined}
+                    value={productVariantsDraft.length ? (stockTarget ?? (variantStockSum === null ? "" : String(variantStockSum))) : newProd.initialStock}
+                    onChange={(e) => productVariantsDraft.length ? updateStockTarget(e.target.value) : setNewProd({ ...newProd, initialStock: e.target.value })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   />
                 </div>
@@ -4893,12 +5290,17 @@ export function AdminDashboardClient({
                 </div>
               </div>
 
+              {productVariantsDraft.length > 0 && <p className="text-stone-600" aria-live="polite">{stockTarget !== null ? `Hedef: ${stockTarget || "—"} · Varyant stokları toplamı: ${variantStockSum ?? "eksik veya geçersiz"}. Kaydetmek için hedefle toplam eşleşmeli.` : variantStockSum === null ? "Toplam için tüm varyant stoklarını geçerli tam sayı olarak girin." : "Başlangıç stoğu varyantların toplamıdır. Değiştirirseniz varyantları hedefe göre siz düzenlersiniz; ayrı bir ana stok oluşturulmaz."}</p>}
+              {stockNotice && <p className="text-stone-600" aria-live="polite">{stockNotice}</p>}
+              {productSaveError && <p role="alert" className="text-rose-700 font-semibold">{productSaveError}</p>}
               <button
                 type="submit"
-                className="w-full py-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition"
+                disabled={productImportBusy || productSaving}
+                className="w-full py-3 bg-amber-800 disabled:opacity-50 hover:bg-amber-900 text-white font-bold rounded-xl text-xs transition"
               >
-                Ürünü Kaydet & Stoğa Al
+                {productSaving ? "Kaydediliyor…" : productImportBusy ? "Ürün bilgileri getiriliyor…" : "Ürünü Kaydet & Stoğa Al"}
               </button>
+              </fieldset>
             </form>
           </div>
         </div>
@@ -5077,6 +5479,28 @@ export function AdminDashboardClient({
       {/* ============================================================ */}
       {/* FAZ 4 / MODAL: İADE BAŞLAT */}
       {/* ============================================================ */}
+      {deletionPreview && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="order-delete-title">
+          <div className="bg-white rounded-2xl p-5 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4">
+            <h3 id="order-delete-title" className="font-black text-lg">{deletionPreview.kind === "order" ? "Siparişi" : "İadeyi"} kalıcı sil</h3>
+            <p className="text-sm font-bold">{deletionPreview.number} · Sipariş {deletionPreview.orderNumber}</p>
+            <p className="text-xs text-rose-800">Bu işlem geri alınamaz. Bankada tahsilat veya iade yapılmaz; kasa hareketleri ve işlem güvenlik kayıtları korunur.</p>
+            {deletionPreview.returnCount>0 && <p className="text-sm font-bold text-rose-700">Bu siparişe bağlı {deletionPreview.returnCount} sonuçlanmış iade de kalıcı olarak silinecek.</p>}
+            <div className="overflow-x-auto"><table className="w-full text-xs text-left"><thead><tr><th>Depo</th><th>Ürün / varyant</th><th>Fiili</th><th>Ayrılmış</th><th>Değişim</th><th>Sonra</th></tr></thead><tbody>
+              {deletionPreview.stocks.map(x=><tr key={`${x.warehouseId}:${x.productId}:${x.variantId}`}><td>{x.warehouseName} (#{x.warehouseId})</td><td>{x.productName} {x.variantId!==null?`· ${x.variantName || "Varyant"} (#${x.variantId})`:"· ana ürün"}</td><td>{x.physical}</td><td>{x.reserved}</td><td>{x.delta>0?"+":""}{x.delta}</td><td>{x.after}</td></tr>)}
+            </tbody></table>{!deletionPreview.stocks.length&&<p className="text-xs">Terslenecek stok hareketi yok.</p>}</div>
+            <p className="text-xs text-stone-600">Stok geri eklendiğinde bekleyen siparişlere FIFO sırasıyla rezervasyon yapılabilir; bu nedenle sonraki ayrılmış miktar değişebilir.</p>
+            {(deletionPreview.rights.loyalty || deletionPreview.rights.discounts.length>0) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs space-y-1"><p className="font-bold">Puan ve indirim hakları terslenecek</p>{deletionPreview.rights.loyalty && <p>Müşteri #{deletionPreview.rights.loyalty.customerId}: {deletionPreview.rights.loyalty.current} puan → {deletionPreview.rights.loyalty.after} puan (değişim {deletionPreview.rights.loyalty.delta>0?"+":""}{deletionPreview.rights.loyalty.delta}).</p>}{deletionPreview.rights.discounts.map(d=><p key={`${d.kind}:${d.id}`}>{d.kind==="COUPON"?"Kupon":"Kampanya"} {d.name} (#{d.id}): kullanım {d.current} → {d.after}</p>)}</div>}
+            {deletionPreview.rights.legacyReviewRequired && <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900"><p className="font-bold">Eski sipariş: kupon/kampanya geçmişinin eksiksizliği otomatik kanıtlanamıyor.</p><p>{deletionPreview.rights.discounts.length===0 ? "Sistemde kayıtlı kupon veya kampanya hakkı bulunmuyor." : "Sistemde kayıtlı haklar yukarıda listelenmiştir."} Dış belgelerle tüm kullanılan hakları kontrol edin. Eksik hak varsa veya doğrulayamıyorsanız silmeyin.</p></div>}
+            <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionPhysical} onChange={e=>setDeletionPhysical(e.target.checked)} />Depo ve varyant bazındaki fiziksel durumu kontrol ettim; yukarıdaki stok değişimini doğruluyorum.</label>
+            {deletionPreview.returnCount>0 && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionCascade} onChange={e=>setDeletionCascade(e.target.checked)} />Bağlı {deletionPreview.returnCount} iadenin de kalıcı silinmesini ayrıca onaylıyorum.</label>}
+            {((deletionPreview.rights.loyalty?.delta||0)!==0 || deletionPreview.rights.discounts.length>0) && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionRights} onChange={e=>setDeletionRights(e.target.checked)} />Yukarıdaki puan ve indirim hakkı değişikliklerini ayrıca onaylıyorum.</label>}
+            {deletionPreview.rights.legacyReviewRequired && <label className="flex gap-2 text-sm"><input type="checkbox" checked={deletionLegacy} onChange={e=>setDeletionLegacy(e.target.checked)} />Dış belgeleri inceledim; listelenen kupon ve kampanya haklarının eksiksiz olduğunu ayrıca doğruluyorum.</label>}
+            <div className="flex gap-2"><button type="button" disabled={deletionBusy||!deletionPhysical||(deletionPreview.returnCount>0&&!deletionCascade)||(((deletionPreview.rights.loyalty?.delta||0)!==0||deletionPreview.rights.discounts.length>0)&&!deletionRights)||(deletionPreview.rights.legacyReviewRequired&&!deletionLegacy)} onClick={()=>void executeDeletion()} className="px-4 py-2 rounded-xl bg-rose-700 text-white font-bold disabled:opacity-50">{deletionBusy?"Siliniyor…":"Kalıcı sil"}</button><button type="button" disabled={deletionBusy} onClick={()=>setDeletionPreview(null)} className="px-4 py-2 rounded-xl bg-stone-200">Vazgeç</button></div>
+          </div>
+        </div>
+      )}
+
       {returnModalOrder && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -5131,8 +5555,7 @@ export function AdminDashboardClient({
               <div><label className="block font-bold mb-1">E-posta</label><input type="email" value={newSupplier.email} onChange={(e) => setNewSupplier({ ...newSupplier, email: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
               <div className="grid grid-cols-3 gap-2">
                 <div><label className="block font-bold mb-1">Termin (gün)</label><input type="number" min="1" value={newSupplier.leadTimeDays} onChange={(e) => setNewSupplier({ ...newSupplier, leadTimeDays: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
-                <div><label className="block font-bold mb-1">Vade</label><input value={newSupplier.paymentTerms} onChange={(e) => setNewSupplier({ ...newSupplier, paymentTerms: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
-                <div><label className="block font-bold mb-1">Puan</label><input type="number" step="0.1" min="1" max="5" value={newSupplier.rating} onChange={(e) => setNewSupplier({ ...newSupplier, rating: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
+                <div><label className="block font-bold mb-1">Vade</label><input required placeholder="Örn. 30 Gün Vade / Peşin" value={newSupplier.paymentTerms} onChange={(e) => setNewSupplier({ ...newSupplier, paymentTerms: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></div>
               </div>
               <button type="submit" className="w-full py-3 bg-stone-900 text-white font-bold rounded-xl">Tedarikçiyi Kaydet</button>
             </form>
@@ -5160,6 +5583,7 @@ export function AdminDashboardClient({
                   {warehousesList.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
+              <label className="block font-bold">Beklenen teslim tarihi <input required type="date" value={poWizard.expectedDate} onChange={e=>setPoWizard({...poWizard,expectedDate:e.target.value})} className="w-full px-3 py-2 border border-stone-300 rounded-xl" /></label>
               {poWizard.lines.map((ln, i) => (
                 <div key={i} className="grid grid-cols-[1fr_64px_80px_32px] gap-1.5">
                   <select required value={ln.productId} onChange={(e) => { const lines = [...poWizard.lines]; lines[i] = { ...lines[i], productId: e.target.value, unitCost: products.find((p: any) => p.id === Number(e.target.value))?.buyPrice || "" }; setPoWizard({ ...poWizard, lines }); }} className="px-3 py-2 border border-stone-300 rounded-xl">
@@ -5188,18 +5612,34 @@ export function AdminDashboardClient({
               <div><h3 className="font-black text-base text-stone-900">Kısmi Mal Kabul</h3><p className="text-xs text-stone-500 font-mono">{receiveModalPO.poNumber}</p></div>
               <button onClick={() => setReceiveModalPO(null)} className="p-1 text-stone-400 hover:text-stone-700"><X className="w-5 h-5" /></button>
             </div>
+            {purchasingFeedback?.isError && <p role="alert" className="text-xs text-rose-700">{purchasingFeedback.text}</p>}
+            {pendingPurchasing && <div><button disabled={purchasingSubmitting} onClick={()=>void sendPurchasingCommand(pendingPurchasing)} className="text-xs underline">Önceki işlemi tekrar sorgula</button> <button disabled={purchasingSubmitting} onClick={()=>void closePendingPurchasing()} className="text-xs underline">Sonucu kontrol et ve kapat</button></div>}
             <div className="space-y-2">
               {(receiveModalPO.items || []).map((it: any) => {
                 const remaining = it.quantity - (it.receivedQty || 0);
                 return (
                   <div key={it.id} className="flex items-center justify-between gap-2 p-2.5 border border-stone-200 rounded-xl text-xs">
-                    <div className="min-w-0"><span className="font-bold block truncate">{it.productName}</span><span className="text-stone-400">Sipariş {it.quantity} · Alınan {it.receivedQty || 0} · Kalan {remaining}</span></div>
+                    <div className="min-w-0"><span className="font-bold block truncate">{it.productName} {it.variantName && `· ${it.variantName}`} · {it.sku}</span><span className="text-stone-400">Sipariş {it.quantity} · Alınan {it.receivedQty || 0} · Kalan {remaining}</span></div>
                     <input type="number" min="0" max={remaining} value={receiveLines[it.id] ?? remaining} onChange={(e) => setReceiveLines({ ...receiveLines, [it.id]: Math.min(Number(e.target.value), remaining) })} className="w-20 px-2 py-1.5 border border-stone-300 rounded-lg text-center" />
                   </div>
                 );
               })}
             </div>
-            <button onClick={() => void submitReceive()} className="w-full py-3 bg-emerald-700 text-white font-bold rounded-xl text-xs">Kabul Et & Stoğa İşle</button>
+            <button disabled={!!pendingPurchasing || purchasingSubmitting} onClick={() => void submitReceive()} className="w-full py-3 bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs">Kabul Et & Stoğa İşle</button>
+          </div>
+        </div>
+      )}
+
+      {supplierReturnReceipt && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between"><h3 className="font-bold">Tedarikçiye iade · {supplierReturnReceipt.receiptNumber}</h3><button onClick={()=>setSupplierReturnReceipt(null)} aria-label="Kapat">×</button></div>
+            {purchasingFeedback?.isError && <p role="alert" className="text-xs text-rose-700">{purchasingFeedback.text}</p>}
+            {pendingPurchasing && <div><button disabled={purchasingSubmitting} onClick={()=>void sendPurchasingCommand(pendingPurchasing)} className="text-xs underline">Önceki işlemi tekrar sorgula</button> <button disabled={purchasingSubmitting} onClick={()=>void closePendingPurchasing()} className="text-xs underline">Sonucu kontrol et ve kapat</button></div>}
+            <p className="text-xs">Depo: <strong>{supplierReturnReceipt.warehouseName}</strong>. İade onaylandığında bu mal kabulün deposundaki kullanılabilir stok azalır; ayrılmış stok kullanılamaz.</p>
+            {(supplierReturnReceipt.items || []).map((item:any)=><label key={item.id} className="flex justify-between gap-3 text-xs"><span>{item.productName || `Ürün #${item.productId}`} {item.variantId ? `· ${[item.colorName,item.size,item.length].filter(Boolean).join(" / ")} · ${item.sku || `Varyant #${item.variantId}`}` : item.sku ? `· ${item.sku}` : ""} · Kabul {item.qty} · İade {item.returnedQty}</span><input aria-label={`${item.productName} iade miktarı`} type="number" min="0" max={item.qty-item.returnedQty} value={supplierReturnLines[item.id] ?? 0} onChange={e=>setSupplierReturnLines({...supplierReturnLines,[item.id]:Number(e.target.value)})} className="w-20 border rounded p-1" /></label>)}
+            <label className="block text-xs font-bold">İade nedeni <textarea value={supplierReturnReason} maxLength={500} onChange={e=>setSupplierReturnReason(e.target.value)} className="w-full border rounded p-2" /></label>
+            <button disabled={!!pendingPurchasing || purchasingSubmitting} onClick={()=>void submitSupplierReturn()} className="w-full py-3 bg-rose-700 text-white font-bold rounded-xl text-xs disabled:opacity-50">İadeyi Onayla ve Stoktan Düş</button>
           </div>
         </div>
       )}
@@ -5218,6 +5658,7 @@ export function AdminDashboardClient({
             </div>
 
             <form onSubmit={handleAddUser} className="space-y-3 text-xs">
+              {userFeedback?.isError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-rose-800">{userFeedback.text}</p>}
               <div>
                 <label className="block font-bold text-stone-700 mb-1">Ad Soyad:</label>
                 <input

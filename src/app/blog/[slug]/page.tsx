@@ -7,6 +7,7 @@ import { blogPosts, products } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { ArrowLeft, User, Calendar, ShoppingBag } from "lucide-react";
 import { BlogContent } from "@/components/blog/BlogContent";
+import { getSiteSettings } from "@/lib/site-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ interface BlogPostPageProps {
 const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://serpilencollection.com";
 
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
+  if ((await getSiteSettings())["site.blog.enabled"] === "false") return { title: "İçerik bulunamadı | Serpilen Collection", robots: { index: false, follow: false } };
   const { slug } = await params;
   const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1);
   if (!post || !post.isPublished || new Date(post.publishedAt).getTime() > Date.now()) {
@@ -46,6 +48,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
 }
 
 export default async function BlogPostPage({ params }: BlogPostPageProps) {
+  if ((await getSiteSettings())["site.blog.enabled"] === "false") notFound();
   const { slug } = await params;
 
   const [post] = await db.select().from(blogPosts).where(eq(blogPosts.slug, slug)).limit(1);

@@ -199,7 +199,7 @@ export async function loadCommercialContext(periodDays: number): Promise<Commerc
     name: s.name,
     leadTimeDays: s.leadTimeDays,
     paymentTerms: s.paymentTerms ?? null,
-    rating: s.rating != null ? num(s.rating) : null,
+    rating: null, // Eski manuel puan otomatik performans olarak kullanılamaz.
     isActive: s.isActive,
     pos: poRows
       .filter((po) => po.supplierId === s.id)

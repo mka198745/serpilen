@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { db } from "@/db";
 import { products, categories, brands, blogPosts } from "@/db/schema";
+import { getSiteSettings } from "@/lib/site-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,8 @@ const STATIC_PAGES = [
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const entries: MetadataRoute.Sitemap = STATIC_PAGES.map((p) => ({
+  const blogEnabled = (await getSiteSettings())["site.blog.enabled"] !== "false";
+  const entries: MetadataRoute.Sitemap = STATIC_PAGES.filter((p) => blogEnabled || p.url !== "/blog").map((p) => ({
     url: `${BASE}${p.url}`,
     lastModified: new Date(),
     changeFrequency: p.changeFrequency,
@@ -51,7 +53,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       });
     }
     for (const post of posts) {
-      if (!post.isPublished || new Date(post.publishedAt || 0).getTime() > Date.now()) continue;
+      if (!blogEnabled || !post.isPublished || post.seoNoindex || new Date(post.publishedAt || 0).getTime() > Date.now()) continue;
       entries.push({ url: `${BASE}/blog/${post.slug}`, lastModified: new Date(post.publishedAt || Date.now()), changeFrequency: "monthly", priority: 0.6 });
     }
   } catch (err) {

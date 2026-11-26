@@ -1,142 +1,64 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
+import { hasPosGrant, posLocked } from "@/lib/pos-screen-access";
 import { NextResponse } from "next/server";
-import { db } from "@/db";
-import { orders, orderItems, posShifts, orderReturns, orderReturnItems, orderStatusHistory, auditLogs } from "@/db/schema";
-import { adjustInventory } from "@/lib/inventory-engine";
-import { desc, eq } from "drizzle-orm";
-
-import { requireStaff } from "@/lib/auth";
-export const dynamic = "force-dynamic";
-
-export async function POST(request: Request) {
-  const __gate = await requireStaff(request);
-  if (!__gate.ok) return __gate.response;
-
+import { sqlite } from "@/db";
+import { requireStaff, getUserByToken } from "@/lib/auth";
+import { validateCrmWrite, readCrmJson } from "@/lib/crm-write";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
+import { createReturn, rejectReturn, receiveReturn, completeReturn, ReturnError } from "@/lib/order-returns";
+export const dynamic="force-dynamic";
+export async function GET(request:Request) {
+  const gate=await requireStaff(request);if(!gate.ok)return gate.response;
+  if(!roleCanAccessModule(await readRoleMatrix(),gate.user.role,'pos'))return NextResponse.json({success:false,error:'POS yetkiniz bulunmuyor.'},{status:403});
+  if(!await hasPosGrant(request,gate.user.id))return posLocked();
+  const rows=sqlite.prepare(`SELECT r.id,r.return_number AS returnNumber,r.order_number AS orderNumber,r.refund_amount AS refundAmount,r.status,r.created_by AS createdBy,c.refund_method AS refundMethod,c.shift_id AS shiftId
+   FROM order_returns r JOIN pos_return_context c ON c.return_id=r.id
+   WHERE r.status IN ('APPROVED','RECEIVED') OR (r.status='REFUNDED' AND r.resolved_at>=unixepoch()-86400)
+   ORDER BY CASE WHEN r.status='REFUNDED' THEN 1 ELSE 0 END,r.id DESC LIMIT 100`).all();
+  return NextResponse.json({success:true,data:rows},{headers:{'Cache-Control':'private, no-store'}});
+}
+export async function POST(request:Request) {
+  const gate=await requireStaff(request);if(!gate.ok)return gate.response;
+ if(!await hasPosGrant(request,gate.user.id))return posLocked();
+  if(!roleCanAccessModule(await readRoleMatrix(),gate.user.role,"pos"))return NextResponse.json({success:false,error:"POS iade yetkiniz bulunmuyor."},{status:403});
+  const bad=validateCrmWrite(request);if(bad)return bad;
+  if(!request.headers.get("origin")){const auth=request.headers.get("authorization")||"";const actor=auth.startsWith("Bearer ")?await getUserByToken(auth.slice(7).trim()):null;if(!actor||actor.id!==gate.user.id)return NextResponse.json({success:false,error:"İstek kaynağı doğrulanamadı."},{status:403});}
+  const parsed=await readCrmJson(request);if(!parsed.ok)return parsed.response;
+  if(!await hasPosGrant(request,gate.user.id))return posLocked();
+  if(!parsed.value||typeof parsed.value!=="object"||Array.isArray(parsed.value))return NextResponse.json({success:false,error:"Geçersiz istek."},{status:400});
+  const body=parsed.value as Record<string,any>,actor={id:gate.user.id,name:gate.user.name};
   try {
-    const body = await request.json();
-    const {
-      orderNumber,
-      items = [], // Array of { orderItemId, productId, variantId, quantity, unitPrice, productName }
-      refundMethod = "CASH", // CASH, CREDIT_CARD, STORE_CREDIT
-      reason = "Müşteri Mağaza İadesi",
-      posShiftId,
-      warehouseId = 2, // Kadıköy Mağaza
-      cashierName = "Kasiyer",
-    } = body;
-
-    if (!orderNumber) {
-      return NextResponse.json({ success: false, error: "Sipariş/Fiş numarası zorunludur." }, { status: 422 });
-    }
-
-    const [order] = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber.trim())).limit(1);
-    if (!order) {
-      return NextResponse.json({ success: false, error: "Fiş/Sipariş bulunamadı." }, { status: 404 });
-    }
-
-    const allOrderItems = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
-
-    const validItems = items.filter((it: any) => Number(it.quantity) > 0);
-    if (validItems.length === 0) {
-      return NextResponse.json({ success: false, error: "İade edilecek en az 1 ürün seçiniz." }, { status: 422 });
-    }
-
-    let refundTotal = 0;
-    const returnNumber = `POS-IAD-${Date.now().toString().slice(-6)}`;
-
-    const [{ id: __ret_id }] = await db.insert(orderReturns).values({
-        returnNumber,
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        reason,
-        status: "REFUNDED",
-        refundAmount: "0.00",
-        restock: true,
-        warehouseId: Number(warehouseId),
-        createdBy: cashierName,
-        resolvedAt: new Date(),
-      }).returning({ id: orderReturns.id });
-    const [ret] = await db.select().from(orderReturns).where(eq(orderReturns.id, __ret_id));
-
-    for (const item of validItems) {
-      const oi = allOrderItems.find((x) => x.id === Number(item.orderItemId) || (x.productId === item.productId && x.variantId === item.variantId));
-      const unitPrice = oi ? Number(oi.unitPrice) : Number(item.unitPrice || 0);
-      const qty = Number(item.quantity);
-      const itemRefund = unitPrice * qty;
-      refundTotal += itemRefund;
-
-      await db.insert(orderReturnItems).values({
-        returnId: ret.id,
-        orderItemId: oi?.id || 0,
-        productId: Number(item.productId),
-        variantId: item.variantId ? Number(item.variantId) : null,
-        productName: item.productName || oi?.productName || "Ürün",
-        quantity: qty,
-        refundAmount: String(itemRefund.toFixed(2)),
-      });
-
-      // Restore physical stock to the store warehouse
-      await adjustInventory({
-        warehouseId: Number(warehouseId),
-        productId: Number(item.productId),
-        variantId: item.variantId ? Number(item.variantId) : null,
-        quantityDelta: qty,
-        transactionType: "RETURN",
-        referenceType: "POS_RETURN",
-        referenceId: returnNumber,
-        note: `Kasa İadesi: Fiş #${order.orderNumber} (${returnNumber})`,
-        createdBy: cashierName,
-      });
-    }
-
-    // Update return total amount
-    await db.update(orderReturns).set({ refundAmount: String(refundTotal.toFixed(2)) }).where(eq(orderReturns.id, ret.id));
-
-    // Update POS Shift if active
-    if (posShiftId) {
-      const [shift] = await db.select().from(posShifts).where(eq(posShifts.id, Number(posShiftId))).limit(1);
-      if (shift && shift.status === "OPEN") {
-        if (refundMethod === "CASH") {
-          const newRetCash = Number(shift.totalReturnsCash || 0) + refundTotal;
-          const newExpected = Math.max(0, Number(shift.expectedAmount || shift.openingAmount) - refundTotal);
-          await db
-            .update(posShifts)
-            .set({
-              totalReturnsCash: String(newRetCash.toFixed(2)),
-              expectedAmount: String(newExpected.toFixed(2)),
-            })
-            .where(eq(posShifts.id, shift.id));
-        } else {
-          const newRetCard = Number(shift.totalReturnsCard || 0) + refundTotal;
-          await db
-            .update(posShifts)
-            .set({ totalReturnsCard: String(newRetCard.toFixed(2)) })
-            .where(eq(posShifts.id, shift.id));
-        }
+    const result=sqlite.transaction(()=>{
+      if(body.action==='PREPARE') {
+        const order=sqlite.prepare("SELECT id FROM orders WHERE order_number=?").get(String(body.orderNumber||"").trim()) as {id:number}|undefined;
+        if(!order)throw new ReturnError("Fiş veya sipariş bulunamadı.",404);
+        const shiftId=Number(body.posShiftId), method=String(body.refundMethod||"");
+        const warehouseId=sharedSalesWarehouseId();
+        if(!warehouseId||!Number.isSafeInteger(shiftId)||shiftId<=0||!sqlite.prepare("SELECT 1 FROM pos_shifts WHERE id=? AND warehouse_id=? AND status='OPEN'").get(shiftId,warehouseId)) throw new ReturnError("Açık mağaza vardiyası gerekli.");
+        if(!["CASH","CREDIT_CARD"].includes(method)) throw new ReturnError("Geçersiz iade yöntemi.",422);
+        const created=createReturn(order.id,body.items,warehouseId!,true,String(body.reason||"Mağaza iadesi"),actor,true);
+        if(method==='CASH') { const shift=sqlite.prepare("SELECT expected_amount FROM pos_shifts WHERE id=?").get(shiftId) as {expected_amount:number|string}; if(Math.round(Number(shift.expected_amount)*100)<Math.round(Number(created.refundAmount)*100)) throw new ReturnError("Kasada iade için yeterli nakit görünmüyor."); }
+        sqlite.prepare("INSERT INTO pos_return_context(return_id,shift_id,refund_method) VALUES(?,?,?)").run(created.id,shiftId,method);
+        return created;
       }
-    }
-
-    // Audit log
-    await db.insert(auditLogs).values({
-      userId: "1",
-      userName: cashierName,
-      action: "POS_RETURN_COMPLETED",
-      entity: "OrderReturn",
-      entityId: String(ret.id),
-      details: `${returnNumber}: ${validItems.length} kalem iade alındı. Tutar: ${refundTotal.toFixed(2)} TL (${refundMethod})`,
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: `İade başarıyla alındı ve ürünler ${warehouseId === 2 ? "Mağaza" : "Depo"} stoğuna eklendi.`,
-      data: {
-        returnNumber,
-        orderNumber: order.orderNumber,
-        refundTotal: refundTotal.toFixed(2),
-        refundMethod,
-        items: validItems,
-      },
-    });
-  } catch (error: any) {
-    console.error("POS Return Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
+      const id=Number(body.returnId);if(!Number.isSafeInteger(id)||id<=0)throw new ReturnError("Geçersiz iade numarası.",422);
+      const context=sqlite.prepare("SELECT shift_id,refund_method FROM pos_return_context WHERE return_id=?").get(id) as {shift_id:number;refund_method:string}|undefined;
+      if(!context) throw new ReturnError("Bu kayıt POS iade talebi değil.");
+      if(body.action==='CANCEL') {rejectReturn(id,actor);return {id,status:'REJECTED'};}
+      if(body.action==='COMPLETE') {
+        if(body.confirmRefund!==true)throw new ReturnError("Para iadesinin yapıldığını doğrulayın.",422);
+        const r=sqlite.prepare("SELECT status,refund_amount FROM order_returns WHERE id=?").get(id) as {status:string;refund_amount:number|string}|undefined;
+        if(!r) {
+          if(sqlite.prepare("SELECT 1 FROM deleted_refund_guards WHERE return_id=?").get(id))throw new ReturnError("Bu iade daha önce tamamlandı; kaydı erişilemiyor. Tekrar para iadesi yapmayın.");
+          throw new ReturnError("İade bulunamadı.",404);
+        }
+        if(Math.round(Number(body.confirmedAmount)*100)!==Math.round(Number(r.refund_amount)*100))throw new ReturnError("Onaylanan tutar kayıtla eşleşmiyor.",409);
+        if(r.status==='REFUNDED') return completeReturn(id,actor);
+        receiveReturn(id,actor);
+        return completeReturn(id,actor,context.refund_method,context.shift_id);
+      }
+      throw new ReturnError("Önce iade tutarını hesaplayın.",422);
+    }).immediate();
+    return NextResponse.json({success:true,data:result});
+  } catch(error){if(error instanceof ReturnError)return NextResponse.json({success:false,error:error.message},{status:error.status});console.error("POS return error:",error);return NextResponse.json({success:false,error:"İade kaydı tamamlanamadı. Para iadesi yapıldıysa tekrar ödemeden önce kayıtları inceleyin."},{status:500});}
 }

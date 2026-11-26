@@ -1,4 +1,5 @@
 "use client";
+import { variantLabel } from "@/lib/variant-label";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Product, ProductVariant } from "@/lib/types";
@@ -81,7 +82,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
       const price = variant ? Number(variant.retailPrice) : Number(product.retailPrice);
       const variantName = variant
-        ? `${variant.colorName || ""} ${variant.size || ""}`.trim()
+        ? variantLabel(variant)
         : null;
 
       if (existingIndex > -1) {
@@ -97,7 +98,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             name: product.name,
             variantName,
             sku: variant?.sku || product.sku,
-            barcode: variant?.barcode || product.barcode,
+            barcode: variant ? variant.barcode : product.barcode,
             price,
             quantity,
             imageUrl: variant?.imageUrl || product.imageUrl,

@@ -1,0 +1,44 @@
+import test from 'node:test';import assert from 'node:assert/strict';import React,{act} from 'react';import {JSDOM} from 'jsdom';
+test('Varyantlar tablosu sütunları, depo satırları, düzenleme ve onaylı silme',async()=>{
+ const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;const original=globalThis.fetch;let deleted=false,deleteBody,confirmText='';dom.window.confirm=text=>{confirmText=text;return true;};
+ const variant={id:7,productId:1,colorName:'Mavi',colorHex:'',size:'',length:'',sku:'v7',barcode:'123',buyPrice:'5',retailPrice:'10',imageUrl:'',isActive:true};
+ const product={id:1,name:'İplik',slug:'iplik',sku:'p1',categoryId:1,brandId:1,hasVariants:true,isActive:true,retailPrice:'10',buyPrice:'5',variants:[variant]};
+ const inventory=[{id:1,productId:1,variantId:7,warehouseId:1,physicalQty:3,reservedQty:0},{id:2,productId:1,variantId:7,warehouseId:2,physicalQty:5,reservedQty:1}];
+ const preview={productId:1,productName:'İplik',warehouseId:1,warehouses:[{id:1,name:'Ana'},{id:2,name:'Diğer'}],fingerprint:'b'.repeat(64),variants:[{...variant,physicalQty:3,reservedQty:0,availableQty:3}]};
+ globalThis.fetch=async(url,opts={})=>{
+  if(url==='/api/role-matrix')return Response.json({success:true,data:{matrix:{}}});
+  if(url==='/api/product-variant-edit?id=1')return Response.json({success:true,data:preview});
+  if(url==='/api/variant-deletion?id=7')return Response.json({success:true,data:{id:7,productId:1,productName:'İplik',variantName:'Mavi',sku:'v7',totalStock:8,lastVariant:true,baseRetailPrice:'10',baseCampaignPrice:null,stocks:[{warehouseId:1,warehouseName:'Ana',physicalQty:3},{warehouseId:2,warehouseName:'Diğer',physicalQty:5}],baseStocks:[],fingerprint:'a'.repeat(64)}});
+  if(url==='/api/variant-deletion'&&opts.method==='DELETE'){deleteBody=JSON.parse(opts.body);deleted=true;return Response.json({success:true,data:{promoted:0}});}
+  if(url==='/api/products?scope=all-warehouses')return Response.json({success:true,data:[{...product,variants:deleted?[]:[variant],hasVariants:!deleted}]});
+  if(url==='/api/inventory')return Response.json({success:true,inventory:deleted?[]:inventory,recentLedger:[]});
+  return Response.json({success:true,data:[]});
+ };
+ try{const {createRoot}=await import('react-dom/client');const {AdminDashboardClient}=await import('../src/app/admin/AdminDashboardClient.tsx');const root=createRoot(document.getElementById('root'));
+ const props={products:[product],categories:[{id:1,name:'İplikler'}],brands:[{id:1,name:'Marka'}],warehouses:[{id:1,name:'Ana'},{id:2,name:'Diğer'}],inventory,ledger:[],orders:[],suppliers:[],purchaseOrders:[],coupons:[],shifts:[],currentRole:'SUPER_ADMIN'};
+ await act(async()=>root.render(React.createElement(AdminDashboardClient,props)));await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Ürün & Katalog').click());await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Varyantlar').click());
+ const table=document.querySelector('table');assert.deepEqual([...table.querySelectorAll('th')].map(x=>x.textContent.trim()),['Kategori','Marka','Ürün','Renk','Alış Fiyatı','Satış Fiyatı','Stok Adedi','Stok Yeri','Barkod','İşlem']);const rows=table.querySelectorAll('tbody tr');assert.equal(rows.length,2);assert.match(rows[0].textContent,/İplikler.*Marka.*İplik.*Mavi.*5.00 TL.*10.00 TL.*3.*Ana.*123/);assert.match(rows[1].textContent,/5.*Ayrılmış: 1.*Diğer/);
+ await act(async()=>rows[0].querySelector('button').click());const dialog=document.querySelector('[role=dialog]');assert.ok(dialog);assert.match(dialog.textContent,/Seçilen varyant/);await act(async()=>dialog.querySelector('[aria-label="Varyant düzenlemeyi kapat"]').click());
+ await act(async()=>rows[0].querySelectorAll('button')[1].click());assert.match(confirmText,/Ana.*3 adet/s);assert.match(confirmText,/Diğer.*5 adet/s);assert.match(confirmText,/son varyant/i);assert.match(confirmText,/ana ürüne aktarılmaz/);assert.deepEqual(deleteBody,{id:7,fingerprint:'a'.repeat(64),confirmed:true});assert.equal(document.querySelectorAll('table tbody tr').length,0);await act(async()=>root.unmount());
+ }finally{globalThis.fetch=original;dom.window.close();}
+});
+
+test('Stok kaydı yoksa depo uydurulmaz; silme düğmesi rol matrisine bağlıdır',async()=>{
+ const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;const original=globalThis.fetch;
+ globalThis.fetch=async(url)=>url==='/api/role-matrix'?Response.json({success:true,data:{matrix:{STORE_MANAGER:{catalog:true,productDelete:false}}}}):Response.json({success:true,data:[]});
+ try{const {createRoot}=await import('react-dom/client');const {AdminDashboardClient}=await import('../src/app/admin/AdminDashboardClient.tsx');const root=createRoot(document.getElementById('root'));const product={id:1,name:'Test',sku:'p',categoryId:1,hasVariants:true,isActive:true,variants:[{id:9,colorName:'Siyah',sku:'v',retailPrice:'10',isActive:true}]};
+ const props={products:[product],categories:[{id:1,name:'Kategori'}],brands:[],warehouses:[{id:1,name:'Ana'}],inventory:[],ledger:[],orders:[],suppliers:[],purchaseOrders:[],coupons:[],shifts:[],currentRole:'STORE_MANAGER'};
+ await act(async()=>root.render(React.createElement(AdminDashboardClient,props)));await act(async()=>new Promise(r=>setTimeout(r,30)));await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Ürün & Katalog').click());await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Varyantlar').click());const row=document.querySelector('table tbody tr');assert.match(row.textContent,/Stok kaydı yok/);assert.doesNotMatch(row.textContent,/Ana/);assert.deepEqual([...row.querySelectorAll('button')].map(b=>b.textContent),['Düzenle']);await act(async()=>root.unmount());
+ }finally{globalThis.fetch=original;dom.window.close();}
+});
+
+test('Birden fazla varyantta her satırın Düzenle düğmesi yalnız kendi varyantını açar',async()=>{
+ const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;const original=globalThis.fetch;
+ const v=(id,colorName)=>({id,productId:1,colorName,colorHex:'',size:'',length:'',sku:'v'+id,barcode:'',buyPrice:'1',retailPrice:'2',imageUrl:'',isActive:true,physicalQty:0,reservedQty:0,availableQty:0});const variants=[v(7,'Mavi'),v(8,'Kırmızı')];
+ const product={id:1,name:'İplik',categoryId:1,brandId:7,hasVariants:true,isActive:true,variants};const preview={productId:1,productName:'İplik',warehouseId:1,warehouses:[{id:1,name:'Ana'}],variants,fingerprint:'a'.repeat(64)};
+ globalThis.fetch=async(url)=>url==='/api/role-matrix'?Response.json({success:true,data:{matrix:{}}}):url.startsWith('/api/product-variant-edit?id=')?Response.json({success:true,data:preview}):Response.json({success:true,data:[]});
+ try{const {createRoot}=await import('react-dom/client');const {AdminDashboardClient}=await import('../src/app/admin/AdminDashboardClient.tsx');const root=createRoot(document.getElementById('root'));const props={products:[product],categories:[{id:1,name:'Kategori'}],brands:[{id:7,name:'Marka Yedi'}],warehouses:[{id:1,name:'Ana'}],inventory:[],ledger:[],orders:[],suppliers:[],purchaseOrders:[],coupons:[],shifts:[],currentRole:'SUPER_ADMIN'};
+ await act(async()=>root.render(React.createElement(AdminDashboardClient,props)));await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Ürün & Katalog').click());await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Varyantlar').click());const rows=[...document.querySelectorAll('table tbody tr')];assert.equal(rows.length,2);
+ for(const [row,color] of [[rows[0],'Mavi'],[rows[1],'Kırmızı']]){await act(async()=>row.querySelector('button').click());const dialog=document.querySelector('[role=dialog]');assert.equal(dialog.querySelectorAll('fieldset').length,1);assert.equal(dialog.querySelector('fieldset input').value,color);await act(async()=>dialog.querySelector('[aria-label="Varyant düzenlemeyi kapat"]').click());}
+ await act(async()=>root.unmount());}finally{globalThis.fetch=original;dom.window.close();}
+});

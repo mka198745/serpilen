@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import React,{act,useState} from 'react';
+import {JSDOM} from 'jsdom';
+
+test('POS müşteri arama açık seçim, sayfalama, eski yanıt ve yetki hatasını yönetir',async()=>{
+ const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;const oldFetch=globalThis.fetch;const calls=[];
+ globalThis.fetch=(url,opts)=>new Promise(resolve=>calls.push({url,opts,resolve}));
+ try{
+  const {createRoot}=await import('react-dom/client');const {PosCustomerPicker}=await import('../src/app/pos/PosCustomerPicker.tsx');const root=createRoot(document.getElementById('root'));const Harness=()=>{const [selected,setSelected]=useState(null);return React.createElement(PosCustomerPicker,{selected,onSelect:setSelected,posFetch:(...args)=>globalThis.fetch(...args)});};const wait=async(fn)=>{for(let i=0;i<100;i++){await act(async()=>{await new Promise(r=>setTimeout(r,10));});if(fn())return;}throw Error('UI timeout')};const setInput=async(value)=>await act(async()=>{const el=document.querySelector('#pos-customer-search');Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});const submit=()=>act(async()=>document.querySelector('#pos-customer-search').closest('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+  await act(async()=>root.render(React.createElement(Harness)));assert.match(document.body.textContent,/Misafir Perakende Müşterisi/);assert.equal(calls.length,0);
+  await setInput('Bir');await submit();assert.equal(calls.length,1);assert.equal(calls[0].url,'/api/pos/customers/search');assert.deepEqual(JSON.parse(calls[0].opts.body),{query:'Bir',page:1});
+  await setInput('İki');assert.equal(calls[0].opts.signal.aborted,true);await submit();const person={id:2,name:'İki Müşteri',phone:'5551234567',companyName:null,loyaltyPoints:3};await act(async()=>calls[1].resolve(Response.json({success:true,data:[person],pagination:{page:1,hasMore:true}})));await wait(()=>document.body.textContent.includes('İki Müşteri'));
+  await act(async()=>calls[0].resolve(Response.json({success:true,data:[{...person,name:'Eski sonuç'}],pagination:{page:1,hasMore:false}})));assert.doesNotMatch(document.body.textContent,/Eski sonuç/);assert.match(document.body.textContent,/Misafir Perakende Müşterisi/);
+  await act(async()=>button('Sonraki').click());assert.deepEqual(JSON.parse(calls[2].opts.body),{query:'İki',page:2});await act(async()=>calls[2].resolve(Response.json({success:true,data:[],pagination:{page:2,hasMore:false}})));await wait(()=>document.body.textContent.includes('Eşleşen müşteri bulunamadı.'));await act(async()=>button('Önceki').click());await act(async()=>calls[3].resolve(Response.json({success:true,data:[person],pagination:{page:1,hasMore:false}})));await wait(()=>document.body.textContent.includes('İki Müşteri'));
+  await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('İki Müşteri')).click());assert.match(document.body.textContent,/Seçili müşteri: İki Müşteri/);assert.doesNotMatch(document.body.textContent,/Misafir Perakende Müşterisi/);assert.equal(document.querySelector('#pos-customer-search').value,'');
+  await setInput('İki');await submit();await act(async()=>calls[4].resolve(Response.json({success:false,error:'Yetki yok'},{status:403})));await wait(()=>document.querySelector('[role=alert]'));assert.match(document.body.textContent,/Seçili müşteri kaldırıldı/);assert.match(document.body.textContent,/Misafir Perakende Müşterisi/);assert.doesNotMatch(document.body.textContent,/İki Müşteri/);
+  await act(async()=>root.unmount());
+ }finally{globalThis.fetch=oldFetch;dom.window.close();}
+});

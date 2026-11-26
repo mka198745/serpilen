@@ -7,11 +7,8 @@ import {
   Landmark,
   Save,
   RefreshCw,
-  Copy,
-  Check,
   CircleCheck,
   CircleAlert,
-  KeyRound,
   ShieldCheck,
 } from "lucide-react";
 import { PanelShell } from "@/components/admin/SiteManagement";
@@ -38,38 +35,6 @@ interface MaskedPaymentSettings {
     threedsRequired: boolean;
     hasApiSecret: boolean;
   };
-}
-
-/** Kopyalama düğmeli salt-okunur URL satırı */
-function UrlRow({ label, url }: { label: string; url: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* pano yoksa metin zaten seçilebilir */
-    }
-  };
-  return (
-    <div>
-      <label className={labelCls}>{label}</label>
-      <div className="flex items-stretch gap-2">
-        <code className="flex-1 min-w-0 px-3 py-2 bg-stone-100 border border-stone-200 rounded-xl text-[11px] font-mono text-stone-800 truncate select-all leading-6">
-          {url}
-        </code>
-        <button
-          type="button"
-          onClick={copy}
-          title="Panoya kopyala"
-          className="shrink-0 px-3 rounded-xl border border-stone-200 bg-white hover:border-amber-400 hover:text-amber-900 text-stone-600 transition"
-        >
-          {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function ModePills({ mode, testValue, onChange }: { mode: "test" | "live" | "sandbox"; testValue: "test" | "sandbox"; onChange: (m: any) => void }) {
@@ -152,7 +117,6 @@ export function PaymentApiSettings() {
     threedsRequired: true,
   });
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://serpilencollection.com";
 
   const applyMasked = (d: MaskedPaymentSettings) => {
     setPaytr((p) => ({
@@ -268,9 +232,10 @@ export function PaymentApiSettings() {
     <PanelShell
       icon={Wallet}
       title="Ödeme API Ayarları"
-      desc="PayTR ve iyzico sanal pos entegrasyonu — canlıya almadan önce Test/Sandbox modunda doğrulayın."
+      desc="Sağlayıcı ayarları — online kart tahsilatı henüz entegre edilmemiştir."
     >
       <div className="max-w-3xl space-y-4">
+        <div role="alert" className="p-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-bold">Online kart tahsilatı kapalıdır. Aşağıdaki ayarları kaydetmek sağlayıcı bağlantısı veya 3D Secure işlemi oluşturmaz.</div>
         {/* Güvenlik notu */}
         <div className="flex items-start gap-2.5 p-3 rounded-xl border border-sky-200 bg-sky-50 text-sky-950">
           <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5 text-sky-700" />
@@ -308,7 +273,7 @@ export function PaymentApiSettings() {
                 {paytrLive ? "Canlı" : "Test"}
               </span>
               <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${paytr.enabled ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-stone-100 text-stone-500"}`}>
-                {paytr.enabled ? "Aktif" : "Kapalı"}
+                {paytr.enabled ? "Ayar açık (tahsilat yok)" : "Kapalı"}
               </span>
             </div>
           </div>
@@ -373,17 +338,7 @@ export function PaymentApiSettings() {
               />
             </div>
 
-            <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-widest text-stone-500 flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5" /> PayTR Paneline Tanımlanacak Adresler
-              </p>
-              <UrlRow label="Bildirim (IPN / Webhook) Adresi" url={`${origin}/api/payments/paytr/notify`} />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <UrlRow label="Başarı (OK) Adresi" url={`${origin}/odeme?odeme=basarili&provider=paytr`} />
-                <UrlRow label="Hata (FAIL) Adresi" url={`${origin}/odeme?odeme=hatali&provider=paytr`} />
-              </div>
-              <p className="text-[10px] text-stone-400">Bu adresleri PayTR mağaza panelinizdeki “Ayarlar → API / Bildirim” bölümüne ekleyin.</p>
-            </div>
+            <p className="text-xs text-amber-800">PayTR bildirim adresi henüz uygulanmadı; sağlayıcı paneline tanımlamayın.</p>
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button onClick={() => validate("paytr")} className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-stone-200 hover:border-amber-400 text-stone-700 text-xs font-bold rounded-xl transition">
@@ -414,7 +369,7 @@ export function PaymentApiSettings() {
                 {iyzicoLive ? "Canlı" : "Sandbox"}
               </span>
               <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${iyzico.enabled ? "bg-emerald-100 text-emerald-800 border border-emerald-200" : "bg-stone-100 text-stone-500"}`}>
-                {iyzico.enabled ? "Aktif" : "Kapalı"}
+                {iyzico.enabled ? "Ayar açık (tahsilat yok)" : "Kapalı"}
               </span>
             </div>
           </div>
@@ -466,17 +421,7 @@ export function PaymentApiSettings() {
               </span>
             </label>
 
-            <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-2">
-              <p className="text-[9px] font-black uppercase tracking-widest text-stone-500 flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5" /> iyzico Konsoluna Tanımlanacak Adres
-              </p>
-              <UrlRow label="Ödeme Sonrası Dönüş (Callback) Adresi" url={`${origin}/api/payments/iyzico/callback`} />
-              <p className="text-[10px] text-stone-400">
-                Kullanılan API ucu:{" "}
-                <code className="font-mono text-stone-600">{iyzicoLive ? "https://api.iyzipay.com" : "https://sandbox-api.iyzipay.com"}</code>
-                {" "}({iyzicoLive ? "canlı" : "sandbox"} moda göre)
-              </p>
-            </div>
+            <p className="text-xs text-amber-800">iyzico dönüş adresi henüz uygulanmadı; sağlayıcı paneline tanımlamayın.</p>
 
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button onClick={() => validate("iyzico")} className="flex items-center gap-1.5 px-3 py-2.5 bg-white border border-stone-200 hover:border-amber-400 text-stone-700 text-xs font-bold rounded-xl transition">
@@ -492,8 +437,7 @@ export function PaymentApiSettings() {
 
         <p className="text-[10px] text-stone-400 flex items-center gap-1.5 px-1">
           <CircleAlert className="w-3.5 h-3.5 shrink-0" />
-          Bu ayarlar checkout altyapısına aktarılmak üzere saklanır. Gerçek çekim akışı (token/ön provizyon, 3D yönlendirme)
-          PayTR ve iyzico canlı hesaplarınız hazır olduğunda etkinleştirilir; vitrindeki durum{" "}
+          Bu ayarlar checkout altyapısına aktarılmak üzere saklanır. Gerçek çekim akışı ayrıca geliştirilmeli ve test edilmelidir; ayar bilgileri{" "}
           <code className="font-mono">/api/payments/status</code> adresinden okunabilir.
         </p>
       </div>

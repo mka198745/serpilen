@@ -3,34 +3,18 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { appSettings } from "@/db/schema";
 import { requireStaff } from "@/lib/auth";
-import { normalizeRoleMatrix, MATRIX_ROLES, ADMIN_MODULES } from "@/lib/admin-modules";
+import { normalizeRoleMatrix } from "@/lib/admin-modules";
+import { readRoleMatrix } from "@/lib/role-matrix-server";
 
 export const dynamic = "force-dynamic";
 
 const KEY = "admin.role_matrix";
 
-async function readMatrix() {
-  const [row] = await db
-    .select({ value: appSettings.value })
-    .from(appSettings)
-    .where(eq(appSettings.key, KEY))
-    .limit(1);
-  let parsed: unknown = null;
-  if (row?.value) {
-    try {
-      parsed = JSON.parse(row.value);
-    } catch {
-      parsed = null;
-    }
-  }
-  return normalizeRoleMatrix(parsed);
-}
-
 /** GET /api/role-matrix — her personel okuyabilir (menüyü çizmek için). */
 export async function GET(request: Request) {
   const gate = await requireStaff(request);
   if (!gate.ok) return gate.response;
-  const matrix = await readMatrix();
+  const matrix = await readRoleMatrix();
   return NextResponse.json({ success: true, data: { matrix } });
 }
 

@@ -1,0 +1,9 @@
+# Stoklu ürün silme güncellemesi
+
+Kod: `f7bd337`. Yetkili kişi, rezervasyonu ve ilişkili geçmişi bulunmayan ürünün tüm depolardaki mevcut fiziksel stoğunu ve ürün varyantlarını onayla kalıcı olarak silebilir. Depo bazında stok onayı sunulur; stok veya izin değişmişse, rezervasyon veya ilişkili kayıt varsa işlem durur. Onay kontrolü ve veri silme aynı SQLite IMMEDIATE transaction içindedir; denetim kaydı hata verirse işlem geri alınır. Denetim kaydına depo ve varyant stok satırları yazılır. Kullanıcılar ve rol matrisi korunur.
+
+Paket: `hosting/serpilen-stok-silme-f7bd337.zip`, SHA-256 `0d9d0156e0d68d821b03c0d9ee21b21398d01968d9ec1dfacba5d6e81d3d3360`. Kontrol betiği `revizyon-deploy-check.cjs` SHA-256 `b93bc0bdfb573f23d8b294288dd21a90ce95331ecefa4be047f061de8fa1aa7f`. İki SQLite binding ve hashli bağımlılık kopyaları SHA-256 `2d5e0ddafab5f642a82ede046bd3b77786c61001ae289bbabf962530ca5831d5`. Veritabanı migration'ı yoktur, 0029 gereklidir.
+
+Canlı uygulama değişmeden önce, tüm DB yazıcıları durdurulmalı; web kökü dışında yeni ve doğrulanmış SQLite yedeği ile uygulama yedeği alınmalıdır. `revizyon-deploy-check.cjs` inspect/backup/check yöntemleriyle 0029, depo ayarı, bütünlük ve yedek eşitliği kontrol edilir. Canlı uygulama ve DB ayrı ayrı saklanır; yüklemeler ve ortam dosyaları değiştirilmez. Yeni sürüm işlem kabul ettikten sonra eski DB yedeğinin geri yüklenmesi yeni verileri kaybettirir; otomatik geri dönüş yapılmaz.
+
+Yerel doğrulama gerçek ZIP üzerinde sentetik 0029 DB, health, ürün sayfaları, yetki, önizleme, rezervasyon reddi, stoklu ürün silme ve denetimi içerir. Ayrı iki uygulama sürecinde stoklu ürün silme ve sipariş yarışması, POS hazırlığı sonrası silme engeli, denetim hatası rollback ve stok değişmesiyle onayın geçersizleşmesi de test edilmiştir. Bunlar canlı DB üzerinde çalıştırılmamıştır.

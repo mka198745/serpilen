@@ -6,6 +6,7 @@ import {
   isSafeImageSrc,
 } from "@/lib/media-embed";
 import { ExternalLink } from "lucide-react";
+import { ExternalMediaGate } from "@/components/layout/ExternalMediaGate";
 
 /**
  * Blog içeriğini işler. Metin içinde tek başına bir satırda şu etiketler
@@ -140,7 +141,11 @@ export function BlogContent({ content }: { content: string }) {
             {block.text}
           </p>
         ) : (
-          <MediaBlock key={i} kind={block.kind} url={block.url} />
+          block.kind === "youtube" || block.kind === "tiktok" || block.kind === "instagram" ? (
+            <ExternalMediaGate key={i}><MediaBlock kind={block.kind} url={block.url} /></ExternalMediaGate>
+          ) : (
+            <MediaBlock key={i} kind={block.kind} url={block.url} />
+          )
         )
       )}
     </>

@@ -16,6 +16,7 @@ import {
 import { desc, eq } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 export const dynamic = "force-dynamic";
 
 function toCsv(headers: string[], rows: (string | number)[][]) {
@@ -33,25 +34,37 @@ export async function GET(request: Request) {
   if (!__gate.ok) return __gate.response;
 
   try {
+    const matrix = await readRoleMatrix();
+    if (!roleCanAccessModule(matrix, __gate.user.role, "reports")) {
+      return NextResponse.json(
+        { success: false, error: { code: "FORBIDDEN", message: "Raporlar için yetkiniz bulunmuyor." } },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const days = Number(searchParams.get("days") || 30);
     const format = searchParams.get("format"); // csv
     const exportType = searchParams.get("export"); // sales | products | stock | customers | finance
+    const canReadCustomers = roleCanAccessModule(matrix, __gate.user.role, "crm");
+    if (format === "csv" && exportType === "customers" && !canReadCustomers) {
+      return NextResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Müşteri raporu için CRM erişim yetkisi gerekir." } }, { status: 403, headers: { "Cache-Control": "private, no-store" } });
+    }
     const since = new Date(DAYS(days));
 
-    const allOrders = await db.select().from(orders);
+    const allOrders = await db.select({ id: orders.id, createdAt: orders.createdAt, customerId: orders.customerId, status: orders.status, paymentStatus:orders.paymentStatus, orderType: orders.orderType, grandTotal: orders.grandTotal, discountTotal: orders.discountTotal, shippingTotal: orders.shippingTotal }).from(orders);
     const allItems = await db.select().from(orderItems);
     const allProds = await db.select().from(products);
     const allVars = await db.select().from(productVariants);
     const allBrands = await db.select().from(brands);
     const allCats = await db.select().from(categories);
-    const allCusts = await db.select().from(customers);
+    const allCusts = canReadCustomers ? await db.select({ id: customers.id, name: customers.name, type: customers.type, segment: customers.segment, phone: customers.phone, loyaltyPoints: customers.loyaltyPoints }).from(customers) : [];
     const allInv = await db.select().from(inventory);
     const allWh = await db.select().from(warehouses);
     const returns = await db.select().from(orderReturns);
 
     const periodOrders = allOrders.filter((o) => new Date(o.createdAt) >= since);
-    const validOrders = periodOrders.filter((o) => !["CANCELLED"].includes(o.status));
+    const validOrders = periodOrders.filter((o) => !["CANCELLED"].includes(o.status) && o.paymentStatus === "PAID");
 
     /* ---------- 1. SATIŞ RAPORU ---------- */
     const revenue = validOrders.reduce((s, o) => s + Number(o.grandTotal), 0);
@@ -76,7 +89,7 @@ export async function GET(request: Request) {
     /* ---------- 2. ÜRÜN PERFORMANSI ---------- */
     const periodItemRows = allItems.filter((it) => {
       const o = allOrders.find((x) => x.id === it.orderId);
-      return o && new Date(o.createdAt) >= since && !["CANCELLED"].includes(o.status);
+      return o && new Date(o.createdAt) >= since && !["CANCELLED"].includes(o.status) && o.paymentStatus === "PAID";
     });
 
     const productAgg = new Map<number, { qty: number; revenue: number; cost: number }>();
@@ -251,6 +264,7 @@ export async function GET(request: Request) {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
           "Content-Disposition": `attachment; filename="${exportType || "rapor"}-${days}gun.csv"`,
+          "Cache-Control": "private, no-store",
         },
       });
     }
@@ -280,16 +294,16 @@ export async function GET(request: Request) {
         turnover,
         totalQty,
       },
-      customers: {
+      customers: canReadCustomers ? {
         total: allCusts.length,
         newCount: newCustomers,
         activeCount: activeCustomers,
         passiveCount: passiveCustomers,
         vipCount: vipCustomers,
         top: custReport.slice(0, 10),
-      },
+      } : null,
       finance,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error: any) {
     console.error("Reports error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

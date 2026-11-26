@@ -1,13 +1,51 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
+import crypto from "node:crypto";
+import { cookies } from "next/headers";
 import os from "node:os";
 import path from "node:path";
 import { sqlite, sqlitePath } from "@/db";
 
-import { requireStaff } from "@/lib/auth";
-import { issueDownloadTicket, consumeDownloadTicket } from "@/lib/download-tickets";
-import { summarizeBackup, performRestore, performRestoreFromPath, readRestoreState, isValidBackupName } from "@/lib/db-restore";
+import { requireStaff, getUserByToken, getRequestToken, SESSION_COOKIE, publicBaseUrl, type SessionUser } from "@/lib/auth";
+import { issueDownloadTicket, consumeDownloadTicket, DOWNLOAD_TICKET_TTL_SECONDS } from "@/lib/download-tickets";
+import { readCrmJson } from "@/lib/crm-write";
+import { readBoundedMultipart, MultipartTooLarge } from "@/lib/bounded-multipart";
+import { summarizeBackup, performRestore, performRestoreFromPath, readRestoreState, isValidBackupName, resolveBackupFile } from "@/lib/db-restore";
 export const dynamic = "force-dynamic";
+const privateHeaders = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
+const fail = (status: number, code: string, message: string) => NextResponse.json({ success: false, error: { code, message } }, { status, headers: privateHeaders });
+
+/** Match the actual session that authenticated this actor, without retaining its raw token. */
+async function sessionHashFor(request: Request, actor: SessionUser): Promise<string | null> {
+  const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
+  for (const token of [cookie, getRequestToken(request)]) {
+    if (!token) continue;
+    const user = await getUserByToken(token);
+    if (user?.id === actor.id && user.role === "SUPER_ADMIN") return crypto.createHash("sha256").update(token).digest("hex");
+  }
+  return null;
+}
+function isActiveAdmin(userId: number, sessionHash: string): boolean {
+  return !!sqlite.prepare(`SELECT 1 FROM users u JOIN admin_sessions s ON s.user_id=u.id
+    WHERE u.id=? AND u.is_active=1 AND u.role='SUPER_ADMIN' AND s.jti=? AND s.revoked_at IS NULL AND s.expires_at>unixepoch()`).get(userId, sessionHash);
+}
+/** Rechecks the session and writes an audit record before disclosure or backup creation. */
+function auditDatabaseAccess(userId: number, sessionHash: string, action: string, name: string | null): boolean {
+  return sqlite.transaction(() => {
+    if (!isActiveAdmin(userId, sessionHash)) return false;
+    const user = sqlite.prepare("SELECT name FROM users WHERE id=?").get(userId) as { name: string };
+    sqlite.prepare("INSERT INTO audit_logs(user_id,user_name,action,entity,entity_id,details) VALUES(?,?,?,'Database',NULL,?)").run(String(userId), user.name, action, name ? `Yedek: ${name}` : "Veritabanı yedek işlemi başlatıldı");
+    return true;
+  }).immediate();
+}
+async function validateDatabaseOrigin(request: Request, actor: SessionUser): Promise<boolean> {
+  const origin = request.headers.get("origin");
+  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
+  if (origin) return origin === publicBaseUrl(request);
+  const bearer = request.headers.get("authorization");
+  const authenticated = bearer?.startsWith("Bearer ") ? await getUserByToken(bearer.slice(7).trim()) : null;
+  return authenticated?.id === actor.id;
+}
 
 function backupDir(): string {
   const base = sqlitePath === ":memory:" ? path.join(process.cwd(), "data") : path.dirname(sqlitePath);
@@ -61,49 +99,40 @@ export async function GET(request: Request) {
   const download = url.searchParams.get("download");
   const ticket = url.searchParams.get("ticket");
 
-  // Biletli indirme: iframe içinden açılan yeni sekme — staff doğrulaması biletle yapılır
+  // Ticket URLs are bearer credentials for preview downloads; they are bound to the issuing live session.
   if (download && ticket) {
-    const safeT = path.basename(download);
-    if (!/^tuhafiye(-[\w.-]+)?\.db$/.test(safeT) || !consumeDownloadTicket(ticket, safeT)) {
-      return NextResponse.json({ success: false, error: { code: "UNAUTHENTICATED", message: "İndirme bileti geçersiz veya süresi doldu." } }, { status: 401 });
+    if (!isValidBackupName(download)) return fail(401, "UNAUTHENTICATED", "İndirme bileti geçersiz veya süresi doldu.");
+    const entry = consumeDownloadTicket(ticket, download);
+    if (!entry) return fail(401, "UNAUTHENTICATED", "İndirme bileti geçersiz veya süresi doldu.");
+    try {
+      const file = resolveBackupFile(sqlitePath, download);
+      if (!file) return fail(404, "NOT_FOUND", "Yedek bulunamadı.");
+      if (!auditDatabaseAccess(entry.userId, entry.sessionHash, "DB_BACKUP_DOWNLOAD", download)) return fail(403, "FORBIDDEN", "İndirme oturumu artık yetkili değil.");
+      const buf = fs.readFileSync(file);
+      return new NextResponse(new Uint8Array(buf), { status: 200, headers: { ...privateHeaders, "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${download}"`, "Content-Length": String(buf.length) } });
+    } catch {
+      return fail(500, "INTERNAL_ERROR", "Yedek indirilemedi.");
     }
-    const file = path.join(backupDir(), safeT);
-    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-      return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Yedek bulunamadı." } }, { status: 404 });
-    }
-    const buf = fs.readFileSync(file);
-    return new NextResponse(new Uint8Array(buf), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${safeT}"`,
-        "Content-Length": String(buf.length),
-        "Cache-Control": "no-store",
-      },
-    });
   }
 
-  const __gate = await requireStaff(request);
-  if (!__gate.ok) return __gate.response;
+  const gate = await requireStaff(request);
+  if (!gate.ok) return gate.response;
+  if (gate.user.role !== "SUPER_ADMIN") return fail(403, "FORBIDDEN", "Veritabanı ve yedek işlemleri yalnız Süper Admin içindir.");
+  const sessionHash = await sessionHashFor(request, gate.user);
+  if (!sessionHash || !isActiveAdmin(gate.user.id, sessionHash)) return fail(403, "FORBIDDEN", "Veritabanı oturumu artık yetkili değil.");
 
   if (download) {
-    const safe = path.basename(download);
-    if (!/^tuhafiye(-[\w.-]+)?\.db$/.test(safe)) {
-      return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz yedek adı." } }, { status: 422 });
+    if (request.headers.get("sec-fetch-site") === "cross-site") return fail(403, "FORBIDDEN", "İstek kaynağı doğrulanamadı.");
+    if (!isValidBackupName(download)) return fail(422, "VALIDATION_ERROR", "Geçersiz yedek adı.");
+    const file = resolveBackupFile(sqlitePath, download);
+    if (!file) return fail(404, "NOT_FOUND", "Yedek bulunamadı.");
+    try {
+      if (!auditDatabaseAccess(gate.user.id, sessionHash, "DB_BACKUP_DOWNLOAD", download)) return fail(403, "FORBIDDEN", "İndirme oturumu artık yetkili değil.");
+      const buf = fs.readFileSync(file);
+      return new NextResponse(new Uint8Array(buf), { status: 200, headers: { ...privateHeaders, "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${download}"`, "Content-Length": String(buf.length) } });
+    } catch {
+      return fail(500, "INTERNAL_ERROR", "Yedek indirilemedi.");
     }
-    const file = path.join(backupDir(), safe);
-    if (!fs.existsSync(file)) {
-      return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Yedek bulunamadı." } }, { status: 404 });
-    }
-    const buf = fs.readFileSync(file);
-    return new NextResponse(new Uint8Array(buf), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${safe}"`,
-        "Content-Length": String(buf.length),
-      },
-    });
   }
 
   try {
@@ -125,7 +154,7 @@ export async function GET(request: Request) {
         backups: listBackups(),
         restoreState: readRestoreState(sqlitePath),
       },
-    });
+    }, { headers: privateHeaders });
   } catch (err: any) {
     console.error("Database info error:", err);
     return NextResponse.json({ success: false, error: { code: "INTERNAL_ERROR", message: err?.message || "Veritabanı bilgisi alınamadı." } }, { status: 500 });
@@ -138,17 +167,20 @@ const SQLITE_MAGIC = Buffer.from("SQLite format 3\0", "latin1");
 type StaffGate = Extract<Awaited<ReturnType<typeof requireStaff>>, { ok: true }>;
 
 /** multipart/form-data ile gelen yüklenen .db yedeğini geri yükler (YALNIZ SUPER_ADMIN). */
-async function handleRestoreUpload(request: Request, gate: StaffGate) {
+async function handleRestoreUpload(request: Request, gate: StaffGate, sessionHash: string) {
   const role = (gate.user.role || "").toUpperCase();
   if (role !== "SUPER_ADMIN") {
     return NextResponse.json({ success: false, error: { code: "FORBIDDEN", message: "Yedek geri yükleme yalnız Süper Admin içindir." } }, { status: 403 });
   }
   let form: FormData;
   try {
-    form = await request.formData();
-  } catch {
-    return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Form verisi okunamadı; dosya 256 MB'ı aşıyor veya istek bozuk olabilir." } }, { status: 400 });
+    form = await readBoundedMultipart(request, MAX_UPLOAD_BYTES + 1024 * 1024);
+  } catch (error) {
+    if (error instanceof MultipartTooLarge) return fail(413, "PAYLOAD_TOO_LARGE", "Yüklenen istek 256 MB sınırını aşıyor.");
+    return fail(400, "VALIDATION_ERROR", "Form verisi okunamadı.");
   }
+  const entries = [...form.entries()];
+  if (entries.length !== 1 || entries[0][0] !== "file") return fail(422, "VALIDATION_ERROR", "Yalnızca bir yedek dosyası gönderin.");
   const file = form.get("file");
   if (!file || typeof file === "string") {
     return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Dosya seçilmedi (form alanı: 'file')." } }, { status: 400 });
@@ -177,6 +209,7 @@ async function handleRestoreUpload(request: Request, gate: StaffGate) {
   try {
     const buf = Buffer.from(await file.arrayBuffer());
     fs.writeFileSync(stagingPath, buf);
+    if (!isActiveAdmin(gate.user.id, sessionHash)) return fail(403, "FORBIDDEN", "Geri yükleme oturumu artık yetkili değil.");
     const actor = (gate.user.email || gate.user.name || "admin").toString();
     const result = await performRestoreFromPath({ livePath: sqlitePath, backupPath: stagingPath, source: safeName, actor });
     if (!result.ok) {
@@ -213,25 +246,36 @@ async function handleRestoreUpload(request: Request, gate: StaffGate) {
 export async function POST(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
+  if (__gate.user.role !== "SUPER_ADMIN") return fail(403, "FORBIDDEN", "Veritabanı ve yedek işlemleri yalnız Süper Admin içindir.");
+  if (!(await validateDatabaseOrigin(request, __gate.user))) return fail(403, "FORBIDDEN", "İstek kaynağı doğrulanamadı.");
+  const sessionHash = await sessionHashFor(request, __gate.user);
+  if (!sessionHash || !isActiveAdmin(__gate.user.id, sessionHash)) return fail(403, "FORBIDDEN", "Veritabanı oturumu artık yetkili değil.");
 
   const contentType = (request.headers.get("content-type") || "").toLowerCase();
   if (contentType.includes("multipart/form-data")) {
-    return handleRestoreUpload(request, __gate);
+    return handleRestoreUpload(request, __gate, sessionHash);
   }
 
-  const body = (await request.json().catch(() => ({}))) as { action?: string; name?: string };
+  if (!/^application\/json(?:\s*;|\s*$)/i.test(contentType)) return fail(415, "VALIDATION_ERROR", "Geçersiz istek türü.");
+  const parsed = await readCrmJson(request);
+  if (!parsed.ok) return fail(parsed.response.status, "VALIDATION_ERROR", "Geçersiz veya çok büyük istek gövdesi.");
+  if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) return fail(422, "VALIDATION_ERROR", "Geçersiz istek.");
+  const body = parsed.value as { action?: string; name?: string };
 
   if (body?.action === "download-ticket") {
     const name = String(body?.name ?? "").trim();
     if (!isValidBackupName(name)) {
       return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz yedek adı." } }, { status: 422 });
     }
-    const file = path.join(backupDir(), name);
-    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-      return NextResponse.json({ success: false, error: { code: "NOT_FOUND", message: "Yedek bulunamadı." } }, { status: 404 });
+    const file = resolveBackupFile(sqlitePath, name);
+    if (!file) return fail(404, "NOT_FOUND", "Yedek bulunamadı.");
+    try {
+      if (!auditDatabaseAccess(__gate.user.id, sessionHash, "DB_BACKUP_TICKET", name)) return fail(403, "FORBIDDEN", "İndirme oturumu artık yetkili değil.");
+      const ticket = issueDownloadTicket(name, __gate.user.id, sessionHash);
+      return NextResponse.json({ success: true, data: { url: `/api/database?download=${encodeURIComponent(name)}&ticket=${ticket}`, expiresInSec: DOWNLOAD_TICKET_TTL_SECONDS } }, { headers: privateHeaders });
+    } catch {
+      return fail(500, "INTERNAL_ERROR", "İndirme bileti oluşturulamadı.");
     }
-    const ticket = issueDownloadTicket(name);
-    return NextResponse.json({ success: true, data: { url: `/api/database?download=${encodeURIComponent(name)}&ticket=${ticket}`, expiresInSec: 120 } });
   }
 
   if (body?.action === "restore") {
@@ -243,6 +287,7 @@ export async function POST(request: Request) {
     if (!isValidBackupName(name)) {
       return NextResponse.json({ success: false, error: { code: "VALIDATION_ERROR", message: "Geçersiz yedek adı." } }, { status: 422 });
     }
+    if (!isActiveAdmin(__gate.user.id, sessionHash)) return fail(403, "FORBIDDEN", "Geri yükleme oturumu artık yetkili değil.");
     const actor = (__gate.user.email || __gate.user.name || "admin").toString();
     const result = await performRestore({ livePath: sqlitePath, name, actor });
     if (!result.ok) {
@@ -274,6 +319,7 @@ export async function POST(request: Request) {
       `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}` +
       `-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
     const dest = path.join(dir, `tuhafiye-${stamp}.db`);
+    if (!auditDatabaseAccess(__gate.user.id, sessionHash, "DB_BACKUP_CREATE", path.basename(dest))) return fail(403, "FORBIDDEN", "Yedek oluşturma oturumu artık yetkili değil.");
     // VACUUM INTO: WAL içeriği dahil, tutarlı ve sıkıştırılmış kopya üretir.
     sqlite.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
     return NextResponse.json({ success: true, data: { backups: listBackups() } });

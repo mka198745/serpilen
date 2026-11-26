@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Product, ProductVariant } from "@/lib/types";
+import { variantLabel } from "@/lib/variant-label";
 import { useCart } from "@/context/CartContext";
 import { ShoppingBag, Heart, Check, Eye } from "lucide-react";
 
@@ -90,7 +91,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {variants.length > 0 && (
             <div className="mt-2.5">
               <p className="text-[11px] text-gray-500 mb-1">
-                Seçim: <strong className="text-gray-800">{selectedVariant?.colorName || selectedVariant?.size}</strong>
+                Seçim: <strong className="text-gray-800">{selectedVariant ? variantLabel(selectedVariant) : ""}</strong>
               </p>
               <div className="flex flex-wrap gap-1.5 items-center">
                 {variants.map((v) => (
@@ -102,7 +103,7 @@ export function ProductCard({ product }: ProductCardProps) {
                         ? "ring-2 ring-amber-700 ring-offset-1 scale-110"
                         : "opacity-80 hover:opacity-100"
                     }`}
-                    title={`${v.colorName || ""} ${v.size || ""}`}
+                    title={variantLabel(v) || v.sku}
                   >
                     {v.colorHex ? (
                       <span
@@ -111,7 +112,7 @@ export function ProductCard({ product }: ProductCardProps) {
                       />
                     ) : (
                       <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 rounded text-gray-700 border border-gray-200">
-                        {v.size || v.length}
+                        {variantLabel(v) || v.sku}
                       </span>
                     )}
                   </button>

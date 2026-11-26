@@ -41,14 +41,14 @@ function isActiveNow(p: typeof promotions.$inferSelect) {
  *   her satıra en yüksek indirim uygulanır (üst üste binme yok).
  * - Sipariş bazlı kurallar (eşik indirimi, ücretsiz kargo) sepet toplamına uygulanır.
  */
-export async function applyPromotions(lines: PromoCartLine[]): Promise<PromoResult> {
-  const rows = await db.select().from(promotions).where(
+export function applyPromotionsSync(lines: PromoCartLine[]): PromoResult {
+  const rows = db.select().from(promotions).where(
     and(
       eq(promotions.isActive, true),
       lte(promotions.startDate, new Date()),
       or(isNull(promotions.endDate), gt(promotions.endDate, new Date()))
     )
-  );
+  ).all();
 
   const active = rows.filter(isActiveNow).sort((a, b) => (b.priority || 0) - (a.priority || 0));
   const result: PromoResult = {
@@ -138,6 +138,10 @@ export async function applyPromotions(lines: PromoCartLine[]): Promise<PromoResu
   result.totalDiscount = Number(Math.min(result.totalDiscount, subtotal).toFixed(2));
   result.appliedPromotions = result.appliedPromotions.map((a) => ({ ...a, amount: Number(a.amount.toFixed(2)) }));
   return result;
+}
+
+export async function applyPromotions(lines: PromoCartLine[]): Promise<PromoResult> {
+  return applyPromotionsSync(lines);
 }
 
 /** Kampanya kullanım sayaçlarını artırır (sipariş tamamlandığında). */

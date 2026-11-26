@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import React from "react";
 import { db } from "@/db";
 import {
@@ -5,6 +6,7 @@ import {
   productVariants,
   categories,
   brands,
+  brandCategories,
   warehouses,
   inventory,
   inventoryLedger,
@@ -16,12 +18,13 @@ import {
   coupons,
   posShifts,
 } from "@/db/schema";
-import { desc, sql, count, and, ne, gte, lt, inArray } from "drizzle-orm";
+import { desc, sql, count, and, ne, eq, gte, lt, inArray } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getSessionUser, getStaffUserFromKt } from "@/lib/auth";
 import { StripQueryParam } from "@/components/layout/StripQueryParam";
 import { AUTH_ENABLED } from "@/lib/auth-flag";
 import { AdminDashboardClient } from "./AdminDashboardClient";
+import { readRoleMatrix, roleCanAccessModule } from "@/lib/role-matrix-server";
 
 export const dynamic = "force-dynamic";
 
@@ -41,16 +44,21 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     currentRole = staffUser.role;
     currentRoleLabel = staffUser.roleLabel;
   }
+  const matrix = await readRoleMatrix();
+  const canReadOrders = roleCanAccessModule(matrix, currentRole, "orders");
   const allProds = await db.select().from(products).orderBy(desc(products.id));
   const allVars = await db.select().from(productVariants);
   const allCats = await db.select().from(categories);
-  const allBrands = await db.select().from(brands);
+  const brandRows = await db.select().from(brands);
+  const brandCategoryRows = await db.select().from(brandCategories);
+  const allBrands = brandRows.map(brand => ({...brand, categoryIds:brandCategoryRows.filter(row=>row.brandId===brand.id).map(row=>row.categoryId)}));
   const allWh = await db.select().from(warehouses);
   const allInv = await db.select().from(inventory);
   const allLedger = await db.select().from(inventoryLedger).orderBy(desc(inventoryLedger.id)).limit(30);
-  const allOrders = await db.select().from(orders).orderBy(desc(orders.id)).limit(50);
-  const allOrderItems = await db.select().from(orderItems);
-  const allCustomers = await db.select().from(customers).orderBy(desc(customers.id));
+  // Sipariş yetkisi olmayan personelin SSR/RSC çıktısına müşteri bilgileri eklenmez.
+  const allOrders = canReadOrders ? await db.select().from(orders).orderBy(desc(orders.id)).limit(50) : [];
+  const allOrderItems = allOrders.length ? await db.select().from(orderItems).where(inArray(orderItems.orderId, allOrders.map(order => order.id))) : [];
+  const [customerCount] = await db.select({ value: count() }).from(customers);
   const allSuppliers = await db.select().from(suppliers).orderBy(desc(suppliers.id));
   const allPOs = await db.select().from(purchaseOrders).orderBy(desc(purchaseOrders.id));
   const allCoupons = await db.select().from(coupons);
@@ -67,7 +75,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       ...p,
       variants: vars,
       categoryName: cat?.name || "Kategori",
-      brandName: br?.name || "Marka",
+      brandName: br?.name ?? null,
       totalPhysical,
       totalAvailable: Math.max(0, totalPhysical - totalReserved),
     };
@@ -97,11 +105,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   }));
 
   // ---- Gerçek KPI rakamları (tüm zamanlar, LIMIT 50'den bağımsız) ----
-  const notCancelled = ne(orders.status, "CANCELLED");
+  const notCancelled = and(ne(orders.status, "CANCELLED"), eq(orders.paymentStatus, "PAID"));
   const sumGrand = sql<number>`coalesce(sum(${orders.grandTotal}), 0)`;
 
   const [totals] = await db
-    .select({ totalOrders: count(orders.id), salesCount: count(sql`case when ${orders.status} != 'CANCELLED' then 1 end`) })
+    .select({ totalOrders: count(orders.id), salesCount: count(sql`case when ${orders.status} != 'CANCELLED' and ${orders.paymentStatus} = 'PAID' then 1 end`) })
     .from(orders);
   const [revTotal] = await db.select({ v: sumGrand }).from(orders).where(notCancelled);
 
@@ -164,8 +172,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     monthGrowth, // null => önceki ay verisi yok
     pendingOrdersCount: Number(pendingRow?.c ?? 0),
     returnedOrdersCount: Number(returnedRow?.c ?? 0),
-    customersCount: allCustomers.length,
-    criticalStockCount: allInv.filter((i) => Math.max(0, i.physicalQty - i.reservedQty) <= i.reorderPoint).length,
+    customersCount: customerCount.value,
   };
 
   return (
@@ -176,10 +183,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       categories={allCats}
       brands={allBrands}
       warehouses={allWh}
+      initialSalesWarehouseId={sharedSalesWarehouseId()}
       inventory={enrichedInventory}
       ledger={allLedger}
       orders={enrichedOrders}
-      customers={allCustomers}
       suppliers={allSuppliers}
       purchaseOrders={allPOs}
       coupons={allCoupons}

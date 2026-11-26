@@ -1,3 +1,4 @@
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 import React from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -34,7 +35,8 @@ async function loadProduct(rawSlug: string) {
     ? await db.select().from(brands).where(eq(brands.id, product.brandId)).limit(1)
     : [null];
 
-  const allStock = await db.select().from(inventory).where(eq(inventory.productId, product.id));
+  const salesWarehouse=sharedSalesWarehouseId();
+  const allStock = (await db.select().from(inventory).where(eq(inventory.productId, product.id))).filter(s=>s.warehouseId===salesWarehouse);
   const allWh = await db.select().from(warehouses);
   const gallery = await db
     .select()

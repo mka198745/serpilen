@@ -1,5 +1,6 @@
 "use client";
 
+import { PaymentTimeNotice } from "@/components/layout/PaymentTimeNotice";
 import React, { useState } from "react";
 import { useCart } from "@/context/CartContext";
 import { X, Trash2, ShoppingBag, ArrowRight, Tag, Check, ShieldCheck, Ban } from "lucide-react";
@@ -260,6 +261,7 @@ export function CartDrawer() {
                 </div>
               </div>
 
+              <PaymentTimeNotice />
               {/* Action Buttons */}
               <div className="pt-2 flex flex-col gap-2">
                 <a
@@ -271,12 +273,10 @@ export function CartDrawer() {
                   <ArrowRight className="w-4 h-4" />
                 </a>
 
-                {cartCfg.trustText && (
-                  <div className="flex items-center justify-center gap-2 text-[11px] text-gray-500 pt-1">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>{cartCfg.trustText}</span>
-                  </div>
-                )}
+                <div className="flex items-center justify-center gap-2 text-[11px] text-gray-500 pt-1">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Havale / EFT ile sipariş</span>
+                </div>
               </div>
             </div>
           )}

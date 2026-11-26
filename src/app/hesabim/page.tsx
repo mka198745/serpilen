@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { PosPinSettings } from "./PosPinSettings";
 import { useAuth } from "@/context/AuthContext";
 import {
   User,
@@ -267,6 +268,7 @@ export default function AccountPage() {
         </div>
       </form>
 
+      {profile?.isStaff && <PosPinSettings />}
       {/* Form 2: Şifre değiştir */}
       <form onSubmit={handleChangePassword} className="bg-white rounded-2xl border border-stone-200 shadow-xs p-5 space-y-4">
         <div className="flex items-center justify-between gap-3 border-b border-stone-100 pb-3">

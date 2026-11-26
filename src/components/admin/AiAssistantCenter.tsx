@@ -52,6 +52,15 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
   const [mode, setMode] = useState<"modules" | "chat">("modules");
   const [activeModule, setActiveModule] = useState<string | null>(null);
   const [result, setResult] = useState<AiResult | null>(null);
+  const epoch = useRef(0);
+  const clearOnDenied = (status: number, message: unknown) => {
+    if (status !== 401 && status !== 403) return false;
+    epoch.current++;
+    setResult(null); setGeneratedContent(null); setGuardrail(null); setMessages([]); setChatInput(""); setApplied(false);
+    const text = typeof message === "string" ? message : message && typeof message === "object" && "message" in message && typeof message.message === "string" ? message.message : "Oturumunuz veya yetkiniz değişti; önceki sonuçlar temizlendi.";
+    setError(text);
+    return true;
+  };
   const [guardrail, setGuardrail] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +92,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
       setResult(null);
       return;
     }
+    const requestEpoch = epoch.current;
     setActiveModule(moduleId);
     setLoading(true);
     setError(null);
@@ -94,6 +104,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
         body: JSON.stringify({ module: moduleId }),
       });
       const json = await res.json();
+      if (requestEpoch !== epoch.current || clearOnDenied(res.status, json.error)) return;
       if (json.success) {
         setResult(json.data);
         setGuardrail(json.guardrail);
@@ -110,6 +121,8 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
   const sendChat = async (text?: string) => {
     const msg = (text || chatInput).trim();
     if (!msg) return;
+    const requestEpoch = epoch.current;
+    setError(null);
     setMessages((prev) => [...prev, { role: "user", text: msg }]);
     setChatInput("");
 
@@ -120,6 +133,8 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
         body: JSON.stringify({ module: "chat", prompt: msg }),
       });
       const json = await res.json();
+      if (requestEpoch !== epoch.current || clearOnDenied(res.status, json.error)) return;
+      setGuardrail(json.guardrail || null);
       setMessages((prev) => [
         ...prev,
         { role: "ai", text: json.data?.answer || json.error || "Yanıt üretilemedi.", suggestions: json.data?.suggestions },
@@ -131,6 +146,8 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
 
   const generateContent = async () => {
     if (!contentProductId) return;
+    const requestEpoch = epoch.current;
+    setError(null);
     setLoading(true);
     setGeneratedContent(null);
     setApplied(false);
@@ -141,6 +158,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
         body: JSON.stringify({ module: "content_generator", productId: Number(contentProductId), tone: contentTone }),
       });
       const json = await res.json();
+      if (requestEpoch !== epoch.current || clearOnDenied(res.status, json.error)) return;
       if (json.success) {
         setGeneratedContent(json.data);
         setGuardrail(json.guardrail);
@@ -154,6 +172,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
 
   const applyContent = async () => {
     if (!generatedContent) return;
+    const requestEpoch = epoch.current;
     setLoading(true);
     try {
       const res = await authFetch("/api/ai", {
@@ -173,6 +192,7 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
       });
       const json = await res.json();
       setLoading(false);
+      if (requestEpoch !== epoch.current || clearOnDenied(res.status, json.error)) return;
       if (json.success) {
         setApplied(true);
         setError(null);
@@ -230,10 +250,11 @@ export function AiAssistantCenter({ products }: { products: any[] }) {
         <div>
           <strong className="block">AI Guardrails (Güvenlik Kalkanı) Aktif</strong>
           AI yalnızca <strong>öneri üretir ve önizleme sunar</strong>. Fiyat, stok, sipariş veya muhasebe kayıtları üzerinde hiçbir değişiklik
-          kullanıcı açık onayı vermeden yapılmaz. Ürün içerikleri de "Uygula" onayı sonrası yazılır.
+          kullanıcı açık onayı vermeden yapılmaz. Ürün içerikleri de &quot;Uygula&quot; onayı sonrası yazılır. Müşteri risk ve segmentleri doğrulanmış değildir; iletişim izni ayrıca kontrol edilmelidir. Sohbet, tüm ilgili modül yetkilerini gerektirir.
         </div>
       </div>
 
+      {guardrail && <p className="text-xs text-stone-600">{guardrail}</p>}
       {error && (
         <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-bold flex items-center gap-2">
           <AlertTriangle className="w-4 h-4" /> {error}

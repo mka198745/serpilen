@@ -629,9 +629,9 @@ function DatabaseSettingsPanel() {
       .then((r) => r.json())
       .then((d) => {
         if (d?.success) setInfo(d.data);
-        else setFeedback({ text: d?.error?.message || "Bilgi alınamadı.", isError: true });
+        else { setInfo(null); setFeedback({ text: d?.error?.message || "Bilgi alınamadı.", isError: true }); }
       })
-      .catch(() => setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true }))
+      .catch(() => { setInfo(null); setFeedback({ text: "Sunucuya ulaşılamadı.", isError: true }); })
       .finally(() => setLoading(false));
   };
   useEffect(() => {
@@ -724,7 +724,7 @@ function DatabaseSettingsPanel() {
   const integrityOk = info?.integrity === "ok";
 
   return (
-    <PanelShell icon={Database} title="Veritabanı Ayarı" desc="SQLite veritabanının durumu, tablo istatistikleri, tutarlı yedek alma ve yedekten geri yükleme.">
+    <PanelShell icon={Database} title="Veritabanı Ayarı" desc="Yalnız Süper Admin: veritabanı durumu, yedek alma, indirme ve geri yükleme. Yedekler müşteri ve hesap bilgileri içerir; güvenli saklayın.">
       <Feedback feedback={feedback} />
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] text-stone-400">{loading ? "Yükleniyor…" : info ? `Son güncelleme: ${new Date().toLocaleString("tr-TR")}` : ""}</p>
@@ -732,7 +732,7 @@ function DatabaseSettingsPanel() {
           <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-stone-200 hover:border-amber-300 text-stone-700 text-xs font-bold rounded-xl transition">
             <RefreshCw className="w-4 h-4" /> Yenile
           </button>
-          <button onClick={backup} disabled={backingUp} className="flex items-center gap-1.5 px-3 py-2 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
+          <button onClick={backup} disabled={backingUp || loading || !info} className="flex items-center gap-1.5 px-3 py-2 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white text-xs font-bold rounded-xl transition">
             <Archive className="w-4 h-4" /> {backingUp ? "Yedekleniyor…" : "Yedek Oluştur"}
           </button>
         </div>

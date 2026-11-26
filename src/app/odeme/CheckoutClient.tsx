@@ -1,13 +1,13 @@
 "use client";
 
+import { PaymentTimeNotice } from "@/components/layout/PaymentTimeNotice";
 import React, { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
 import { useSiteSettings } from "@/lib/use-site-settings";
-import { parseCartSettings, parseCheckoutSettings, shippingCostFor } from "@/lib/site-settings-shared";
+import { parseCartSettings, parseCheckoutSettings, shippingCostFor, validTurkishIban } from "@/lib/site-settings-shared";
 import {
   ShieldCheck,
-  CreditCard,
   Building2,
   CheckCircle2,
   ArrowRight,
@@ -15,7 +15,6 @@ import {
   RotateCcw,
   Sparkles,
   Hash,
-  Info,
   Copy,
   Check,
 } from "lucide-react";
@@ -24,16 +23,13 @@ export function CheckoutClient() {
   const { items, subtotal, discountTotal, appliedCoupon, clearCart } = useCart();
 
   const [formData, setFormData] = useState({
-    name: "Ayşe Kaya",
-    email: "ayse.kaya@gmail.com",
-    phone: "0542 333 44 55",
-    city: "İstanbul",
-    district: "Kadıköy",
-    address: "Caferağa Mah. Moda Cad. No: 44 D: 6",
-    paymentMethod: "CREDIT_CARD",
-    cardNumber: "4543 •••• •••• 9012",
-    cardExp: "12/28",
-    cardCvv: "321",
+    name: "",
+    email: "",
+    phone: "",
+    city: "",
+    district: "",
+    address: "",
+    paymentMethod: "EFT_HAVALE",
     isCorporate: false,
     companyName: "",
     taxOffice: "",
@@ -43,8 +39,24 @@ export function CheckoutClient() {
   // /odeme açılışında bu siparişe özel numara üretilir; havale açıklamasına yazılır ve sipariş kaydı bu numarayla oluşturulur
   const [orderNumber, setOrderNumber] = useState<string>("");
   const [orderNumberCopied, setOrderNumberCopied] = useState(false);
+  const [orderNumberToken, setOrderNumberToken] = useState("");
+  const [orderNumberError, setOrderNumberError] = useState(false);
   React.useEffect(() => {
-    setOrderNumber(`OR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`);
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/orders/next-number", { method: "POST", cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.orderNumber || !data.token) throw new Error();
+        if (alive) {
+          setOrderNumber(data.orderNumber);
+          setOrderNumberToken(data.token);
+        }
+      } catch {
+        if (alive) setOrderNumberError(true);
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
   const copyOrderNumber = async () => {
@@ -107,43 +119,33 @@ export function CheckoutClient() {
   const siteSettings = useSiteSettings();
   const cartCfg = parseCartSettings(siteSettings);
   const checkoutCfg = parseCheckoutSettings(siteSettings);
-  const cardOn = checkoutCfg.paymentCardEnabled;
-  const eftOn = checkoutCfg.paymentEftEnabled;
-  const anyPaymentMethod = cardOn || eftOn;
-  const bothPaymentMethods = cardOn && eftOn;
-
-  // Kapatılan ödeme yöntemi seçiliyse açık olana otomatik geç
-  React.useEffect(() => {
-    setFormData((f) => {
-      if (f.paymentMethod === "CREDIT_CARD" && !cardOn && eftOn) return { ...f, paymentMethod: "EFT_HAVALE" };
-      if (f.paymentMethod === "EFT_HAVALE" && !eftOn && cardOn) return { ...f, paymentMethod: "CREDIT_CARD" };
-      return f;
-    });
-  }, [cardOn, eftOn]);
+  // Card collection stays disabled until a real verified payment integration exists.
+  const eftOn = checkoutCfg.paymentEftEnabled && !!checkoutCfg.eftAccountName && validTurkishIban(checkoutCfg.eftIban);
+  const anyPaymentMethod = eftOn;
   const shippingCost = shippingCostFor(subtotal, cartCfg);
-  const grandTotal = Math.max(0, subtotal - discountTotal + shippingCost);
+  const grandTotal = Math.max(0, subtotal - discountTotal - (promoPreview?.totalDiscount || 0) + (promoPreview?.freeShipping ? 0 : shippingCost));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0 || !cartCfg.enabled || !anyPaymentMethod) return;
+    if (items.length === 0 || !cartCfg.enabled || !anyPaymentMethod || !orderNumberToken) return;
     setIsSubmitting(true);
 
     try {
       const payload = {
         orderType: "ONLINE_B2C",
-        orderNumber: orderNumber || undefined,
+        orderNumber,
+        orderNumberToken,
         customerName: formData.name,
         customerEmail: formData.email,
         customerPhone: formData.phone,
         paymentMethod: formData.paymentMethod,
         shippingAddress: `${formData.address}, ${formData.district} / ${formData.city}`,
-        warehouseId: 3, // Online E-Ticaret Deposu
         subtotal,
-        discountTotal: discountTotal + (promoPreview?.totalDiscount || 0),
+        discountTotal,
         couponCode: appliedCoupon || null,
         taxTotal: (grandTotal * 0.2).toFixed(2),
         shippingTotal: promoPreview?.freeShipping ? 0 : shippingCost,
-        grandTotal: Math.max(0, grandTotal - (promoPreview?.totalDiscount || 0) - (promoPreview?.freeShipping ? shippingCost : 0)),
+        grandTotal,
         items: items.map((it) => ({
           productId: it.productId,
           variantId: it.variantId,
@@ -191,7 +193,7 @@ export function CheckoutClient() {
             Siparişiniz Başarıyla Alındı!
           </h1>
           <p className="text-stone-500 text-sm">
-            {checkoutCfg.successNote || "Siparişiniz alındı; ödeme adımınız tamamlandığında depomuz hazırlığa başlar."}
+            {completedOrder.order.status === "BACKORDER" ? "Siparişiniz stok bekleme sırasına alındı. Şimdi ödeme yapmayın. Stok ayrıldığında ödeme için 24 saat başlayacak; e-posta bildirimi gönderilmeye çalışılır; ulaşmama ihtimaline karşı Sipariş Takip sayfasını kontrol edin veya mağazayla görüşün." : "Stok ayrıldı. Aşağıdaki son ödeme saatine kadar havale/EFT açıklamasına sipariş numaranızı yazın. Ödeme banka hesabında kontrol edilerek onaylanır."}
           </p>
         </div>
 
@@ -199,11 +201,19 @@ export function CheckoutClient() {
         <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-xs text-left space-y-3 font-sans text-xs">
           <div className="flex justify-between border-b border-stone-100 pb-2">
             <span className="text-stone-500">Sipariş Numarası:</span>
-            <span className="font-mono font-bold text-stone-900">{completedOrder.order.orderNumber}</span>
+            <span className="font-mono font-bold text-stone-900 select-all">{completedOrder.order.orderNumber}</span>
           </div>
+          <p className="text-[11px] leading-relaxed text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            Lütfen sipariş numaranızı not ediniz.{" "}
+            <Link href="/siparis-takip" className="font-bold underline underline-offset-2 hover:text-amber-950">
+              Sipariş Takip
+            </Link>{" "}
+            bölümünden sipariş numaranızı girerek siparişinizi takip edebilirsiniz.
+          </p>
+          {completedOrder.order.status === "PENDING" && <div className="bg-amber-50 rounded-xl p-3">Ödeme bekleniyor · Son onay zamanı: {completedOrder.order.paymentDeadline ? new Date(completedOrder.order.paymentDeadline).toLocaleString("tr-TR") : "24 saat"} · {checkoutCfg.eftBank} · {checkoutCfg.eftAccountName} · <strong>{checkoutCfg.eftIban}</strong></div>}
           <div className="flex justify-between border-b border-stone-100 pb-2">
-            <span className="text-stone-500">Kargo Takip No:</span>
-            <span className="font-mono font-bold text-stone-900">{completedOrder.order.trackingNumber} (Yurtiçi Kargo)</span>
+            <span className="text-stone-500 shrink-0">Kargo Takip No:</span>
+            <span className="text-stone-600 font-medium text-right">İletişim numaramızdan size kargo takip numarası gönderilecektir.</span>
           </div>
           <div className="flex justify-between border-b border-stone-100 pb-2">
             <span className="text-stone-500">Toplam Tutar:</span>
@@ -337,10 +347,10 @@ export function CheckoutClient() {
                     <Hash className="w-4 h-4" /> Sipariş Numaranız
                   </p>
                   <p className="mt-1.5 text-2xl sm:text-3xl font-black font-mono tracking-[0.18em] text-stone-900 select-all leading-none">
-                    {orderNumber || "OR-…"}
+                    {orderNumber || "SİP…"}
                   </p>
                   <p className="mt-1.5 text-[11px] text-amber-900/90 font-medium">
-                    Bu numara bu sipariş size özeldir; siparişiniz tamamlandığında aynı numarayla kaydedilir.
+                    {orderNumberError ? "Sipariş numarası alınamadı. Lütfen sayfayı yenileyin." : "Bu numara bu siparişe özeldir; siparişiniz tamamlandığında aynı numarayla kaydedilir."}
                   </p>
                 </div>
                 <button
@@ -361,25 +371,8 @@ export function CheckoutClient() {
                 </p>
               )}
 
-              <div className={`grid gap-3 ${bothPaymentMethods ? "grid-cols-2" : "grid-cols-1"}`}>
-                {cardOn && (
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, paymentMethod: "CREDIT_CARD" })}
-                  className={`p-4 rounded-2xl border text-left flex items-center gap-3 transition ${
-                    formData.paymentMethod === "CREDIT_CARD"
-                      ? "border-amber-800 bg-amber-50/70 ring-2 ring-amber-800/30"
-                      : "border-stone-200 bg-white"
-                  }`}
-                >
-                  <CreditCard className="w-5 h-5 text-amber-800" />
-                  <div>
-                    <span className="font-bold text-xs text-stone-900 block">Kredi / Banka Kartı</span>
-                    <span className="text-[11px] text-stone-500">{checkoutCfg.cardNote || "3D Secure ile anında onay"}</span>
-                  </div>
-                </button>
-                )}
-
+              <p className="text-xs text-stone-600">Online kart ödemesi şu anda kullanılamıyor.</p>
+              <div className="grid gap-3 grid-cols-1">
                 {eftOn && (
                 <button
                   type="button"
@@ -399,59 +392,8 @@ export function CheckoutClient() {
                 )}
               </div>
 
-              {formData.paymentMethod === "EFT_HAVALE" && (checkoutCfg.eftBank || checkoutCfg.eftIban || checkoutCfg.eftAccountName) && (
-                <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200 text-xs text-emerald-950 space-y-1.5">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Havale / EFT Hesap Bilgileri</p>
-                  {checkoutCfg.eftBank && <p>Banka / Şube: <strong>{checkoutCfg.eftBank}</strong></p>}
-                  {checkoutCfg.eftAccountName && <p>Hesap Adı: <strong>{checkoutCfg.eftAccountName}</strong></p>}
-                  {checkoutCfg.eftIban && (
-                    <p className="flex flex-wrap items-center gap-2">
-                      IBAN: <strong className="font-mono select-all">{checkoutCfg.eftIban}</strong>
-                    </p>
-                  )}
-                  <div className="flex items-start gap-2.5 mt-2 px-4 py-3 rounded-xl border-2 border-emerald-400 bg-emerald-100/80 text-emerald-950 shadow-xs">
-                    <Info className="w-6 h-6 shrink-0 text-emerald-700 mt-0.5" />
-                    <p className="text-sm sm:text-base font-extrabold leading-snug">
-                      Havale açıklamasına <span className="font-mono bg-white border border-emerald-300 rounded-md px-2 py-0.5 select-all tracking-wider">{orderNumber || "sipariş numaranızı"}</span> yazın; ödemeniz hesabımıza geçtiğinde siparişiniz hazırlamaya alınır.
-                    </p>
-                  </div>
-                </div>
-              )}
+              <p className="text-xs text-amber-900">Ödeme yapmadan önce siparişi oluşturun. Stok varsa havale bilgileri gösterilir; yoksa siparişiniz ödeme alınmadan sıraya girer.</p>
 
-              {formData.paymentMethod === "CREDIT_CARD" && (
-                <div className="p-4 bg-stone-50 rounded-2xl border border-stone-200 space-y-3 text-xs">
-                  <div>
-                    <label className="block font-bold text-stone-700 mb-1">Kart Numarası:</label>
-                    <input
-                      type="text"
-                      value={formData.cardNumber}
-                      onChange={(e) => setFormData({ ...formData, cardNumber: e.target.value })}
-                      className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">Son Kullanma (AA/YY):</label>
-                      <input
-                        type="text"
-                        value={formData.cardExp}
-                        onChange={(e) => setFormData({ ...formData, cardExp: e.target.value })}
-                        className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">CVV Güvenlik Kodu:</label>
-                      <input
-                        type="password"
-                        maxLength={3}
-                        value={formData.cardCvv}
-                        onChange={(e) => setFormData({ ...formData, cardCvv: e.target.value })}
-                        className="w-full px-3 py-2 border border-stone-300 rounded-xl font-mono text-center"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
@@ -460,6 +402,7 @@ export function CheckoutClient() {
             <div className="bg-white p-6 rounded-3xl border border-stone-200 shadow-xs space-y-4 sticky top-24">
               <h3 className="font-black text-base text-stone-900">Sipariş Özeti</h3>
 
+              <PaymentTimeNotice />
               {/* Items */}
               <div className="space-y-3 divide-y divide-stone-100 max-h-60 overflow-y-auto text-xs">
                 {items.map((it, i) => (
@@ -498,7 +441,7 @@ export function CheckoutClient() {
                 <div className="flex justify-between">
                   <span>Kargo Ücreti</span>
                   <span className="font-semibold text-emerald-700">
-                    {shippingCost === 0 ? "Ücretsiz Kargo" : `${shippingCost.toFixed(2)} TL`}
+                    {promoPreview?.freeShipping || shippingCost === 0 ? "Ücretsiz Kargo" : `${shippingCost.toFixed(2)} TL`}
                   </span>
                 </div>
                 <div className="flex justify-between text-base font-black text-stone-900 pt-2 border-t border-stone-200">
@@ -519,19 +462,14 @@ export function CheckoutClient() {
               )}
               <button
                 type="submit"
-                disabled={isSubmitting || !cartCfg.enabled || !anyPaymentMethod}
+                disabled={isSubmitting || !cartCfg.enabled || !anyPaymentMethod || !orderNumberToken}
                 className="w-full py-3.5 bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <span>{isSubmitting ? "İşleniyor..." : "Siparişi Onayla & Öde"}</span>
+                <span>{isSubmitting ? "İşleniyor..." : "Sipariş Oluştur"}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              {checkoutCfg.trustText && (
-                <div className="flex items-center justify-center gap-2 text-[11px] text-stone-500 pt-1">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>{checkoutCfg.trustText}</span>
-                </div>
-              )}
+              <p className="text-center text-[11px] text-stone-500">Havale, banka hesabında kontrol edildikten sonra onaylanır.</p>
             </div>
           </div>
         </form>

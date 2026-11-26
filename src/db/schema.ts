@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, numeric, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, numeric, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
 
 // ==========================================
 // 1. KULLANICILAR & ROLLER
@@ -24,7 +24,7 @@ export const users = sqliteTable("users", {
   passwordChangedAt: integer("password_changed_at", { mode: "timestamp" }),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("users_customer_role_idx").on(table.customerId, table.role)]);
 
 // OTURUM (SESSION) YÖNETİMİ — token iptali (revocation) ve cihaz takibi
 export const adminSessions = sqliteTable("admin_sessions", {
@@ -74,7 +74,74 @@ export const customers = sqliteTable("customers", {
   city: text("city"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [
+  index("customers_crm_normalized_email_idx").on(sql`lower(trim(${table.email}))`),
+  index("customers_crm_normalized_phone_idx").on(sql`replace(replace(replace(replace(replace(replace(${table.phone},' ',''),'-',''),'(',''),')',''),'.',''),'+','')`),
+]);
+
+// Personel tarafından eklenen, müşteriye bağlı CRM notları.
+export const crmCustomerNotes = sqliteTable("crm_customer_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  body: text("body").notNull(),
+  createdById: integer("created_by_id").notNull(),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [index("crm_customer_notes_customer_idx").on(table.customerId, table.createdAt, table.id)]);
+
+// Notun yalnız son düzenleme üstverisi; eski not metni saklanmaz.
+export const crmNoteEditState = sqliteTable("crm_note_edit_state", {
+  noteId: integer("note_id").primaryKey().references(() => crmCustomerNotes.id, { onDelete: "restrict" }),
+  revision: integer("revision").notNull(),
+  updatedById: integer("updated_by_id").notNull(),
+  updatedByName: text("updated_by_name").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
+
+export const crmTags = sqliteTable("crm_tags", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull().unique(),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+});
+
+export const crmCustomerTags = sqliteTable("crm_customer_tags", {
+  customerId: integer("customer_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  tagId: integer("tag_id").notNull().references(() => crmTags.id, { onDelete: "restrict" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [primaryKey({ columns: [table.customerId, table.tagId] }), index("crm_customer_tags_tag_idx").on(table.tagId, table.customerId)]);
+
+// İki müşteri kartı için insan değerlendirmesi; birleştirme yetkisi veya işlemi değildir.
+export const crmDuplicateReviews = sqliteTable("crm_duplicate_reviews", {
+  customerLowId: integer("customer_low_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  customerHighId: integer("customer_high_id").notNull().references(() => customers.id, { onDelete: "restrict" }),
+  status: text("status").notNull(),
+  lowVersion: text("low_version").notNull(),
+  highVersion: text("high_version").notNull(),
+  revision: integer("revision").notNull(),
+  reviewedById: integer("reviewed_by_id").notNull(),
+  reviewedByName: text("reviewed_by_name").notNull(),
+  reviewedAt: integer("reviewed_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+}, (table) => [primaryKey({ columns: [table.customerLowId, table.customerHighId] }), index("crm_duplicate_reviews_high_idx").on(table.customerHighId, table.customerLowId)]);
+
+// POS screen PINs are distinct from account passwords. Grants store only hashes.
+export const posScreenPins = sqliteTable("pos_screen_pins", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  pinHash: text("pin_hash").notNull(),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: integer("locked_until").notNull().default(0),
+});
+export const posPinPasswordAttempts = sqliteTable("pos_pin_password_attempts", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: integer("locked_until").notNull().default(0),
+});
+export const posScreenGrants = sqliteTable("pos_screen_grants", {
+  grantHash: text("grant_hash").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sessionHash: text("session_hash").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, t => [index("pos_screen_grants_user_idx").on(t.userId,t.expiresAt)]);
 
 // ==========================================
 // 3. KATEGORİLER & MARKALAR
@@ -98,6 +165,12 @@ export const brands = sqliteTable("brands", {
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
 });
 
+// A brand can serve several catalog categories; category assignments are advisory.
+export const brandCategories = sqliteTable("brand_categories", {
+  brandId: integer("brand_id").notNull().references(() => brands.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").notNull().references(() => categories.id, { onDelete: "cascade" }),
+}, table => [primaryKey({columns:[table.brandId,table.categoryId]}), index("brand_categories_category_idx").on(table.categoryId,table.brandId)]);
+
 // ==========================================
 // 4. ÜRÜNLER & VARYANTLAR
 // ==========================================
@@ -111,6 +184,7 @@ export const products = sqliteTable("products", {
   categoryId: integer("category_id").notNull(),
   shortDescription: text("short_description"),
   description: text("description"),
+  technicalDetails: text("technical_details"), // İsteğe bağlı, doğrulanmış teknik özellik JSON'u
   unit: text("unit").default("Adet").notNull(), // Adet, Metre, Paket, Kutu, Rulo, Bobin
   buyPrice: numeric("buy_price").notNull().default("0.00"),
   retailPrice: numeric("retail_price").notNull().default("0.00"),
@@ -294,7 +368,7 @@ export const orders = sqliteTable("orders", {
   posShiftId: integer("pos_shift_id"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("orders_customer_created_idx").on(table.customerId, table.createdAt, table.id)]);
 
 export const orderItems = sqliteTable("order_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -309,7 +383,16 @@ export const orderItems = sqliteTable("order_items", {
   quantity: integer("quantity").notNull(),
   taxRate: integer("tax_rate").notNull().default(20),
   totalPrice: numeric("total_price").notNull(),
-});
+}, (table) => [index("order_items_order_idx").on(table.orderId, table.id)]);
+
+// Order-owned discount counters, released transactionally if an unpaid order is cancelled.
+export const orderDiscountClaims = sqliteTable("order_discount_claims", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull(),
+  kind: text("kind").notNull(),
+  targetId: integer("target_id").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+}, (table) => [index("order_discount_claims_order_idx").on(table.orderId, table.status), uniqueIndex("order_discount_claims_unique_idx").on(table.orderId, table.kind, table.targetId)]);
 
 // SİPARİŞ DURUM GEÇMİŞİ (audit trail) — FAZ 4
 export const orderStatusHistory = sqliteTable("order_status_history", {
@@ -320,7 +403,7 @@ export const orderStatusHistory = sqliteTable("order_status_history", {
   note: text("note"),
   changedBy: text("changed_by").default("Sistem"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("order_status_history_order_created_idx").on(table.orderId, table.createdAt, table.id)]);
 
 // İADELER (RMA) — FAZ 4
 export const orderReturns = sqliteTable("order_returns", {
@@ -336,7 +419,7 @@ export const orderReturns = sqliteTable("order_returns", {
   createdBy: text("created_by").default("Müşteri Hizmetleri"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
   resolvedAt: integer("resolved_at", { mode: "timestamp" }),
-});
+}, (table) => [index("order_returns_order_created_idx").on(table.orderId, table.createdAt, table.id)]);
 
 export const orderReturnItems = sqliteTable("order_return_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -347,7 +430,43 @@ export const orderReturnItems = sqliteTable("order_return_items", {
   productName: text("product_name").notNull(),
   quantity: integer("quantity").notNull(),
   refundAmount: numeric("refund_amount").notNull().default("0.00"),
+}, (table) => [index("order_return_items_return_idx").on(table.returnId, table.id)]);
+
+// Minimal append-only anti-replay allocations survive future authorized refund deletion.
+export const deletedRefundGuards = sqliteTable("deleted_refund_guards", {
+  returnId: integer("return_id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  refundCents: integer("refund_cents").notNull(),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+}, table => [index("deleted_refund_guards_order_idx").on(table.orderId)]);
+export const deletedRefundGuardItems = sqliteTable("deleted_refund_guard_items", {
+  returnId: integer("return_id").notNull().references(() => deletedRefundGuards.returnId, {onDelete:"restrict"}),
+  orderItemId: integer("order_item_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  refundCents: integer("refund_cents").notNull(),
+}, table => [primaryKey({columns:[table.returnId,table.orderItemId]}),index("deleted_refund_guard_items_order_item_idx").on(table.orderItemId,table.returnId)]);
+
+export const posReturnContext = sqliteTable("pos_return_context", {
+  returnId: integer("return_id").primaryKey(),
+  shiftId: integer("shift_id").notNull(),
+  refundMethod: text("refund_method").notNull(),
 });
+
+export const orderNotificationOutbox = sqliteTable("order_notification_outbox", {
+  id: integer("id").primaryKey({autoIncrement:true}), orderId: integer("order_id").notNull(), event: text("event").notNull(),
+  status: text("status").notNull().default("PENDING"), attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: integer("next_attempt_at").notNull().default(sql`(unixepoch())`), leaseToken:text("lease_token"), leaseUntil:integer("lease_until"),
+  lastError:text("last_error"), sentAt:integer("sent_at"), createdAt:integer("created_at").notNull().default(sql`(unixepoch())`),
+}, table=>[uniqueIndex("order_notification_event_idx").on(table.orderId,table.event),index("order_notification_due_idx").on(table.status,table.nextAttemptAt,table.leaseUntil)]);
+export const posSaleRequests = sqliteTable("pos_sale_requests", {
+  requestKey:text("request_key").primaryKey(),requestHash:text("request_hash").notNull(),actorId:integer("actor_id").notNull(),orderId:integer("order_id").notNull().unique(),createdAt:integer("created_at").notNull().default(sql`(unixepoch())`),
+});
+export const posSalePayments = sqliteTable("pos_sale_payments", {
+  orderId:integer("order_id").primaryKey(),cashAmount:integer("cash_amount").notNull(),cardAmount:integer("card_amount").notNull(),
+});
+export const posSaleIntents = sqliteTable("pos_sale_intents", {
+  requestKey:text("request_key").primaryKey(), requestHash:text("request_hash").notNull(),actorId:integer("actor_id").notNull(),actorName:text("actor_name").notNull(),shiftId:integer("shift_id").notNull(),status:text("status").notNull().default("PREPARED"),payloadJson:text("payload_json").notNull(),quoteJson:text("quote_json").notNull(),couponId:integer("coupon_id"),pointsTransactionId:integer("points_transaction_id"),earnPoints:integer("earn_points").notNull().default(0),orderId:integer("order_id"),createdAt:integer("created_at").notNull().default(sql`(unixepoch())`),resolvedAt:integer("resolved_at"),
+}, table=>[index("pos_sale_intents_shift_status_idx").on(table.shiftId,table.status)]);
 
 // ==========================================
 // 7. POS VARDİYA & KASA YÖNETİMİ — FAZ 7
@@ -471,6 +590,38 @@ export const goodsReceiptItems = sqliteTable("goods_receipt_items", {
   qty: integer("qty").notNull(),
 });
 
+// Supplier purchase coverage and stock-backed returns (migration 0029).
+export const supplierOrderCoverage = sqliteTable("supplier_order_coverage", {
+  purchaseOrderId: integer("purchase_order_id").primaryKey().references(() => purchaseOrders.id, {onDelete:"restrict"}),
+  expectedDate: text("expected_date"),
+  createdAt: integer("created_at", {mode:"timestamp"}).default(sql`(unixepoch())`).notNull(),
+});
+export const supplierCommandFences = sqliteTable("supplier_command_fences", {
+  requestKey: text("request_key").primaryKey(),
+  createdBy: integer("created_by").notNull().references(() => users.id, {onDelete:"restrict"}),
+  createdAt: integer("created_at", {mode:"timestamp"}).default(sql`(unixepoch())`).notNull(),
+});
+export const supplierReceiptRequests = sqliteTable("supplier_receipt_requests", {
+  requestKey: text("request_key").primaryKey(), payloadHash: text("payload_hash").notNull(),
+  receiptId: integer("receipt_id").notNull().unique().references(() => goodsReceipts.id, {onDelete:"restrict"}),
+  receivedQty: integer("received_qty").notNull(), poStatus: text("po_status").notNull(),
+});
+export const supplierReturns = sqliteTable("supplier_returns", {
+  id: integer("id").primaryKey({autoIncrement:true}), requestKey: text("request_key").notNull().unique(), payloadHash: text("payload_hash").notNull(),
+  receiptId: integer("receipt_id").notNull().references(() => goodsReceipts.id, {onDelete:"restrict"}),
+  supplierId: integer("supplier_id").notNull().references(() => suppliers.id, {onDelete:"restrict"}),
+  warehouseId: integer("warehouse_id").notNull().references(() => warehouses.id, {onDelete:"restrict"}),
+  reason: text("reason").notNull(), createdBy: integer("created_by").notNull().references(() => users.id, {onDelete:"restrict"}),
+  createdAt: integer("created_at", {mode:"timestamp"}).default(sql`(unixepoch())`).notNull(),
+});
+export const supplierReturnItems = sqliteTable("supplier_return_items", {
+  id: integer("id").primaryKey({autoIncrement:true}),
+  supplierReturnId: integer("supplier_return_id").notNull().references(() => supplierReturns.id, {onDelete:"restrict"}),
+  receiptItemId: integer("receipt_item_id").notNull().references(() => goodsReceiptItems.id, {onDelete:"restrict"}),
+  productId: integer("product_id").notNull().references(() => products.id, {onDelete:"restrict"}),
+  variantId: integer("variant_id").references(() => productVariants.id, {onDelete:"restrict"}), qty: integer("qty").notNull(),
+}, (table) => [uniqueIndex("supplier_return_item_unique").on(table.supplierReturnId,table.receiptItemId), index("supplier_return_items_receipt_item_idx").on(table.receiptItemId)]);
+
 // ==========================================
 // CARİ HESAP HAREKETLERİ (borç/alacak defteri)
 export const accountTransactions = sqliteTable("account_transactions", {
@@ -486,7 +637,7 @@ export const accountTransactions = sqliteTable("account_transactions", {
   paidAt: integer("paid_at", { mode: "timestamp" }),
   createdBy: text("created_by").default("Sistem"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("account_transactions_customer_idx").on(table.customerId, table.id)]);
 
 // ==========================================
 // 9. KAMPANYALAR, KUPONLAR & SADAKAT
@@ -541,7 +692,7 @@ export const productQuestions = sqliteTable("product_questions", {
   question: text("question").notNull(),
   answer: text("answer"),
   answeredBy: text("answered_by"),
-  status: text("status").notNull().default("OPEN"), // OPEN, ANSWERED, HIDDEN
+  status: text("status").notNull().default("OPEN"), // OPEN (onay bekliyor), APPROVED, ANSWERED, HIDDEN
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });
 
@@ -565,7 +716,7 @@ export const loyaltyTransactions = sqliteTable("loyalty_transactions", {
   description: text("description"),
   orderId: integer("order_id"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("loyalty_transactions_customer_created_idx").on(table.customerId, table.createdAt, table.id), index("loyalty_transactions_order_idx").on(table.orderId, table.customerId)]);
 
 // ==========================================
 // 10. CMS: BLOG & KURUMSAL İÇERİK
@@ -608,7 +759,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   details: text("details"),
   ipAddress: text("ip_address").default("127.0.0.1"),
   createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
-});
+}, (table) => [index("audit_logs_crm_entity_idx").on(table.entity, table.entityId, table.action, table.createdAt, table.id)]);
 
 // ==========================================
 // 12. COMMERCE INTELLIGENCE ENGINE — FAZ 1 (TEMEL ZEKÂ)
@@ -1053,4 +1204,24 @@ export const decisionOutcomes = sqliteTable("decision_outcomes", {
   measuredAt: integer("measured_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 }, (t) => [
   index("decision_outcomes_decision_idx").on(t.decisionId),
+]);
+
+// ==========================================
+// DESTEK MASASI — "İletişim & Destek Masası" formundan gelen mesajlar
+// ==========================================
+export const contactMessages = sqliteTable("contact_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  phone: text("phone").notNull(),
+  email: text("email"),
+  subject: text("subject"),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("NEW"), // NEW | READ | ANSWERED
+  source: text("source").notNull().default("iletisim"),
+  createdBy: text("created_by"), // giriş yapmış üyenin e-postası (varsa)
+  createdAt: integer("created_at", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
+  readAt: integer("read_at", { mode: "timestamp" }),
+}, (t) => [
+  index("contact_messages_created_idx").on(t.createdAt),
+  index("contact_messages_status_idx").on(t.status),
 ]);

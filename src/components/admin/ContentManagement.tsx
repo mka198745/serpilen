@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BlogContent } from "@/components/blog/BlogContent";
 import { youtubeEmbedSrc, tiktokEmbedSrc, instagramEmbedSrc, isSafeImageSrc } from "@/lib/media-embed";
 import {
@@ -75,6 +76,7 @@ const toLocalInput = (d: Date) => {
 };
 
 export function ContentManagement() {
+  const router = useRouter();
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"list" | "editor">("list");
@@ -88,6 +90,44 @@ export function ContentManagement() {
   const [mediaPanel, setMediaPanel] = useState<null | "image" | "youtube" | "tiktok" | "instagram">(null);
   const [mediaUrl, setMediaUrl] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [blogEnabled, setBlogEnabled] = useState<boolean | null>(null);
+  const [blogSaving, setBlogSaving] = useState(false);
+  const [blogSettingsError, setBlogSettingsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/site-settings", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!data?.success || !data.data) throw new Error("Blog ayarı okunamadı.");
+        if (!cancelled) setBlogEnabled(data.data["site.blog.enabled"] !== "false");
+      })
+      .catch(() => { if (!cancelled) setBlogSettingsError("Blog ayarı okunamadı. Sayfayı yenileyerek tekrar deneyin."); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleBlog = async () => {
+    if (blogEnabled === null || blogSaving) return;
+    const next = !blogEnabled;
+    setBlogSaving(true);
+    setBlogSettingsError(null);
+    try {
+      const response = await authFetch("/api/site-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patch: { "site.blog.enabled": String(next) } }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) throw new Error(data?.error?.message || "Blog ayarı kaydedilemedi.");
+      setBlogEnabled(data.data["site.blog.enabled"] !== "false");
+      window.dispatchEvent(new Event("site-settings-updated"));
+      router.refresh();
+    } catch (error) {
+      setBlogSettingsError(error instanceof Error ? error.message : "Blog ayarı kaydedilemedi.");
+    } finally {
+      setBlogSaving(false);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -623,8 +663,21 @@ export function ContentManagement() {
         </div>
       </div>
 
+      <div className="flex flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-stone-900">Blog Sistemi</h3>
+          <p className="mt-1 text-xs leading-relaxed text-stone-500">Pasifken Dikiş Rehberi ve ana sayfadaki Bilgi & Atölye gizlenir; yazılar silinmez ve buradan düzenlenebilir.</p>
+          {blogSettingsError && <p role="alert" className="mt-2 text-xs font-medium text-rose-700">{blogSettingsError}</p>}
+        </div>
+        <button type="button" role="switch" aria-label="Blog Sistemi" aria-checked={blogEnabled === true} onClick={() => void toggleBlog()} disabled={blogEnabled === null || blogSaving} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition disabled:opacity-50 ${blogEnabled ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200" : "bg-stone-100 text-stone-700 hover:bg-stone-200"}`}>
+          <Power className="h-4 w-4" />
+          {blogSaving ? "Kaydediliyor…" : blogEnabled === null ? "Yükleniyor…" : blogEnabled ? "Aktif" : "Pasif"}
+        </button>
+      </div>
+
       {feedback && (
         <div className={`p-3 rounded-xl text-xs font-medium border ${feedback.isError ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
+
           {feedback.text}
         </div>
       )}

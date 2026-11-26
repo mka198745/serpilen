@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useSiteSettings } from "@/lib/use-site-settings";
+import { parseCheckoutSettings, validTurkishIban } from "@/lib/site-settings-shared";
 import {
   PackageSearch,
   Truck,
@@ -31,6 +33,7 @@ export function OrderTrackClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<any | null>(null);
+  const checkout = parseCheckoutSettings(useSiteSettings());
 
   const track = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,7 +67,7 @@ export function OrderTrackClient() {
           <PackageSearch className="w-7 h-7" />
         </div>
         <h1 className="text-2xl font-black text-stone-900 tracking-tight">Sipariş Takibi</h1>
-        <p className="text-sm text-stone-500">Sipariş numaranız ve telefonunuz ile durumu görüntüleyin.</p>
+        <p className="text-sm text-stone-500">Sipariş numaranızla durumu görüntüleyin; ayrıntılar için telefonunuzu da girin.</p>
       </div>
 
       <form onSubmit={track} className="bg-white rounded-3xl border border-stone-200 shadow-xs p-6 space-y-3">
@@ -75,7 +78,7 @@ export function OrderTrackClient() {
               <Hash className="w-4 h-4 text-stone-400 absolute left-3 top-2.5" />
               <input
                 required
-                placeholder="OR-2026-12345"
+                placeholder="SİP20260001"
                 value={orderNumber}
                 onChange={(e) => setOrderNumber(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 border border-stone-300 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-amber-700/40"
@@ -118,13 +121,19 @@ export function OrderTrackClient() {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <span className="font-mono font-black text-lg text-stone-900">{order.orderNumber}</span>
-                <p className="text-xs text-stone-500">{new Date(order.createdAt).toLocaleString("tr-TR")}</p>
+                {order.createdAt && <p className="text-xs text-stone-500">{new Date(order.createdAt).toLocaleString("tr-TR")}</p>}
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-bold ${isCancelled ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>
                 {order.statusLabel}
               </span>
             </div>
 
+            {order.status === "BACKORDER" && <p className="text-xs bg-amber-50 p-3 rounded-xl text-amber-950">Stok bekleme sırasındasınız; henüz ödeme yapmayın. Stok ayrıldığında 24 saatlik ödeme süresi başlar. E-posta bildirimi gönderilmeye çalışılır; ulaşmama ihtimaline karşı bu sayfayı düzenli kontrol edin veya mağazayla görüşün.</p>}
+            {order.status === "PENDING" && <div className="text-xs bg-amber-50 p-3 rounded-xl text-amber-950 space-y-2">
+              <p>Ödeme onayı için son zaman: {order.paymentDeadline ? new Date(order.paymentDeadline).toLocaleString("tr-TR") : "Mağazayla görüşün"}. Banka kontrolü bu sürede tamamlanmalıdır.</p>
+              {!order.detailsRestricted && order.paymentMethod === "EFT_HAVALE" && validTurkishIban(checkout.eftIban) && <p>Havale açıklamasına sipariş numaranızı yazın. {checkout.eftBank} · {checkout.eftAccountName} · <strong>{checkout.eftIban}</strong></p>}
+              {order.detailsRestricted && <p>Ödeme bilgileri ve tutarı için telefon numaranızla tekrar sorgulayın.</p>}
+            </div>}
             {/* Adım çizelgesi */}
             {!isCancelled && currentStepIndex >= 0 && (
               <div className="flex items-center justify-between pt-2">
@@ -163,8 +172,12 @@ export function OrderTrackClient() {
             )}
           </div>
 
+          {order.detailsRestricted && (
+            <p className="text-xs text-stone-600">Sipariş ayrıntılarını görmek için siparişte kullandığınız telefon numarasıyla tekrar sorgulayın.</p>
+          )}
+
           {/* Kalemler */}
-          <div className="bg-white rounded-3xl border border-stone-200 shadow-xs overflow-hidden">
+          {order.items && <div className="bg-white rounded-3xl border border-stone-200 shadow-xs overflow-hidden">
             <table className="w-full text-xs text-left">
               <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
                 <tr>
@@ -192,7 +205,7 @@ export function OrderTrackClient() {
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </div>}
 
           {/* Durum geçmişi */}
           {order.history?.length > 0 && (
