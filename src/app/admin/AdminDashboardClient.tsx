@@ -1066,7 +1066,7 @@ export function AdminDashboardClient({
   const refreshProducts = async () => {
     const pRes = await authFetch("/api/products?scope=all-warehouses");
     const pData = await pRes.json();
-    if (pData.success) setProducts(pData.data);
+    if (pData.success && Array.isArray(pData.data)) setProducts(pData.data);
   };
 
   const handleDeleteProduct = async (id: number, name: string) => {
@@ -1321,7 +1321,7 @@ export function AdminDashboardClient({
   const loadInventory = React.useCallback(async () => {
     const invRes = await authFetch("/api/inventory", { cache: "no-store" });
     const invData = await invRes.json();
-    if (invData.success) {
+    if (invData.success && Array.isArray(invData.inventory) && Array.isArray(invData.recentLedger)) {
       setInventoryList(invData.inventory);
       setLedger(invData.recentLedger);
     }
@@ -1686,7 +1686,7 @@ export function AdminDashboardClient({
         // Refresh inventory
         const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
-        if (invData.success) {
+        if (invData.success && Array.isArray(invData.inventory) && Array.isArray(invData.recentLedger)) {
           setInventoryList(invData.inventory);
           setLedger(invData.recentLedger);
         }
@@ -1715,7 +1715,7 @@ export function AdminDashboardClient({
         setIsAdjustOpen(false);
         const invRes = await authFetch("/api/inventory");
         const invData = await invRes.json();
-        if (invData.success) {
+        if (invData.success && Array.isArray(invData.inventory) && Array.isArray(invData.recentLedger)) {
           setInventoryList(invData.inventory);
           setLedger(invData.recentLedger);
         }
