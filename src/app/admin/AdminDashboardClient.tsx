@@ -250,6 +250,11 @@ export function AdminDashboardClient({
   const [catalogBrandFilter, setCatalogBrandFilter] = useState("ALL");
   const [catalogCatFilter, setCatalogCatFilter] = useState("ALL");
   const [variantFilters, setVariantFilters] = useState({category:"",brand:"",product:"",color:"",warehouse:""});
+  const [variantPage, setVariantPage] = useState(1);
+  const changeVariantFilter = (key: keyof typeof variantFilters, value: string) => {
+    setVariantFilters(previous => ({...previous, [key]: value}));
+    setVariantPage(1);
+  };
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [productEditError, setProductEditError] = useState("");
   const [variantEditDirty, setVariantEditDirty] = useState(false);
@@ -307,6 +312,17 @@ export function AdminDashboardClient({
       });
     });
   }, [variantProducts,inventoryList,variantFilters]);
+  const variantPageSize = 20;
+  const variantPageCount = Math.max(1, Math.ceil(variantTableRows.length / variantPageSize));
+  const currentVariantPage = Math.min(variantPage, variantPageCount);
+  const variantPageStart = (currentVariantPage - 1) * variantPageSize;
+  const visibleVariantRows = variantTableRows.slice(variantPageStart, variantPageStart + variantPageSize);
+  React.useEffect(() => {
+    // Rows can disappear after deletion or inventory refresh; do not retain an
+    // out-of-range page if the result later grows again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVariantPage(previous => Math.min(previous, variantPageCount));
+  }, [variantPageCount]);
   const [ledger, setLedger] = useState(initialLedger);
   const [orders, setOrders] = useState(initialOrders);
   const [purchaseOrders, setPurchaseOrders] = useState(initialPOs);
@@ -2729,14 +2745,14 @@ export function AdminDashboardClient({
                 </form>
 
                 <section aria-label="Varyant tablosu filtreleri" className="bg-white p-4 rounded-2xl border border-stone-200 space-y-3 text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-sm">Varyantları Filtrele</h3><button type="button" onClick={()=>setVariantFilters({category:"",brand:"",product:"",color:"",warehouse:""})} className="font-bold text-amber-800 hover:underline">Filtreleri temizle</button></div>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-sm">Varyantları Filtrele</h3><button type="button" onClick={()=>{setVariantFilters({category:"",brand:"",product:"",color:"",warehouse:""});setVariantPage(1);}} className="font-bold text-amber-800 hover:underline">Filtreleri temizle</button></div>
                   <p className="text-stone-500">Tek bir filtre seçebilirsiniz; birden fazla seçim birlikte uygulanır. Depo seçildiğinde yalnız o depodaki satırlar gösterilir.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                    <label className="font-bold">Kategori<select value={variantFilters.category} onChange={e=>setVariantFilters(f=>({...f,category:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm kategoriler</option>{variantFilters.category&&!categoriesList.some(c=>String(c.id)===variantFilters.category)&&<option value={variantFilters.category}>Seçim artık bulunmuyor</option>}{categoriesList.map(c=><option key={c.id} value={String(c.id)}>{c.parentName?`${c.parentName} / `:""}{c.name}</option>)}</select></label>
-                    <label className="font-bold">Marka<select value={variantFilters.brand} onChange={e=>setVariantFilters(f=>({...f,brand:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm markalar</option><option value="unassigned">Markasız</option>{variantFilters.brand&&variantFilters.brand!=="unassigned"&&!brandsList.some(b=>String(b.id)===variantFilters.brand)&&<option value={variantFilters.brand}>Seçim artık bulunmuyor</option>}{brandsList.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select></label>
-                    <label className="font-bold">Ürün<select value={variantFilters.product} onChange={e=>setVariantFilters(f=>({...f,product:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm ürünler</option>{variantFilters.product&&!variantProducts.some(p=>String(p.id)===variantFilters.product)&&<option value={variantFilters.product}>Seçim artık bulunmuyor</option>}{variantProducts.map(p=><option key={p.id} value={String(p.id)}>{p.name} ({p.sku}){p.isActive===false?" — pasif":""}</option>)}</select></label>
-                    <label className="font-bold">Renk<select value={variantFilters.color} onChange={e=>setVariantFilters(f=>({...f,color:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm renkler</option>{variantFilters.color&&!variantColors.some(([key])=>key===variantFilters.color)&&<option value={variantFilters.color}>Seçim artık bulunmuyor</option>}{variantColors.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
-                    <label className="font-bold">Stok Yeri<select value={variantFilters.warehouse} onChange={e=>setVariantFilters(f=>({...f,warehouse:e.target.value}))} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm depolar</option><option value="unassigned">Stok kaydı yok</option>{variantFilters.warehouse&&variantFilters.warehouse!=="unassigned"&&!warehousesList.some(w=>String(w.id)===variantFilters.warehouse)&&<option value={variantFilters.warehouse}>Seçim artık bulunmuyor</option>}{warehousesList.map(w=><option key={w.id} value={String(w.id)}>{w.name}{w.isActive===false?" — pasif":""}</option>)}</select></label>
+                    <label className="font-bold">Kategori<select value={variantFilters.category} onChange={e=>changeVariantFilter("category",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm kategoriler</option>{variantFilters.category&&!categoriesList.some(c=>String(c.id)===variantFilters.category)&&<option value={variantFilters.category}>Seçim artık bulunmuyor</option>}{categoriesList.map(c=><option key={c.id} value={String(c.id)}>{c.parentName?`${c.parentName} / `:""}{c.name}</option>)}</select></label>
+                    <label className="font-bold">Marka<select value={variantFilters.brand} onChange={e=>changeVariantFilter("brand",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm markalar</option><option value="unassigned">Markasız</option>{variantFilters.brand&&variantFilters.brand!=="unassigned"&&!brandsList.some(b=>String(b.id)===variantFilters.brand)&&<option value={variantFilters.brand}>Seçim artık bulunmuyor</option>}{brandsList.map(b=><option key={b.id} value={String(b.id)}>{b.name}</option>)}</select></label>
+                    <label className="font-bold">Ürün<select value={variantFilters.product} onChange={e=>changeVariantFilter("product",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm ürünler</option>{variantFilters.product&&!variantProducts.some(p=>String(p.id)===variantFilters.product)&&<option value={variantFilters.product}>Seçim artık bulunmuyor</option>}{variantProducts.map(p=><option key={p.id} value={String(p.id)}>{p.name} ({p.sku}){p.isActive===false?" — pasif":""}</option>)}</select></label>
+                    <label className="font-bold">Renk<select value={variantFilters.color} onChange={e=>changeVariantFilter("color",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm renkler</option>{variantFilters.color&&!variantColors.some(([key])=>key===variantFilters.color)&&<option value={variantFilters.color}>Seçim artık bulunmuyor</option>}{variantColors.map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+                    <label className="font-bold">Stok Yeri<select value={variantFilters.warehouse} onChange={e=>changeVariantFilter("warehouse",e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-xl font-normal"><option value="">Tüm depolar</option><option value="unassigned">Stok kaydı yok</option>{variantFilters.warehouse&&variantFilters.warehouse!=="unassigned"&&!warehousesList.some(w=>String(w.id)===variantFilters.warehouse)&&<option value={variantFilters.warehouse}>Seçim artık bulunmuyor</option>}{warehousesList.map(w=><option key={w.id} value={String(w.id)}>{w.name}{w.isActive===false?" — pasif":""}</option>)}</select></label>
                   </div>
                 </section>
 
@@ -2747,7 +2763,7 @@ export function AdminDashboardClient({
                       {["Kategori","Marka","Ürün","Renk","Alış Fiyatı","Satış Fiyatı","Stok Adedi","Stok Yeri","Barkod","İşlem"].map(h=><th key={h} scope="col" className="py-2 px-1.5 whitespace-nowrap">{h}</th>)}
                     </tr></thead>
                     <tbody className="divide-y divide-stone-100">
-                      {variantTableRows.map(({p,v,stock}) => <tr key={`${v.id}-${stock?.id ?? "none"}`}>
+                      {visibleVariantRows.map(({p,v,stock}) => <tr key={`${v.id}-${stock?.id ?? "none"}`}>
                           <td className="py-2 px-1.5">{categoriesList.find(c=>c.id===p.categoryId)?.name || "—"}</td>
                           <td className="py-2 px-1.5">{productBrandLabel(p,brandsList)}</td>
                           <td className="py-2 px-1.5 font-semibold">{p.name}{p.isActive===false&&<span className="block text-stone-500">Pasif ürün</span>}</td>
@@ -2765,6 +2781,13 @@ export function AdminDashboardClient({
                     </tbody>
                   </table>
                   {variantTableRows.length===0&&<p role="status" className="p-4 text-xs text-stone-500">Filtrelere uygun varyant bulunamadı.</p>}
+                  <nav aria-label="Varyant tablosu sayfalama" className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 px-3 py-3 text-xs">
+                    <span aria-live="polite">{variantTableRows.length ? `${variantPageStart + 1}–${variantPageStart + visibleVariantRows.length}` : "0"} / {variantTableRows.length} satır · Sayfa {currentVariantPage} / {variantPageCount}</span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={()=>setVariantPage(currentVariantPage-1)} disabled={currentVariantPage<=1} className="px-3 py-1.5 border border-stone-300 rounded-lg font-bold disabled:opacity-40">← Önceki</button>
+                      <button type="button" onClick={()=>setVariantPage(currentVariantPage+1)} disabled={currentVariantPage>=variantPageCount} className="px-3 py-1.5 border border-stone-300 rounded-lg font-bold disabled:opacity-40">Sonraki →</button>
+                    </div>
+                  </nav>
                 </div>
               </div>
             )}
