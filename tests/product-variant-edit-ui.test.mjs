@@ -16,3 +16,15 @@ test('Varyant ekranı seçili depo, stok onayı ve ayrı kaydetme akışını g�
  await act(async()=>document.querySelector('input[type=checkbox]').click());await act(async()=>submit.click());assert.equal(body.variants[0].physicalQty,5);assert.equal(body.warehouseId,1);assert.equal(body.physicalConfirmed,true);assert.equal(saved,1);assert.equal(dirty,false);await act(async()=>root.unmount());
  }finally{globalThis.fetch=original;dom.window.close();}
 });
+
+test('Tablodan açılan düzenleyici yalnız seçilen varyantı gösterir ve gönderir',async()=>{
+ const dom=new JSDOM('<!doctype html><div id="root"></div>',{url:'https://admin.example.test'});for(const key of ['window','document','navigator','self','localStorage'])Object.defineProperty(globalThis,key,{value:key==='self'?dom.window:dom.window[key],configurable:true});globalThis.IS_REACT_ACT_ENVIRONMENT=true;const original=globalThis.fetch;let body;
+ const row=(id,color)=>({id,colorName:color,colorHex:'',size:'',length:'',buyPrice:'',retailPrice:'10',sku:'v'+id,barcode:'',imageUrl:'',isActive:true,physicalQty:0,reservedQty:0,availableQty:0});
+ const preview={productId:1,productName:'Ürün',warehouseId:1,warehouses:[{id:1,name:'Ana'}],fingerprint:'a'.repeat(64),variants:[row(1,'Mavi'),row(2,'Kırmızı')]};
+ globalThis.fetch=async(url,opts={})=>{if(url.startsWith('/api/product-variant-edit?id='))return Response.json({success:true,data:preview});if(opts.method==='PATCH'){body=JSON.parse(opts.body);return Response.json({success:true,data:{promoted:0}});}throw Error('unexpected');};
+ try{const {createRoot}=await import('react-dom/client');const {EditProductVariants}=await import('../src/components/admin/EditProductVariants.tsx');const root=createRoot(document.getElementById('root'));const props={productId:1,selectedVariantId:2,onSaved:async()=>{},onDirtyChange:()=>{},onBusyChange:()=>{}};
+ await act(async()=>root.render(React.createElement(EditProductVariants,props)));assert.equal(document.querySelectorAll('fieldset').length,1);assert.equal(document.querySelector('input').value,'Kırmızı');assert.ok(![...document.querySelectorAll('input')].some(x=>x.value==='Mavi'));
+ const input=document.querySelector('input'),setter=Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype,'value').set;await act(async()=>{setter.call(input,'Bordo');input.dispatchEvent(new dom.window.Event('input',{bubbles:true}));});await act(async()=>[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Varyantı ve')).click());assert.equal(body.variantId,2);assert.deepEqual(body.variants.map(v=>v.id),[2]);assert.equal(body.variants[0].colorName,'Bordo');
+ await act(async()=>root.render(React.createElement(EditProductVariants,{...props,selectedVariantId:99})));assert.match(document.body.textContent,/Seçilen varyant bulunamadı/);assert.equal(document.querySelectorAll('fieldset').length,0);await act(async()=>root.unmount());
+ }finally{globalThis.fetch=original;dom.window.close();}
+});

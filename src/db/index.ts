@@ -20,7 +20,9 @@ function resolveSqlitePath(url: string): string {
     if (p.startsWith(prefix)) p = p.slice(prefix.length);
   }
   if (p === ":memory:") return p;
-  return path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+  // This is a runtime database location, not a bundle asset. Tracing a dynamic
+  // path here would unnecessarily include the entire project in standalone.
+  return path.isAbsolute(p) ? p : path.resolve(/*turbopackIgnore: true*/ process.cwd(), p);
 }
 
 const globalForDb = globalThis as typeof globalThis & {

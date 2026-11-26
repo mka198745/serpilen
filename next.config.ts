@@ -4,10 +4,10 @@ const nextConfig: NextConfig = {
   // Üretim çıktısı `.next/standalone/server.js` olarak da üretilir;
   // Docker imajı ve doğrudan Node dağıtımı için gereklidir.
   output: "standalone",
-  // Standalone çıktısına yerel gizli/veri dosyaları girmesin
-  // (NFT izlemesi path.resolve yüzünden projeyi geniş izliyor).
+  // Runtime verileri, dağıtım arşivleri ve geliştirme dosyaları
+  // uygulamanın çalışma zamanı bağımlılıkları değildir.
   outputFileTracingExcludes: {
-    "*": [".env", ".env.*", ".env.local", "data/**", "backups/**", "image-search/**"],
+    "*": [".env", ".env.*", ".env.local", "data/**", "backups/**", "image-search/**", "hosting/**", "tests/**", "docs/**", "*.zip"],
   },
 };
 

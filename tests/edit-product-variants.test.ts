@@ -39,4 +39,17 @@ test('Satış deposuna stok eklendiğinde FIFO sipariş rezervasyonu aynı trans
  sqlite.exec("INSERT INTO orders(id,order_number,order_type,customer_name,status,payment_status,payment_method,grand_total) VALUES(1,'WAIT','ONLINE_B2C','M','BACKORDER','PENDING','EFT_HAVALE',20); INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price,quantity,total_price) VALUES(1,1,2,'Test','v2',10,2,20)");
  const p=previewVariantEdit(1,1,admin),r=rows(p);r[1].physicalQty=3;assert.equal(save(p,r).promoted,1);assert.deepEqual(get('SELECT physical_qty,reserved_qty FROM inventory WHERE warehouse_id=1 AND variant_id=2'),{physical_qty:3,reserved_qty:2});assert.equal(get('SELECT status FROM orders WHERE id=1').status,'PENDING');assert.equal(get("SELECT count(*) n FROM order_notification_outbox WHERE order_id=1").n,1);
 });
+test('Tek varyant seçimi sadece o kaydı değiştirir, çakışma ve eski önizlemeyi reddeder',()=>{
+ const p=previewVariantEdit(1,1,admin), r=rows(p), before=get('SELECT * FROM product_variants WHERE id=1');
+ const one={...r[1], colorName:'Bordo', physicalQty:r[1].physicalQty+1};
+ assert.throws(()=>saveVariantEdits(1,1,admin,[one],p.fingerprint,false,2),/doğrulaması/);
+ assert.throws(()=>saveVariantEdits(1,1,admin,[one],p.fingerprint,true,1),/uyuşmuyor/);
+ assert.throws(()=>saveVariantEdits(1,1,admin,[{...one,sku:r[0].sku}],p.fingerprint,true,2),/SKU/);
+ assert.throws(()=>saveVariantEdits(1,1,admin,[{...one,colorName:r[0].colorName}],p.fingerprint,true,2),/Aynı renk/);
+ saveVariantEdits(1,1,admin,[one],p.fingerprint,true,2);
+ assert.deepEqual(get('SELECT * FROM product_variants WHERE id=1'),before);
+ assert.equal(get('SELECT color_name FROM product_variants WHERE id=2').color_name,'Bordo');
+ assert.throws(()=>saveVariantEdits(1,1,admin,[one],p.fingerprint,true,2),/değişti/);
+ const audit=JSON.parse(get("SELECT details FROM audit_logs WHERE action='PRODUCT_VARIANTS_EDITED' ORDER BY id DESC LIMIT 1").details);assert.deepEqual(audit.variants.map((x:any)=>x.id),[2]);
+});
 test.after(()=>{sqlite.close();fs.rmSync(dir,{recursive:true,force:true});});

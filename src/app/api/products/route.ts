@@ -230,6 +230,14 @@ export async function POST(request: Request) {
       warehouseId,
     } = body;
 
+    // A controlled select must never silently persist a stale or nonexistent brand.
+    if (brandId !== undefined && brandId !== null && brandId !== "") {
+      const selectedBrandId = Number(brandId);
+      if (!Number.isSafeInteger(selectedBrandId) || selectedBrandId < 1 || !(await db.select({ id: brands.id }).from(brands).where(eq(brands.id, selectedBrandId)).limit(1)).length) {
+        return NextResponse.json({ success: false, error: "Seçilen marka bulunamadı. Lütfen geçerli bir marka seçin." }, { status: 422 });
+      }
+    }
+
     let technicalDetails: string | null = null;
     if (body.technicalDetails !== undefined) {
       try {

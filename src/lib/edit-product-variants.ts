@@ -63,34 +63,38 @@ function validateRows(input:unknown):VariantEditInput[]{
   return {id,colorName,colorHex,size,length,buyPrice,retailPrice,sku,barcode,imageUrl,physicalQty:qty};
  });
 }
-export function saveVariantEdits(productId:number,warehouseId:number,actor:Actor,input:unknown,fingerprint:string,physicalConfirmed:boolean){
+export function saveVariantEdits(productId:number,warehouseId:number,actor:Actor,input:unknown,fingerprint:string,physicalConfirmed:boolean,selectedVariantId?:number){
  const edits=validateRows(input);
  return sqlite.transaction(()=>{
   if(!actor.sessionHash||!/^[a-f0-9]{64}$/.test(actor.sessionHash)||!sqlite.prepare('SELECT 1 FROM admin_sessions WHERE jti=? AND user_id=? AND revoked_at IS NULL AND expires_at>unixepoch()').get(actor.sessionHash,actor.id))fail('Oturum süresi doldu veya oturum kapatıldı.',403);
   const current=inspect(productId,warehouseId,actor);
   if(!fingerprint||fingerprint!==current.fingerprint)fail('Varyant, depo veya stok değişti; verileri yenileyip yeniden kontrol edin.');
-  if(current.warehouseId===null||edits.length!==current.variants.length||edits.some((e,i)=>e.id!==current.variants[i].id))fail('Varyant listesi değişti; yeniden yükleyin.');
-  const combos=new Set<string>(),skus=new Set<string>(),barcodes=new Set<string>();
-  for(const [i,e] of edits.entries()){
-   const original=current.variants[i];if(!e.colorName&&!e.size&&!e.length)fail('Varyant için renk bilgisi gereklidir.',422);
-   const combination=[e.colorName,e.size,e.length].map(x=>x.trim().toLocaleLowerCase('tr-TR')).join('\0');if(combos.has(combination))fail('Aynı renk ve özelliklerde birden fazla varyant var.',422);combos.add(combination);
+  if(current.warehouseId===null)fail('Geçerli depo seçilmedi.');
+  if(selectedVariantId!==undefined){if(!validId(selectedVariantId)||edits.length!==1||edits[0].id!==selectedVariantId||!current.variants.some(v=>v.id===selectedVariantId))fail('Seçilen varyant bulunamadı veya uyuşmuyor.');}
+  else if(edits.length!==current.variants.length||edits.some((e,i)=>e.id!==current.variants[i].id))fail('Varyant listesi değişti; yeniden yükleyin.');
+  const originalById=new Map(current.variants.map(v=>[v.id,v]));
+  const combinationKey=(v:{colorName:string;size:string;length:string})=>[v.colorName,v.size,v.length].map(x=>x.trim().toLocaleLowerCase('tr-TR')).join('\0');
+  const combos=new Set<string>(selectedVariantId===undefined?[]:current.variants.filter(v=>v.id!==selectedVariantId).map(combinationKey)),skus=new Set<string>(),barcodes=new Set<string>();
+  for(const e of edits){
+   const original=originalById.get(e.id)!;if(!e.colorName&&!e.size&&!e.length)fail('Varyant için renk bilgisi gereklidir.',422);
+   const combination=combinationKey(e);if(combos.has(combination))fail('Aynı renk ve özelliklerde birden fazla varyant var.',422);combos.add(combination);
    if(skus.has(e.sku))fail('Varyant SKU değerleri yinelenemez.',422);skus.add(e.sku);
    if(e.barcode){if(barcodes.has(e.barcode))fail('Varyant barkodları yinelenemez.',422);barcodes.add(e.barcode);}
    if(sqlite.prepare('SELECT 1 FROM products WHERE sku=? UNION ALL SELECT 1 FROM product_variants WHERE sku=? AND id<>? LIMIT 1').get(e.sku,e.sku,e.id))fail('Varyant SKU başka bir üründe kullanılıyor.',409);
    if(e.barcode&&sqlite.prepare('SELECT 1 FROM products WHERE barcode=? UNION ALL SELECT 1 FROM product_variants WHERE barcode=? AND id<>? LIMIT 1').get(e.barcode,e.barcode,e.id))fail('Varyant barkodu başka bir üründe kullanılıyor.',409);
    if(e.physicalQty<original.reservedQty)fail('Fiili stok ayrılmış stoktan daha az olamaz.');
   }
-  const changedStock=edits.filter((e,i)=>e.physicalQty!==current.variants[i].physicalQty);
+  const changedStock=edits.filter(e=>e.physicalQty!==originalById.get(e.id)!.physicalQty);
   if(changedStock.length&&!physicalConfirmed)fail('Fiziksel stok doğrulaması gereklidir.',422);
   const update=sqlite.prepare('UPDATE product_variants SET color_name=?,color_hex=?,size=?,length=?,buy_price=?,retail_price=?,sku=?,barcode=?,image_url=? WHERE id=? AND product_id=?');const ref=randomUUID();
-  for(const [i,e] of edits.entries()){
-   const old=current.variants[i];
+  for(const e of edits){
+   const old=originalById.get(e.id)!;
    update.run(e.colorName||null,e.colorHex||null,e.size||null,e.length||null,e.buyPrice||null,e.retailPrice,e.sku,e.barcode||null,e.imageUrl||null,e.id,productId);
    const delta=e.physicalQty-old.physicalQty;
    if(delta)adjustInventorySync({warehouseId,productId,variantId:e.id,quantityDelta:delta,transactionType:'COUNT_DIFF',referenceType:'VARIANT_EDIT',referenceId:ref,note:'Ürün düzenlemede fiziksel stok düzeltmesi',createdBy:actor.name});
   }
-  const promoted=warehouseId===sharedSalesWarehouseId()&&changedStock.some(e=>e.physicalQty>current.variants.find(v=>v.id===e.id)!.physicalQty)?processOrderQueueSync().promoted:0;
-  sqlite.prepare("INSERT INTO audit_logs(user_id,user_name,action,entity,entity_id,details) VALUES(?,?,'PRODUCT_VARIANTS_EDITED','Product',?,?)").run(String(actor.id),actor.name,String(productId),JSON.stringify({warehouseId,physicalConfirmed,variants:edits.map((e,i)=>({id:e.id,before:current.variants[i],after:{...e},delta:e.physicalQty-current.variants[i].physicalQty})),promoted}));
+  const promoted=warehouseId===sharedSalesWarehouseId()&&changedStock.some(e=>e.physicalQty>originalById.get(e.id)!.physicalQty)?processOrderQueueSync().promoted:0;
+  sqlite.prepare("INSERT INTO audit_logs(user_id,user_name,action,entity,entity_id,details) VALUES(?,?,'PRODUCT_VARIANTS_EDITED','Product',?,?)").run(String(actor.id),actor.name,String(productId),JSON.stringify({warehouseId,physicalConfirmed,variants:edits.map(e=>({id:e.id,before:originalById.get(e.id),after:{...e},delta:e.physicalQty-originalById.get(e.id)!.physicalQty})),promoted}));
   return {productId,promoted};
  }).immediate();
 }

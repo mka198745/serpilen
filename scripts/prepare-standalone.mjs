@@ -21,6 +21,9 @@ if (!fs.existsSync(standaloneDir)) {
 const copies = [
   [path.join(root, ".next", "static"), path.join(standaloneDir, ".next", "static")],
   [path.join(root, "public"), path.join(standaloneDir, "public")],
+  // Deployment checks inspect the exact migration schema; do not rely on
+  // incidental output-file tracing to include these files.
+  [path.join(root, "drizzle-sqlite"), path.join(standaloneDir, "drizzle-sqlite")],
 ];
 
 for (const [src, dest] of copies) {
@@ -30,9 +33,8 @@ for (const [src, dest] of copies) {
   console.log(`[postbuild] kopyalandı: ${path.relative(root, src)} -> ${path.relative(root, dest)}`);
 }
 
-// Çalışma-zamanı SQLite dosyaları standalone çıktısına ASLA girmemeli.
-// (Turbopack NFT izlemesi projeyi geniş kapsadığı için yerel geliştirme
-// veritabanı kopyalanabiliyor; imaja/dağıtıma taşınmamalı.)
+// Savunma katmanı: çalışma-zamanı SQLite verileri standalone çıktısına
+// ASLA girmemeli; çıktı yenilendiğinde ayrı kalıcı veriler silinmez.
 const runtimeArtifacts = [path.join(standaloneDir, "data")];
 for (const artifact of runtimeArtifacts) {
   if (fs.existsSync(artifact)) {

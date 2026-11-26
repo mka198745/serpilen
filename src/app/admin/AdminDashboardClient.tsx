@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { MarketingCenter } from "@/components/admin/MarketingCenter";
 import { AiAssistantCenter } from "@/components/admin/AiAssistantCenter";
@@ -126,6 +126,18 @@ interface AdminDashboardClientProps {
   };
 }
 
+// Read browser storage after hydration, without writing over the saved value on mount.
+const subscribeToBrowserStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+const noServerStorage = () => null;
+const readStorage = (key: string) => {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+};
+const sidebarStorage = () => readStorage("admin-sidebar-collapsed");
+const purchasingStorage = () => readStorage("serpilen.purchasing.pending.v1");
+
 // Distinguish unlabelled variants without colliding with an actual color name.
 const variantColorKey = (color: unknown) => typeof color === "string" && color.trim() ? `color:${color.trim().toLocaleLowerCase("tr-TR")}` : "unlabelled";
 
@@ -147,7 +159,13 @@ export function AdminDashboardClient({
   shifts,
   dashboardStats,
 }: AdminDashboardClientProps) {
-  const [activeTab, setActiveTab] = useState<
+  /* The selected tab is constrained by the latest role matrix before rendering. */
+  const [roleMatrix, setRoleMatrix] = useState<RoleMatrix>(() => normalizeRoleMatrix(null));
+  const [matrixLoaded, setMatrixLoaded] = useState(false);
+  const isSuper = currentRole === "SUPER_ADMIN";
+  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || {};
+  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] === true;
+  const [requestedTab, setActiveTab] = useState<
     | "dashboard"
     | "catalog"
     | "wms"
@@ -173,26 +191,17 @@ export function AdminDashboardClient({
     | "database"
     | "content"
   >("dashboard");
+  // Reset an inaccessible tab synchronously so it cannot reappear if access is restored.
+  const activeTab = matrixLoaded && !canSee(requestedTab) ? "dashboard" : requestedTab;
+  if (activeTab !== requestedTab) setActiveTab(activeTab);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem("admin-sidebar-collapsed") === "1") {
-        setSidebarCollapsed(true);
-      }
-    } catch {
-      /* localStorage erişilemiyorsa sorun değil */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem("admin-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
-    } catch {
-      /* yoksay */
-    }
-  }, [sidebarCollapsed]);
+  const storedSidebar = useSyncExternalStore(subscribeToBrowserStorage, sidebarStorage, noServerStorage);
+  const [sidebarChoice, setSidebarChoice] = useState<boolean | null>(null);
+  const sidebarCollapsed = sidebarChoice ?? storedSidebar === "1";
+  const setSidebarCollapsed = (value: boolean) => {
+    setSidebarChoice(value);
+    try { window.localStorage.setItem("admin-sidebar-collapsed", value ? "1" : "0"); } catch { /* storage unavailable */ }
+  };
 
   /* --- FAZ 7: POS & Kasa Yönetimi (Admin) --- */
   const [shiftsList, setShiftsList] = useState(shifts);
@@ -200,20 +209,21 @@ export function AdminDashboardClient({
   const [posTransList, setPosTransList] = useState<any[]>([]);
   const [selectedShiftForModal, setSelectedShiftForModal] = useState<any | null>(null);
 
-  const loadPosShifts = React.useCallback(async () => {
-    try {
-      const res = await authFetch("/api/pos/shift", { cache: "no-store" });
-      const data = await res.json();
-      if (data.success) {
-        setShiftsList(data.history || []);
-        if (data.shiftTransactions) setPosTransList(data.shiftTransactions);
-      }
-    } catch {}
-  }, []);
-
   React.useEffect(() => {
-    if (activeTab === "pos") void loadPosShifts();
-  }, [activeTab, loadPosShifts]);
+    if (activeTab !== "pos") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/pos/shift", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled && data.success) {
+          setShiftsList(data.history || []);
+          if (data.shiftTransactions) setPosTransList(data.shiftTransactions);
+        }
+      } catch { /* POS bilgileri daha sonra yeniden yüklenebilir */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab]);
 
   // Dynamic state
   const [products, setProducts] = useState(initialProducts);
@@ -257,6 +267,8 @@ export function AdminDashboardClient({
   const deletingProductLock = React.useRef(false);
   const [catalogFeedback, setCatalogFeedback] = useState<{ text: string; isError: boolean } | null>(null);
   const [inventoryList, setInventoryList] = useState(initialInventory);
+  const inventoryRequestSequence = React.useRef(0);
+  const [catalogStockError, setCatalogStockError] = useState("");
   const variantProducts = React.useMemo(() => products.filter(p => (p.variants || []).length > 0), [products]);
   const variantColors = React.useMemo(() => {
     const colors = new Map<string,string>();
@@ -290,6 +302,38 @@ export function AdminDashboardClient({
 
   // Search & Filter
   const [catalogSearch, setCatalogSearch] = useState("");
+  const catalogRows = React.useMemo(() => {
+    const stockByVariant = new Map<number, {productId:number; physical:number; reserved:number}>();
+    const baseStock = new Map<number, {physical:number; reserved:number}>();
+    for (const stock of inventoryList) {
+      if (!Number.isFinite(stock.physicalQty) || !Number.isFinite(stock.reservedQty)) continue;
+      if (stock.variantId == null) {
+        const total=baseStock.get(stock.productId) || {physical:0,reserved:0};
+        total.physical+=stock.physicalQty; total.reserved+=stock.reservedQty; baseStock.set(stock.productId,total);
+      } else if (salesWarehouseId !== null && stock.warehouseId === salesWarehouseId) {
+        const total=stockByVariant.get(stock.variantId);
+        if (total && total.productId === stock.productId) { total.physical+=stock.physicalQty; total.reserved+=stock.reservedQty; }
+        else if (!total) stockByVariant.set(stock.variantId,{productId:stock.productId,physical:stock.physicalQty,reserved:stock.reservedQty});
+      }
+    }
+    const query=catalogSearch.trim().toLocaleLowerCase("tr-TR");
+    return products.flatMap(prod=>{
+      if (catalogCatFilter!=="ALL" && String(prod.categoryId)!==catalogCatFilter) return [];
+      if (catalogBrandFilter!=="ALL" && String(prod.brandId)!==catalogBrandFilter) return [];
+      const brand=prod.brandId == null ? "" : (brandsList.find(b=>String(b.id)===String(prod.brandId))?.name || prod.brandName || "");
+      const matches=(values:unknown[])=>values.some(value=>String(value??"").toLocaleLowerCase("tr-TR").includes(query));
+      const productMatch=!query||matches([prod.name,prod.sku,prod.barcode,brand,prod.tags]);
+      const variants=Array.isArray(prod.variants)?prod.variants:[];
+      if (prod.hasVariants || variants.length) return variants.flatMap((variant:any)=>{
+        const stock=stockByVariant.get(variant.id);
+        if (!stock || stock.productId!==prod.id || stock.physical<=0) return [];
+        if (!productMatch && !matches([variant.sku,variant.barcode,variant.colorName,variant.size,variant.length])) return [];
+        return [{prod,variant,stock,brand}];
+      });
+      if (!productMatch) return [];
+      return [{prod,variant:null,stock:baseStock.get(prod.id)||{physical:0,reserved:0},brand}];
+    });
+  }, [products,inventoryList,salesWarehouseId,catalogCatFilter,catalogBrandFilter,catalogSearch,brandsList]);
   const [stockSearch, setStockSearch] = useState("");
   const [selectedWhFilter, setSelectedWhFilter] = useState<string>("ALL");
 
@@ -371,12 +415,15 @@ export function AdminDashboardClient({
   const [supplierReturnReceipt, setSupplierReturnReceipt] = useState<any | null>(null);
   const [supplierReturnLines, setSupplierReturnLines] = useState<Record<number, number>>({});
   const [supplierReturnReason, setSupplierReturnReason] = useState("");
-  const [pendingPurchasing, setPendingPurchasing] = useState<Record<string, any> | null>(null);
+  const storedPurchasing = useSyncExternalStore(subscribeToBrowserStorage, purchasingStorage, noServerStorage);
+  const storedPendingPurchasing = React.useMemo(() => {
+    try { return storedPurchasing ? JSON.parse(storedPurchasing) as Record<string, any> : null; } catch { return null; }
+  }, [storedPurchasing]);
+  // undefined means no local update yet; null means the pending command was cleared.
+  const [pendingPurchasingChoice, setPendingPurchasing] = useState<Record<string, any> | null | undefined>(undefined);
+  const pendingPurchasing = pendingPurchasingChoice === undefined ? storedPendingPurchasing : pendingPurchasingChoice;
   const [purchasingSubmitting, setPurchasingSubmitting] = useState(false);
   const purchasingSubmitLock = React.useRef(false);
-  React.useEffect(() => {
-    try { const saved = localStorage.getItem("serpilen.purchasing.pending.v1"); if (saved) setPendingPurchasing(JSON.parse(saved)); } catch { /* storage unavailable */ }
-  }, []);
 
   const loadPurchasing = React.useCallback(async () => {
     setPurchasingBusy(true);
@@ -396,6 +443,8 @@ export function AdminDashboardClient({
   }, []);
 
   React.useEffect(() => {
+    // This synchronizes the selected section with the server; the loader also marks it busy.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeTab === "purchasing") void loadPurchasing();
   }, [activeTab, loadPurchasing]);
 
@@ -565,8 +614,17 @@ export function AdminDashboardClient({
   }, []);
 
   React.useEffect(() => {
-    if (activeTab === "orders" && ordersSubTab === "returns") void loadReturns();
-  }, [activeTab, ordersSubTab, loadReturns]);
+    if (activeTab !== "orders" || ordersSubTab !== "returns") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/returns", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled && data.success) setReturnsList(data.data);
+      } catch { /* sekme yeniden açıldığında tekrar denenebilir */ }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, ordersSubTab]);
 
   const openDeletion = async (kind:"order"|"return",id:number) => {
     if(deletionLock.current)return;deletionLock.current=true;setDeletionBusy(true);setOrderFeedback(null);
@@ -725,8 +783,8 @@ export function AdminDashboardClient({
     name: "",
     sku: "",
     barcode: "",
-    categoryId: "1",
-    brandId: "1",
+    categoryId: categoriesList[0] ? String(categoriesList[0].id) : "",
+    brandId: brandsList[0] ? String(brandsList[0].id) : "",
     unit: "Adet",
     buyPrice: "30.00",
     retailPrice: "55.00",
@@ -847,15 +905,9 @@ export function AdminDashboardClient({
   });
 
   /* --- Rol × Modül görünürlük matrisi --- */
-  const [roleMatrix, setRoleMatrix] = useState<RoleMatrix>(() => normalizeRoleMatrix(null));
-  const [matrixLoaded, setMatrixLoaded] = useState(false);
   const [matrixSaving, setMatrixSaving] = useState(false);
   const [matrixDirty, setMatrixDirty] = useState(false);
   const [matrixMsg, setMatrixMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const isSuper = currentRole === "SUPER_ADMIN";
-  const myMatrixRow = (roleMatrix as Record<string, Record<string, boolean>>)[currentRole] || {};
-  // Tanınmayan roller için varsayılan erişim verilmez.
-  const canSee = (key: string) => key === "dashboard" || isSuper || myMatrixRow?.[key] === true;
   const reportsAllowed = matrixLoaded && canSee("reports");
   const customerReportsAllowed = reportsAllowed && canSee("crm");
 
@@ -878,6 +930,8 @@ export function AdminDashboardClient({
 
   React.useEffect(() => {
     const sequence = reportRequestSequence;
+    // Reload on section, period or permissions changes; clear sensitive data on exit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeTab === "reports" && reportsAllowed) void loadReport(reportDays);
     else { setReportData(null); setReportBusy(false); setReportError(""); }
     return () => { sequence.current++; };
@@ -897,7 +951,6 @@ export function AdminDashboardClient({
         setMatrixLoaded(true);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleMatrixCell = (role: string, moduleKey: string) => {
@@ -945,15 +998,6 @@ export function AdminDashboardClient({
   const matrixOpenCount = (role: string) =>
     ADMIN_MODULES.filter((m) => m.key === "dashboard" || role === "SUPER_ADMIN" || roleMatrix[role as keyof RoleMatrix]?.[m.key] !== false).length;
 
-  // Rolünüzün göremediği sekmede kalınmasın (menü gizlense de durum güvenli kalsın)
-  React.useEffect(() => {
-    if (!matrixLoaded) return;
-    if (canSee(activeTab)) return;
-    const first = ADMIN_MODULES.find((m) => canSee(m.key));
-    if (first && first.key !== activeTab) setActiveTab(first.key as any);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrixLoaded, roleMatrix, currentRole]);
-
   /* --- FAZ 1: Kullanıcılar & Roller + Denetim Kaydı --- */
   const [usersList, setUsersList] = useState<any[]>([]);
   const [usersBusy, setUsersBusy] = useState(false);
@@ -993,6 +1037,8 @@ export function AdminDashboardClient({
   }, []);
 
   React.useEffect(() => {
+    // Fetching the selected remote list sets its loading indicator before the request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeTab === "users") void loadUsers();
     if (activeTab === "registeredCustomers") void loadCustomers();
   }, [activeTab, loadUsers, loadCustomers]);
@@ -1087,6 +1133,7 @@ export function AdminDashboardClient({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) { setCatalogFeedback({ text: typeof data.error === "string" ? data.error : "Ürün silinemedi.", isError: true }); return; }
       setProducts(prev => prev.filter(p => p.id !== id));
+      inventoryRequestSequence.current++;
       setInventoryList(prev => prev.filter(row => row.productId !== id));
       setVariantProductId(prev => prev === String(id) ? "" : prev);
       setCatalogFeedback({ text: `"${name}" ürünü silindi.`, isError: false });
@@ -1319,16 +1366,44 @@ export function AdminDashboardClient({
   }, []);
 
   const loadInventory = React.useCallback(async () => {
-    const invRes = await authFetch("/api/inventory", { cache: "no-store" });
-    const invData = await invRes.json();
-    if (invData.success && Array.isArray(invData.inventory) && Array.isArray(invData.recentLedger)) {
+    const seq=++inventoryRequestSequence.current;
+    try {
+      const invRes = await authFetch("/api/inventory", { cache: "no-store" });
+      const invData = await invRes.json();
+      if (seq !== inventoryRequestSequence.current) return null;
+      if (!invRes.ok || !invData.success || !Array.isArray(invData.inventory) || !Array.isArray(invData.recentLedger)) return false;
       setInventoryList(invData.inventory);
       setLedger(invData.recentLedger);
+      if (invData.salesWarehouseId === null || (typeof invData.salesWarehouseId === "number" && Number.isSafeInteger(invData.salesWarehouseId) && invData.salesWarehouseId > 0)) {
+        setSalesWarehouseId(invData.salesWarehouseId);
+      }
+      return true;
+    } catch (error) {
+      if (seq !== inventoryRequestSequence.current) return null;
+      throw error;
     }
   }, []);
 
+  // Refresh stock when opening the products tab; older responses cannot override newer mutations.
+  React.useEffect(() => {
+    if (activeTab !== "catalog" || catalogSubTab !== "products") return;
+    let cancelled=false;
+    (async()=>{
+      try { const ok=await loadInventory(); if(!cancelled && ok!==null) setCatalogStockError(ok?"":"Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+      catch { if(!cancelled) setCatalogStockError("Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+    })();
+    return ()=>{cancelled=true;};
+  }, [activeTab,catalogSubTab,loadInventory]);
+
+  const refreshCatalogStock = async () => {
+    try { const ok=await loadInventory(); if(ok!==null) setCatalogStockError(ok?"":"Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+    catch { setCatalogStockError("Stok yenilenemedi; gösterilen bilgiler eski olabilir."); }
+  };
+
   React.useEffect(() => {
     if (activeTab === "wms") {
+      // Synchronize warehouse data and show the loading indicator while requests run.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void loadWmsSection();
       void loadInventory();
     }
@@ -1507,6 +1582,7 @@ export function AdminDashboardClient({
       const res=await authFetch("/api/warehouses/sales-warehouse",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({warehouseId:id})});
       const data=await res.json();
       if(!data.success){setWmsFeedback({text:data.error||"Ortak depo seçilemedi.",isError:true});return;}
+      inventoryRequestSequence.current++;
       setSalesWarehouseId(data.data.id);setNewProd(prev=>({...prev,warehouseId:String(id)}));setAdjustData(prev=>({...prev,warehouseId:String(id)}));setWmsFeedback({text:`POS ve online ortak deposu: ${wh.name}. Diğer depolardaki stoklar taşınmadı.`,isError:false});
     } catch {setWmsFeedback({text:"Sunucuya ulaşılamadı; sonucu kontrol edin.",isError:true});}
     finally{setSalesWarehouseBusy(false);}
@@ -1661,7 +1737,9 @@ export function AdminDashboardClient({
       try {
         const pRes = await authFetch("/api/products?scope=all-warehouses");
         const pData = await pRes.json();
-        if (pData.success) setProducts(pData.data);
+        if (!pRes.ok || !pData.success || !Array.isArray(pData.data)) throw new Error("Ürün listesi yenilenemedi.");
+        setProducts(pData.data);
+        await loadInventory();
       } catch { setCatalogFeedback({ text: "Ürün kaydedildi; listeyi görmek için sayfayı yenileyin.", isError: false }); }
     } catch (err) {
       setProductSaveError(err instanceof Error ? err.message : "Ürün kaydedilemedi.");
@@ -2390,89 +2468,47 @@ export function AdminDashboardClient({
                 </div>
 
                 <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
+                  <div className="px-3 py-2 text-xs text-stone-500 flex flex-wrap items-center gap-2">
+                    <span>Varyantlar: {salesWarehouseId===null ? "ortak satış deposu seçilmedi" : `${warehousesList.find(w=>w.id===salesWarehouseId)?.name || `Ortak satış deposu #${salesWarehouseId}`} — fiili stoğu olanlar`}. Tekil ürün stoğu tüm depolardaki kullanılabilir toplamdır.</span>
+                    <button type="button" onClick={()=>void refreshCatalogStock()} className="font-bold text-amber-800 underline">Stokları yenile</button>
+                  </div>
+                  {catalogStockError&&<p role="alert" className="px-3 pb-2 text-xs text-rose-700">{catalogStockError}</p>}
+                  {salesWarehouseId===null&&<p role="status" className="px-3 pb-2 text-xs text-amber-800">Ortak satış deposu seçilmediğinden varyantlar gösterilemiyor.</p>}
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
+                    <table className="w-full min-w-[850px] text-xs text-left">
                       <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200">
-                        <tr>
-                          <th className="py-3 px-3">Ürün</th>
-                          <th className="py-3 px-3">SKU / Barkod</th>
-                          <th className="py-3 px-3">Kategori</th>
-                          <th className="py-3 px-3">Fiyatlar</th>
-                          <th className="py-3 px-3">Stok</th>
-                          <th className="py-3 px-3">Durum</th>
-                          <th className="py-3 px-3">İşlem</th>
-                        </tr>
+                        <tr>{["Marka","Ürün","Renk","Kategori","Fiyatlar","Stok","Durum","İşlem"].map(label=><th key={label} scope="col" className="py-2.5 px-2 whitespace-nowrap">{label}</th>)}</tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
-                        {products
-                          .filter((p) => {
-                            if (catalogCatFilter !== "ALL" && String(p.categoryId) !== catalogCatFilter) return false;
-                            if (catalogBrandFilter !== "ALL" && String(p.brandId) !== catalogBrandFilter) return false;
-                            if (!catalogSearch) return true;
-                            const q = catalogSearch.toLowerCase();
-                            const varHit = (p.variants || []).some((v: any) =>
-                              `${v.sku} ${v.barcode} ${v.colorName} ${v.size}`.toLowerCase().includes(q)
-                            );
-                            return (
-                              p.name.toLowerCase().includes(q) ||
-                              p.sku.toLowerCase().includes(q) ||
-                              p.barcode?.toLowerCase().includes(q) ||
-                              p.brandName?.toLowerCase().includes(q) ||
-                              p.tags?.toLowerCase().includes(q) ||
-                              varHit
-                            );
-                          })
-                          .map((prod) => (
-                            <tr key={prod.id} className="hover:bg-stone-50/50">
-                              <td className="py-3 px-3">
-                                <span className="font-bold text-stone-900 block">{prod.name}</span>
-                                <span className="text-[10px] text-stone-400">{prod.brandName} · {prod.unit}</span>
-                              </td>
-                              <td className="py-3 px-3 font-mono">
-                                <div>{prod.sku}</div>
-                                <div className="text-[10px] text-stone-400">{prod.barcode}</div>
-                              </td>
-                              <td className="py-3 px-3">{prod.categoryName}</td>
-                              <td className="py-3 px-3">
-                                <div className="font-bold">{Number(prod.retailPrice).toFixed(2)} TL</div>
-                                <div className="text-[10px] text-stone-400">Maliyet {Number(prod.buyPrice).toFixed(2)} TL</div>
-                              </td>
-                              <td className="py-3 px-3">
-                                <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${prod.totalAvailable <= 10 ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"}`}>
-                                  {prod.totalAvailable ?? 0} {prod.unit}
-                                </span>
-                                <div className="text-[10px] text-amber-800 mt-0.5">
-                                  {prod.variants?.length > 0 ? `${prod.variants.length} varyant` : "Tekil SKU"}
-                                </div>
-                              </td>
-                              <td className="py-3 px-3 space-y-1">
-                                <button
-                                  onClick={() => void toggleProductFlag(prod.id, "isActive", !prod.isActive)}
-                                  className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isActive ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-500"}`}
-                                >
-                                  {prod.isActive ? "Yayında" : "Taslak"}
-                                </button>
-                                <button
-                                  onClick={() => void toggleProductFlag(prod.id, "isFeatured", !prod.isFeatured)}
-                                  className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isFeatured ? "bg-amber-100 text-amber-900" : "bg-stone-100 text-stone-400"}`}
-                                >
-                                  {prod.isFeatured ? "Öne Çıkan" : "Vitrin dışı"}
-                                </button>
-                              </td>
-                              <td className="py-3 px-3 space-y-1">
-                                <button
-                                  onClick={() => { setVariantEditDirty(false); setVariantEditBusy(false); setEditingProduct({ ...prod }); }}
-                                  className="flex items-center gap-1 text-amber-800 font-bold hover:underline"
-                                >
-                                  <Pencil className="w-3 h-3" /> Düzenle
-                                </button>
-                                {(isSuper || (matrixLoaded && myMatrixRow.catalog === true && myMatrixRow.productDelete === true)) && <button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId !== null} onClick={() => void handleDeleteProduct(prod.id, prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId === prod.id ? "Siliniyor..." : "Sil"}</button>}
-                                <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
-                              </td>
-                            </tr>
-                          ))}
+                        {catalogRows.map(({prod,variant,stock,brand})=>{
+                          const available=Math.max(0,stock.physical-stock.reserved);
+                          const quantity=variant?stock.physical:available;
+                          const buyPrice=variant?variant.buyPrice:prod.buyPrice;
+                          const retailPrice=variant?variant.retailPrice:prod.retailPrice;
+                          const money=(value:unknown)=>value===null||value===undefined||value===""?"—":`${Number(value).toFixed(2)} TL`;
+                          return <tr key={variant?`v-${variant.id}`:`p-${prod.id}`} className="hover:bg-stone-50/50">
+                            <td className="py-2.5 px-2">{brand||"—"}</td>
+                            <td className="py-2.5 px-2"><span className="font-bold text-stone-900 block">{prod.name}</span><span className="block text-[10px] text-stone-500 font-mono">{variant?variant.sku:prod.sku}{(variant?variant.barcode:prod.barcode) && ` · ${variant?variant.barcode:prod.barcode}`}</span></td>
+                            <td className="py-2.5 px-2">{variant?(variantLabel(variant)||"—"):"—"}</td>
+                            <td className="py-2.5 px-2">{categoriesList.find(c=>String(c.id)===String(prod.categoryId))?.name || prod.categoryName || "—"}</td>
+                            <td className="py-2.5 px-2"><div className="font-bold">{money(retailPrice)}</div><div className="text-[10px] text-stone-500">Maliyet {money(buyPrice)}</div></td>
+                            <td className="py-2.5 px-2"><span className={`px-2 py-0.5 rounded font-bold text-[11px] ${quantity<=10?"bg-rose-100 text-rose-800":"bg-emerald-100 text-emerald-800"}`}>{quantity} {prod.unit||"Adet"}</span><div className="text-[10px] text-stone-500 mt-0.5">{variant?`Fiili · Ayrılmış: ${stock.reserved}`:"Tüm depolar · Kullanılabilir"}</div></td>
+                            <td className="py-2.5 px-2 space-y-1">
+                              <button type="button" aria-label={`${prod.name} ürününü ${prod.isActive?"taslağa al":"yayına al"}`} onClick={()=>void toggleProductFlag(prod.id,"isActive",!prod.isActive)} className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isActive?"bg-emerald-100 text-emerald-800":"bg-stone-200 text-stone-500"}`}>Ürün: {prod.isActive?"Yayında":"Taslak"}</button>
+                              <button type="button" aria-label={`${prod.name} ürününün vitrin durumunu değiştir`} onClick={()=>void toggleProductFlag(prod.id,"isFeatured",!prod.isFeatured)} className={`block px-2 py-0.5 rounded-full text-[10px] font-bold ${prod.isFeatured?"bg-amber-100 text-amber-900":"bg-stone-100 text-stone-400"}`}>{prod.isFeatured?"Öne Çıkan":"Vitrin dışı"}</button>
+                              {variant&&<span className="block text-[10px] text-stone-500">Varyant: {variant.isActive===false?"Pasif":"Aktif"}</span>}
+                            </td>
+                            <td className="py-2.5 px-2 space-y-1">
+                              {variant&&<button type="button" aria-label={`${prod.name} ${variantLabel(variant)||variant.sku} varyantını düzenle`} onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setTableVariantEditor({productId:prod.id,variantId:variant.id,name:prod.name});}} className="block text-amber-800 font-bold hover:underline">Varyantı düzenle</button>}
+                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
+                              {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId!==null} onClick={()=>void handleDeleteProduct(prod.id,prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId===prod.id?"Siliniyor...":variant?"Ürünü sil":"Sil"}</button>}
+                              <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
+                            </td>
+                          </tr>;
+                        })}
                       </tbody>
                     </table>
+                    {catalogRows.length===0&&<p role="status" className="p-4 text-xs text-stone-500">Gösterilecek ürün bulunamadı.</p>}
                   </div>
                 </div>
               </>
@@ -2687,22 +2723,22 @@ export function AdminDashboardClient({
 
                 <div className="bg-white rounded-2xl border border-stone-200 overflow-x-auto">
                   <p className="px-3 py-2 text-xs text-stone-500">Fiili stok her depo için ayrı gösterilir; ayrılmış miktar parantez içindedir. Stok kaydı olmayan varyant için depo atanmış sayılmaz.</p>
-                  <table className="w-full min-w-[1100px] text-xs text-left">
+                  <table className="w-full min-w-[850px] text-xs text-left">
                     <thead className="bg-stone-50 text-stone-500 uppercase border-b border-stone-200"><tr>
-                      {["Kategori","Marka","Ürün","Renk","Alış Fiyatı","Satış Fiyatı","Stok Adedi","Stok Yeri","Barkod","İşlem"].map(h=><th key={h} scope="col" className="py-3 px-3">{h}</th>)}
+                      {["Kategori","Marka","Ürün","Renk","Alış Fiyatı","Satış Fiyatı","Stok Adedi","Stok Yeri","Barkod","İşlem"].map(h=><th key={h} scope="col" className="py-2 px-1.5 whitespace-nowrap">{h}</th>)}
                     </tr></thead>
                     <tbody className="divide-y divide-stone-100">
                       {variantTableRows.map(({p,v,stock}) => <tr key={`${v.id}-${stock?.id ?? "none"}`}>
-                          <td className="py-2.5 px-3">{categoriesList.find(c=>c.id===p.categoryId)?.name || "—"}</td>
-                          <td className="py-2.5 px-3">{brandsList.find(b=>b.id===p.brandId)?.name || "—"}</td>
-                          <td className="py-2.5 px-3 font-semibold">{p.name}{p.isActive===false&&<span className="block text-stone-500">Pasif ürün</span>}</td>
-                          <td className="py-2.5 px-3"><span className="inline-flex items-center gap-1.5">{v.colorHex&&<span className="w-3 h-3 rounded-full border border-stone-300" style={{backgroundColor:v.colorHex}} />}{variantLabel(v)||"—"}</span>{v.isActive===false&&<span className="block text-stone-500">Pasif varyant</span>}</td>
-                          <td className="py-2.5 px-3">{v.buyPrice===null||v.buyPrice===undefined?"—":`${Number(v.buyPrice).toFixed(2)} TL`}</td>
-                          <td className="py-2.5 px-3 font-bold">{Number(v.retailPrice).toFixed(2)} TL</td>
-                          <td className="py-2.5 px-3">{stock?<>{stock.physicalQty}<span className="block text-stone-500">Ayrılmış: {stock.reservedQty}</span></>:"0"}</td>
-                          <td className="py-2.5 px-3">{stock?(warehousesList.find(w=>w.id===stock.warehouseId)?.name || `Bilinmeyen depo #${stock.warehouseId}`):"Stok kaydı yok"}{stock&&warehousesList.find(w=>w.id===stock.warehouseId)?.isActive===false&&" (pasif)"}{stock&&stock.productId!==p.id&&<span className="block text-rose-700">Ürün bağlantısı tutarsız</span>}</td>
-                          <td className="py-2.5 px-3 font-mono">{v.barcode||"—"}</td>
-                          <td className="py-2.5 px-3"><div className="flex gap-2">
+                          <td className="py-2 px-1.5">{categoriesList.find(c=>c.id===p.categoryId)?.name || "—"}</td>
+                          <td className="py-2 px-1.5">{p.brandId == null ? "—" : (brandsList.find(b=>String(b.id)===String(p.brandId))?.name || p.brandName || `Bilinmeyen marka #${p.brandId}`)}</td>
+                          <td className="py-2 px-1.5 font-semibold">{p.name}{p.isActive===false&&<span className="block text-stone-500">Pasif ürün</span>}</td>
+                          <td className="py-2 px-1.5"><span className="inline-flex items-center gap-1.5">{v.colorHex&&<span className="w-3 h-3 rounded-full border border-stone-300" style={{backgroundColor:v.colorHex}} />}{variantLabel(v)||"—"}</span>{v.isActive===false&&<span className="block text-stone-500">Pasif varyant</span>}</td>
+                          <td className="py-2 px-1.5">{v.buyPrice===null||v.buyPrice===undefined?"—":`${Number(v.buyPrice).toFixed(2)} TL`}</td>
+                          <td className="py-2 px-1.5 font-bold">{Number(v.retailPrice).toFixed(2)} TL</td>
+                          <td className="py-2 px-1.5">{stock?<>{stock.physicalQty}<span className="block text-stone-500">Ayrılmış: {stock.reservedQty}</span></>:"0"}</td>
+                          <td className="py-2 px-1.5">{stock?(warehousesList.find(w=>w.id===stock.warehouseId)?.name || `Bilinmeyen depo #${stock.warehouseId}`):"Stok kaydı yok"}{stock&&warehousesList.find(w=>w.id===stock.warehouseId)?.isActive===false&&" (pasif)"}{stock&&stock.productId!==p.id&&<span className="block text-rose-700">Ürün bağlantısı tutarsız</span>}</td>
+                          <td className="py-2 px-1.5 font-mono">{v.barcode||"—"}</td>
+                          <td className="py-2 px-1.5"><div className="flex gap-1.5 whitespace-nowrap">
                             <button type="button" aria-label={`${p.name} ${variantLabel(v)||v.sku} varyantını düzenle`} onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setTableVariantEditor({productId:p.id,variantId:v.id,name:p.name});}} className="font-bold text-amber-800 hover:underline">Düzenle</button>
                             {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" disabled={deletingVariantId!==null} aria-label={`${p.name} ${variantLabel(v)||v.sku} varyantını sil`} onClick={()=>void handleDeleteVariant(v.id)} className="font-bold text-rose-700 hover:underline disabled:opacity-50">{deletingVariantId===v.id?"Siliniyor…":"Sil"}</button>}
                           </div></td>
@@ -4604,7 +4640,7 @@ export function AdminDashboardClient({
                   className="px-3 py-2 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
                 >
                   <Users className="w-4 h-4" />
-                  <span>CRM 360'a Git</span>
+                  <span>CRM 360&apos;a Git</span>
                 </button>
               </div>
             </div>
@@ -4720,7 +4756,7 @@ export function AdminDashboardClient({
                   className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition"
                 >
                   <Users2 className="w-4 h-4" />
-                  <span>Kullanıcılar & Roller'e Git</span>
+                  <span>Kullanıcılar & Roller&apos;e Git</span>
                 </button>
                 {isSuper && (
                   <>
@@ -5111,6 +5147,8 @@ export function AdminDashboardClient({
                     onChange={(e) => { productSelectionTouched.current.brand = true; setNewProd({ ...newProd, brandId: e.target.value }); }}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl"
                   >
+                    <option value="">Markasız</option>
+                    {newProd.brandId && !brandsList.some(b=>String(b.id)===newProd.brandId) && <option value={newProd.brandId}>Seçili marka artık bulunmuyor</option>}
                     <optgroup label="Seçilen kategoriye bağlı markalar">
                       {brandsList.filter(b => (b.categoryIds || []).includes(Number(newProd.categoryId))).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                     </optgroup>

@@ -6,6 +6,7 @@ import { desc, eq } from "drizzle-orm";
 
 import { requireStaff } from "@/lib/auth";
 import { variantLabel } from "@/lib/variant-label";
+import { sharedSalesWarehouseId } from "@/lib/shared-sales-warehouse";
 export async function GET(request: Request) {
   const __gate = await requireStaff(request);
   if (!__gate.ok) return __gate.response;
@@ -66,6 +67,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       warehouses: allWarehouses,
+      salesWarehouseId: sharedSalesWarehouseId(),
       inventory: enrichedStock,
       recentLedger: enrichedLedger,
       reorderAlerts: reorderItems,

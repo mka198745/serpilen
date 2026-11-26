@@ -25,10 +25,17 @@ test('Ürün ve varyant stokları tek işlemde kaydedilir; hata hepsini geri al�
   const v=(name,stock,extra={})=>({colorName:name,colorHex:'',size:'',length:'',sku:'',barcode:'',retailPrice:'',buyPrice:'',initialStock:String(stock),...extra});
   const product={name:'Deneme İplik',sku:'DENEME',barcode:'',categoryId:1,brandId:'',buyPrice:'30.00',retailPrice:'55.00',initialStock:0,warehouseId:2,images:['https://example.test/product.jpg'],variants:[v('Siyah',8,{retailPrice:'60.00',imageUrl:'https://cdn.fixture.example/siyah.jpg'}),v('Kırmızı',3,{sku:'KIRMIZI',barcode:'123456'})]};
   assert.equal((await post(product,false)).status,401);
-  const res=await post(product);assert.equal(res.status,200,JSON.stringify(await res.clone().json()));const result=(await res.json()).data;assert.equal(result.hasVariants,true);assert.equal(result.barcode,null);
+  db.exec("INSERT INTO brands(id,name,slug) VALUES(7,'Seçilen Marka','secilen-marka')");
+  const missingBrand=await post({...product,brandId:'999'});assert.equal(missingBrand.status,422);
+  product.brandId='7';
+  const res=await post(product);assert.equal(res.status,200,JSON.stringify(await res.clone().json()));const result=(await res.json()).data;assert.equal(result.hasVariants,true);assert.equal(result.brandId,7);assert.equal(db.prepare("SELECT brand_id FROM products WHERE id=?").get(result.id).brand_id,7);
+  const listed=(await (await fetch(`${base}?scope=all-warehouses`,{headers:{Authorization:`Bearer ${token}`}})).json()).data.find(p=>p.id===result.id);assert.equal(listed.brandId,7);assert.equal(listed.brandName,"Seçilen Marka");assert.equal(result.barcode,null);
   const vars=db.prepare('SELECT * FROM product_variants WHERE product_id=? ORDER BY id').all(result.id);assert.equal(vars.length,2);assert.equal(vars[0].sku,'DENEME-SIYAH-STD-1');assert.equal(vars[0].barcode,null);assert.equal(vars[0].image_url,'https://cdn.fixture.example/siyah.jpg');assert.equal(vars[1].image_url,null);assert.equal(Number(vars[0].retail_price),60);assert.equal(Number(vars[1].retail_price),55);assert.equal(vars[1].barcode,'123456');
   assert.deepEqual(db.prepare('SELECT warehouse_id,variant_id,physical_qty FROM inventory WHERE product_id=? ORDER BY variant_id').all(result.id),[{warehouse_id:2,variant_id:vars[0].id,physical_qty:8},{warehouse_id:2,variant_id:vars[1].id,physical_qty:3}]);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM product_images WHERE product_id=?').get(result.id).n,1);
+  const inventoryUrl=base.replace('/api/products','/api/inventory');
+  assert.equal((await fetch(inventoryUrl)).status,401);
+  const inventoryResponse=await fetch(inventoryUrl,{headers:{Authorization:`Bearer ${token}`}});assert.equal(inventoryResponse.status,200);const inventoryData=await inventoryResponse.json();assert.equal(inventoryData.salesWarehouseId,2);assert.equal(inventoryData.inventory.find(x=>x.variantId===vars[0].id).physicalQty,8);
   const fetched=(await (await fetch(`${base}?q=KIRMIZI`)).json()).data;assert.equal(fetched[0].totalStock,11);assert.equal(fetched[0].variants.length,2);
   // The creation form uses a shared price and stores only per-variant stock, not the displayed total twice.
   const shared=await post({...product,name:'Ortak Fiyat',sku:'ORTAK-FIYAT',images:[],technicalDetails:{size:'20 mm',length:'100m'},variants:[v('Siyah',10),v('Kırmızı',3)]});assert.equal(shared.status,200,await shared.clone().text());const sharedProduct=(await shared.json()).data;

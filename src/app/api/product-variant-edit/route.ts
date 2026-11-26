@@ -23,7 +23,7 @@ export async function PATCH(request:Request){
  if(!request.headers.get('origin')){const auth=request.headers.get('authorization')||'';const bearer=auth.startsWith('Bearer ')?await getUserByToken(auth.slice(7).trim()):null;if(!bearer||bearer.id!==gate.user.id)return NextResponse.json({success:false,error:'İstek kaynağı doğrulanamadı.'},{status:403,headers});}
  const parsed=await readCrmJson(request);if(!parsed.ok)return parsed.response;
  const body=parsed.value as Record<string,unknown>|null;
- if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['productId','warehouseId','fingerprint','physicalConfirmed','variants'].includes(k))||!id(body.productId)||!id(body.warehouseId)||typeof body.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(body.fingerprint)||typeof body.physicalConfirmed!=='boolean'||!Array.isArray(body.variants))return NextResponse.json({success:false,error:'Geçersiz varyant isteği.'},{status:422,headers});
+ if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['productId','warehouseId','variantId','fingerprint','physicalConfirmed','variants'].includes(k))||!id(body.productId)||!id(body.warehouseId)||(body.variantId!==undefined&&!id(body.variantId))||typeof body.fingerprint!=='string'||!/^[a-f0-9]{64}$/.test(body.fingerprint)||typeof body.physicalConfirmed!=='boolean'||!Array.isArray(body.variants))return NextResponse.json({success:false,error:'Geçersiz varyant isteği.'},{status:422,headers});
  try {
   const preview=previewVariantEdit(body.productId,body.warehouseId,gate.user);
   // Existing unchanged image URLs remain usable; new links must be public HTTPS.
@@ -33,7 +33,7 @@ export async function PATCH(request:Request){
   const current=await requireStaff(request);if(!current.ok||current.user.id!==gate.user.id)return NextResponse.json({success:false,error:'Oturum doğrulanamadı.'},{status:403,headers});
   const cookie=(await cookies()).get(SESSION_COOKIE)?.value,cookieUser=await getUserByToken(cookie);const token=cookieUser?.id===current.user.id?cookie:getRequestToken(request);
   if(!token)return NextResponse.json({success:false,error:'Oturum doğrulanamadı.'},{status:403,headers});
-  const result=saveVariantEdits(body.productId,body.warehouseId,{...current.user,sessionHash:createHash('sha256').update(token).digest('hex')},body.variants,body.fingerprint,body.physicalConfirmed);
+  const result=saveVariantEdits(body.productId,body.warehouseId,{...current.user,sessionHash:createHash('sha256').update(token).digest('hex')},body.variants,body.fingerprint,body.physicalConfirmed,body.variantId as number|undefined);
   if(result.promoted)void processStockReadyNotifications().catch(()=>{});
   return NextResponse.json({success:true,data:result},{headers});
  }catch(e){return failure(e);}
