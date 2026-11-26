@@ -256,6 +256,7 @@ export function AdminDashboardClient({
     setVariantPage(1);
   };
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [editingProductVariantId, setEditingProductVariantId] = useState<number | null>(null);
   const [productEditError, setProductEditError] = useState("");
   const [variantEditDirty, setVariantEditDirty] = useState(false);
   const [tableVariantEditor, setTableVariantEditor] = useState<{productId:number;variantId:number;name:string}|null>(null);
@@ -2534,7 +2535,7 @@ export function AdminDashboardClient({
                               {variant&&<span className="block text-[10px] text-stone-500">Varyant: {variant.isActive===false?"Pasif":"Aktif"}</span>}
                             </td>
                             <td className="py-2.5 px-2 space-y-1">
-                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
+                              <button type="button" onClick={()=>{setVariantEditDirty(false);setVariantEditBusy(false);setProductEditError("");setEditingProductVariantId(variant?.id ?? null);setEditingProduct({...prod});}} className="flex items-center gap-1 text-amber-800 font-bold hover:underline"><Pencil className="w-3 h-3" /> {variant?"Ürünü düzenle":"Düzenle"}</button>
                               {(isSuper||(matrixLoaded&&myMatrixRow.catalog===true&&myMatrixRow.productDelete===true))&&<button type="button" aria-label={`${prod.name} ürününü sil`} disabled={deletingProductId!==null} onClick={()=>void handleDeleteProduct(prod.id,prod.name)} className="flex items-center gap-1 text-rose-700 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"><Trash2 className="w-3 h-3" /> {deletingProductId===prod.id?"Siliniyor...":variant?"Ürünü sil":"Sil"}</button>}
                               <Link href={`/urun/${prod.slug}`} className="block text-stone-500 hover:underline">Vitrin →</Link>
                             </td>
@@ -4990,6 +4991,7 @@ export function AdminDashboardClient({
                   <input required value={editingProduct.retailPrice} onChange={(e) => setEditingProduct({ ...editingProduct, retailPrice: e.target.value })} className="w-full px-3 py-2 border border-stone-300 rounded-xl" />
                 </div>
               </div>
+              {editingProductVariantId !== null && <p className="text-stone-600">Ana ürün fiyatları varyant fiyatlarını değiştirmez. Varyant fiyatları Varyantlar sekmesinden düzenlenebilir.</p>}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold mb-1">Kampanya Fiyatı</label>
@@ -5035,7 +5037,7 @@ export function AdminDashboardClient({
               {productEditError && <p role="alert" className="p-2 rounded-lg bg-rose-50 text-rose-800">{productEditError}</p>}
               <button type="submit" disabled={variantEditBusy} className="w-full py-3 bg-amber-800 text-white font-bold rounded-xl disabled:opacity-50">Ürün ana bilgilerini kaydet</button>
             </form>
-            {editingProduct.hasVariants && <EditProductVariants key={editingProduct.id} productId={editingProduct.id} onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async () => { await Promise.all([refreshProducts(), loadInventory()]); }} />}
+            {editingProduct.hasVariants && editingProductVariantId !== null && <EditProductVariants key={`${editingProduct.id}-${editingProductVariantId}`} productId={editingProduct.id} selectedVariantId={editingProductVariantId} hidePrices onDirtyChange={setVariantEditDirty} onBusyChange={setVariantEditBusy} onSaved={async () => { await Promise.all([refreshProducts(), loadInventory()]); }} />}
           </div>
         </div>
       )}

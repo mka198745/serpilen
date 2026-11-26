@@ -4,7 +4,7 @@ import { authFetch } from "@/lib/client-auth";
 import type { VariantEditPreview, VariantEditRow } from "@/lib/edit-product-variants";
 
 type Draft=Omit<VariantEditRow,'physicalQty'> & {physicalQty:string};
-export function EditProductVariants({productId,selectedVariantId,onSaved,onDirtyChange,onBusyChange}:{productId:number;selectedVariantId?:number;onSaved:()=>Promise<void>;onDirtyChange:(dirty:boolean)=>void;onBusyChange:(busy:boolean)=>void}) {
+export function EditProductVariants({productId,selectedVariantId,hidePrices=false,onSaved,onDirtyChange,onBusyChange}:{productId:number;selectedVariantId?:number;hidePrices?:boolean;onSaved:()=>Promise<void>;onDirtyChange:(dirty:boolean)=>void;onBusyChange:(busy:boolean)=>void}) {
  const [preview,setPreview]=useState<VariantEditPreview|null>(null),[rows,setRows]=useState<Draft[]>([]),[dirty,setDirty]=useState(false),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
  const request=useRef(0),lock=useRef(false);
  const setDirtyState=(value:boolean)=>{setDirty(value);onDirtyChange(value);};
@@ -46,7 +46,7 @@ export function EditProductVariants({productId,selectedVariantId,onSaved,onDirty
    {!preview.warehouseId&&<p>Ortak satış deposu seçilmemiş; düzenlemek için aktif bir depo seçin.</p>}
    {selectedVariantId!==undefined&&!rows.some(r=>r.id===selectedVariantId)&&<p role="alert">Seçilen varyant bulunamadı. Listeyi yenileyin.</p>}
    {rows.map((row,i)=>({row,i})).filter(({row})=>selectedVariantId===undefined||row.id===selectedVariantId).map(({row,i})=><fieldset key={row.id} disabled={busy||!preview.warehouseId} className={`border rounded-xl p-3 space-y-2 ${selectedVariantId===row.id?"border-amber-600 bg-amber-50":"border-stone-200"}`}><legend className="font-bold">{selectedVariantId===row.id?"Seçilen varyant ":"Varyant "}{i+1}{!row.isActive?' (pasif)':''}</legend>
-    <div className="grid grid-cols-2 gap-2">{fields.map(([key,label,max])=><label key={key} className={key==='imageUrl'?'col-span-2 font-semibold':'font-semibold'}>{label}<input maxLength={max} value={String(row[key]??'')} onChange={e=>update(i,key,e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-lg font-normal" /></label>)}</div>
+    <div className="grid grid-cols-2 gap-2">{fields.filter(([key])=>!hidePrices || (key!=="buyPrice" && key!=="retailPrice")).map(([key,label,max])=><label key={key} className={key==='imageUrl'?'col-span-2 font-semibold':'font-semibold'}>{label}<input maxLength={max} value={String(row[key]??'')} onChange={e=>update(i,key,e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-lg font-normal" /></label>)}</div>
     <p>Mevcut fiili: <strong>{preview.variants[i].physicalQty}</strong> · Ayrılmış: <strong>{row.reservedQty}</strong> · Kullanılabilir: <strong>{row.availableQty}</strong></p>
     <label className="block font-bold">Yeni fiili stok (toplam fiziksel miktar, ekleme miktarı değil)<input type="number" min="0" max="100000000" step="1" value={row.physicalQty} onChange={e=>update(i,'physicalQty',e.target.value)} className="block w-full mt-1 p-2 border border-stone-300 rounded-lg font-normal" /></label>
    </fieldset>)}
