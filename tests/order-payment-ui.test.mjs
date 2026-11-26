@@ -19,6 +19,7 @@ test('Ödeme ekranı kart bilgisi toplamaz; havale siparişi ödemeyi bekliyor g
   const {createRoot}=await import('react-dom/client');const {CartProvider}=await import('../src/context/CartContext.tsx');const {CheckoutClient}=await import('../src/app/odeme/CheckoutClient.tsx');const root=createRoot(document.getElementById('root'));
   await act(async()=>root.render(React.createElement(CartProvider,null,React.createElement(CheckoutClient))));
   for(let i=0;i<100&&!document.body.textContent.includes('Havale / EFT ile transfer');i++)await act(async()=>{await new Promise(r=>setTimeout(r,10));});
+  assert.match(document.body.textContent,/Stok bekleyen siparişlerde henüz ödeme yapmayın; stok ayrıldığında süre başlar/);
   assert.match(document.body.textContent,/Online kart ödemesi şu anda kullanılamıyor/);assert.doesNotMatch(document.body.textContent,/Kart Numarası|CVV Güvenlik Kodu/);assert.doesNotMatch(document.body.textContent,/Test Hesabı/);
   await act(async()=>document.querySelector('form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true})));
   assert.equal(sent.paymentMethod,'EFT_HAVALE');assert.equal(sent.grandTotal,10);assert.ok(!('cardNumber' in sent));assert.match(document.body.textContent,/Ödeme bekleniyor/i);assert.match(document.body.textContent,/Test Hesabı/);assert.match(document.body.textContent,/SİP20260001/);

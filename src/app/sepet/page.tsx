@@ -56,7 +56,7 @@ export default function CartPage() {
         )}
       </div>
 
-      {items.length > 0 && <PaymentTimeNotice />}
+      {items.length > 0 && <PaymentTimeNotice showStockWaitNotice={false} />}
       {items.length === 0 ? (
         <div className="bg-white p-12 rounded-3xl border border-stone-200 text-center max-w-md mx-auto space-y-4 shadow-xs">
           <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-800 flex items-center justify-center mx-auto">

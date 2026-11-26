@@ -40,7 +40,7 @@ export function Header({ initialBlogEnabled = true }: { initialBlogEnabled?: boo
   const brandParts = brandName.trim().split(/\s+/);
   const brandLast = brandParts.length > 1 ? brandParts[brandParts.length - 1] : "";
   const brandHead = brandParts.length > 1 ? brandParts.slice(0, -1).join(" ") : brandName;
-  const { cartCount, setIsCartOpen, wishlist } = useCart();
+  const { cartCount, isCartOpen, setIsCartOpen, wishlist } = useCart();
   const { user, loading: authLoading, openAuth, logout, cookieless, openGuarded } = useAuth();
   const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,6 +235,9 @@ export function Header({ initialBlogEnabled = true }: { initialBlogEnabled?: boo
               onClick={() => setIsCartOpen(true)}
               className="flex items-center gap-2 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-full font-semibold text-xs border border-amber-200 transition"
               aria-label="Sepeti Aç"
+              aria-haspopup="dialog"
+              aria-expanded={isCartOpen}
+              aria-controls="shopping-cart-drawer"
             >
               <div className="relative">
                 <ShoppingBag className="w-4 h-4 text-amber-800" />
